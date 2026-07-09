@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient, requireProfile } from "@/lib/supabase/server";
+import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 import type { PatientStatus } from "@/lib/types";
 
 export async function upsertPatient(
@@ -24,6 +24,15 @@ export async function upsertPatient(
   if (error) return { error: error.message };
   revalidatePath("/patients");
   return { id: data.id };
+}
+
+export async function deletePatient(id: string): Promise<{ error?: string }> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase.from("patients").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/patients");
+  return {};
 }
 
 export async function setPatientStatus(

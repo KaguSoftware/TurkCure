@@ -165,6 +165,7 @@ export function PatientDetail({
         countries={directories.countries}
         agents={directories.agents}
         currentUserId={currentUserId}
+        isAdmin={isAdmin}
       />
     </div>
   );

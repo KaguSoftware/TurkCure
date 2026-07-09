@@ -48,6 +48,7 @@ export default async function PatientsPage() {
         countries={countries ?? []}
         agents={agents ?? []}
         currentUserId={profile.id}
+        isAdmin={profile.role === "admin"}
         caseDirectories={{
           doctors: doctors ?? [],
           hospitals: hospitals ?? [],

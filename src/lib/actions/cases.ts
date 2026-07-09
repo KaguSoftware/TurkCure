@@ -127,14 +127,14 @@ export async function deleteQuoteItem(patientId: string, id: string): Promise<{ 
   return {};
 }
 
+const QUOTE_COLUMNS_ADMIN = "id, case_id, kind, description, cost, price, sort_order";
+const QUOTE_COLUMNS_AGENT = "id, case_id, kind, description, price, sort_order";
+
 /** Quote items for a case; cost included only for admins. */
 export async function getQuoteItems(caseId: string) {
   const profile = await requireProfile();
   const admin = createAdminClient();
-  const columns =
-    profile.role === "admin"
-      ? "id, case_id, kind, description, cost, price, sort_order"
-      : "id, case_id, kind, description, price, sort_order";
+  const columns = profile.role === "admin" ? QUOTE_COLUMNS_ADMIN : QUOTE_COLUMNS_AGENT;
   const { data } = await admin
     .from("quote_items")
     .select(columns)
@@ -142,6 +142,35 @@ export async function getQuoteItems(caseId: string) {
     .order("sort_order")
     .order("created_at");
   return data ?? [];
+}
+
+/**
+ * Quote items for many cases in a single query, grouped by case_id.
+ * Avoids the N+1 round-trips (and repeated profile lookups) of calling
+ * getQuoteItems per case. Cost included only for admins.
+ */
+export async function getQuoteItemsForCases(
+  caseIds: string[]
+): Promise<Record<string, Record<string, unknown>[]>> {
+  const byCase: Record<string, Record<string, unknown>[]> = {};
+  for (const id of caseIds) byCase[id] = [];
+  if (caseIds.length === 0) return byCase;
+
+  const profile = await requireProfile();
+  const admin = createAdminClient();
+  const columns = profile.role === "admin" ? QUOTE_COLUMNS_ADMIN : QUOTE_COLUMNS_AGENT;
+  const { data } = await admin
+    .from("quote_items")
+    .select(columns)
+    .in("case_id", caseIds)
+    .order("sort_order")
+    .order("created_at");
+
+  for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+    const cid = row.case_id as string;
+    (byCase[cid] ??= []).push(row);
+  }
+  return byCase;
 }
 
 export async function attachInstruction(

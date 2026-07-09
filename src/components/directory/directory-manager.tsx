@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
+import { useAction } from "@/lib/use-action";
 import {
   upsertDirectoryRow,
   deleteDirectoryRow,
@@ -15,12 +17,43 @@ import {
 export interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "textarea" | "select" | "tel" | "email";
+  type?: "text" | "number" | "textarea" | "select" | "tel" | "email" | "list";
   options?: { value: string; label: string }[];
   required?: boolean;
   hideInTable?: boolean;
   /** For select fields: joined relation key whose .name is shown in the table (serializable — no render functions across the server/client boundary). */
   displayKey?: string;
+}
+
+function ListField({ name, defaultValue, label }: { name: string; defaultValue: string[]; label: string }) {
+  const [items, setItems] = React.useState<string[]>(defaultValue.length ? defaultValue : [""]);
+  return (
+    <div className="space-y-2">
+      {items.map((item, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Input
+            name={name}
+            defaultValue={item}
+            placeholder={`${label} ${i + 1}`}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove ${label.toLowerCase()} ${i + 1}`}
+            className="shrink-0 hover:text-danger"
+            disabled={items.length === 1}
+            onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}
+          >
+            <X />
+          </Button>
+        </div>
+      ))}
+      <Button type="button" variant="soft" size="sm" onClick={() => setItems((prev) => [...prev, ""])}>
+        <Plus /> Add {label.toLowerCase()}
+      </Button>
+    </div>
+  );
 }
 
 export function DirectoryManager({
@@ -38,9 +71,10 @@ export function DirectoryManager({
 }) {
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [saving, setSaving] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
+  const save = useAction();
+  const del = useAction();
 
   const visible = fields.filter((f) => !f.hideInTable);
   const filtered = query
@@ -51,23 +85,26 @@ export function DirectoryManager({
 
   function openNew() {
     setEditing(null);
-    setError(null);
     setOpen(true);
   }
 
   function openEdit(row: Record<string, unknown>) {
     setEditing(row);
-    setError(null);
     setOpen(true);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSaving(true);
-    setError(null);
     const fd = new FormData(e.currentTarget);
     const values: Record<string, unknown> = {};
     for (const f of fields) {
+      if (f.type === "list") {
+        values[f.key] = fd
+          .getAll(f.key)
+          .map((v) => String(v).trim())
+          .filter(Boolean);
+        continue;
+      }
       const raw = fd.get(f.key);
       if (raw === null) continue;
       const s = String(raw);
@@ -75,16 +112,34 @@ export function DirectoryManager({
       else if (f.type === "select" && s === "") values[f.key] = null;
       else values[f.key] = s;
     }
-    const result = await upsertDirectoryRow(table, values, editing?.id as string | undefined);
-    setSaving(false);
-    if (result.error) setError(result.error);
-    else setOpen(false);
+    const { ok } = await save.run(upsertDirectoryRow(table, values, editing?.id as string | undefined), {
+      success: editing ? `${entityName} updated.` : `${entityName} created.`,
+    });
+    if (ok) setOpen(false);
   }
 
   async function onDelete(id: string) {
-    if (!confirm(`Delete this ${entityName.toLowerCase()}?`)) return;
-    const result = await deleteDirectoryRow(table, id);
-    if (result.error) alert(result.error);
+    const { ok } = await del.run(deleteDirectoryRow(table, id), {
+      success: `${entityName} deleted.`,
+    });
+    if (ok) {
+      setConfirmDelete(null);
+      setOpen(false);
+    }
+  }
+
+  function cellValue(row: Record<string, unknown>, f: FieldDef): string {
+    if (f.displayKey) return (row[f.displayKey] as { name?: string } | null)?.name ?? "—";
+    if (f.type === "select")
+      return (
+        f.options?.find((o) => o.value === row[f.key])?.label ??
+        (String(row[f.key] ?? "") || "—")
+      );
+    if (f.type === "list") {
+      const arr = (row[f.key] as string[] | null) ?? [];
+      return arr.length ? arr.join(", ") : "—";
+    }
+    return String(row[f.key] ?? "") || "—";
   }
 
   return (
@@ -121,11 +176,7 @@ export function DirectoryManager({
             <Tr key={row.id as string}>
               {visible.map((f) => (
                 <Td key={f.key} className={f === visible[0] ? "font-medium" : "text-muted"}>
-                  {f.displayKey
-                    ? ((row[f.displayKey] as { name?: string } | null)?.name ?? "—")
-                    : f.type === "select"
-                      ? f.options?.find((o) => o.value === row[f.key])?.label ?? "—"
-                      : String(row[f.key] ?? "") || "—"}
+                  {cellValue(row, f)}
                 </Td>
               ))}
               <Td className="text-right">
@@ -139,7 +190,7 @@ export function DirectoryManager({
                       size="icon"
                       aria-label="Delete"
                       className="hover:text-danger"
-                      onClick={() => onDelete(row.id as string)}
+                      onClick={() => setConfirmDelete(row.id as string)}
                     >
                       <Trash2 />
                     </Button>
@@ -174,6 +225,13 @@ export function DirectoryManager({
                     </option>
                   ))}
                 </Select>
+              ) : f.type === "list" ? (
+                <ListField
+                  key={(editing?.id as string) ?? "new"}
+                  name={f.key}
+                  label={f.label.replace(/s$/, "")}
+                  defaultValue={(editing?.[f.key] as string[]) ?? []}
+                />
               ) : (
                 <Input
                   name={f.key}
@@ -185,17 +243,44 @@ export function DirectoryManager({
               )}
             </Field>
           ))}
-          {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            <div>
+              {editing && isAdmin && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-danger hover:bg-danger-soft"
+                  onClick={() => setConfirmDelete(editing.id as string)}
+                >
+                  <Trash2 /> Delete
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" pending={save.pending}>
+                Save
+              </Button>
+            </div>
           </div>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && onDelete(confirmDelete)}
+        pending={del.pending}
+        title={`Delete ${entityName.toLowerCase()}`}
+        description={
+          <>
+            This will permanently delete this {entityName.toLowerCase()}. Records that reference it
+            (e.g. cases) will keep working but lose the link. This cannot be undone.
+          </>
+        }
+      />
     </div>
   );
 }

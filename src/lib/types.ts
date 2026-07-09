@@ -62,7 +62,7 @@ export interface Driver {
   id: string;
   name: string;
   phone: string;
-  vehicle: string;
+  vehicles: string[];
   notes: string;
 }
 

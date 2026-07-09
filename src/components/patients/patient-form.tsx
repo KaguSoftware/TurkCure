@@ -5,7 +5,12 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
-import { upsertPatient } from "@/lib/actions/patients";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/toast";
+import { useAction } from "@/lib/use-action";
+import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { upsertPatient, deletePatient } from "@/lib/actions/patients";
 import { upsertCase } from "@/lib/actions/cases";
 import { PATIENT_STATUSES, type Patient } from "@/lib/types";
 import { PATIENT_STATUS_LABEL } from "@/components/ui/badge";
@@ -57,6 +62,7 @@ export function PatientFormDialog({
   agents,
   currentUserId,
   caseDirectories,
+  isAdmin = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -66,9 +72,13 @@ export function PatientFormDialog({
   currentUserId: string;
   /** When present (and creating a new patient), shows the full treatment & travel section. */
   caseDirectories?: CaseDirectories;
+  isAdmin?: boolean;
 }) {
+  const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const del = useAction();
   const initialPhone = splitPhone(patient?.phone ?? "");
   const [dob, setDob] = React.useState(patient?.date_of_birth ?? "");
   // Reset the DOB field when a different patient is loaded (adjust-state-during-render pattern)
@@ -146,7 +156,22 @@ export function PatientFormDialog({
     }
 
     setSaving(false);
+    toast.success(patient ? "Patient updated." : "Patient created.");
     onClose();
+  }
+
+  async function onDelete() {
+    if (!patient) return;
+    const { ok } = await del.run(deletePatient(patient.id), {
+      success: "Patient deleted.",
+      refresh: false,
+    });
+    if (ok) {
+      setConfirmDelete(false);
+      onClose();
+      router.push("/patients");
+      router.refresh();
+    }
   }
 
   return (
@@ -344,15 +369,44 @@ export function PatientFormDialog({
           </>
         )}
         {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            {patient && isAdmin && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-danger hover:bg-danger-soft"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 /> Delete patient
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" pending={saving}>
+              Save
+            </Button>
+          </div>
         </div>
       </form>
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={onDelete}
+        pending={del.pending}
+        title="Delete patient"
+        confirmLabel="Delete permanently"
+        description={
+          <>
+            This permanently deletes <strong>{patient?.full_name}</strong> and{" "}
+            <strong>all</strong> of their cases, quotes, payments, reminders, instructions and
+            files. This cannot be undone.
+          </>
+        }
+      />
     </Dialog>
   );
 }

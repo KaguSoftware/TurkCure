@@ -33,8 +33,10 @@ export async function toggleReminderDone(id: string, done: boolean): Promise<{ e
 export async function deleteReminder(id: string): Promise<{ error?: string }> {
   await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase.from("reminders").delete().eq("id", id);
+  // select() so RLS-blocked deletes (0 rows) surface as an error instead of silently succeeding
+  const { data, error } = await supabase.from("reminders").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "You don't have permission to delete this reminder." };
   revalidatePath("/dashboard");
   return {};
 }

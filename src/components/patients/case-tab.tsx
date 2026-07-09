@@ -9,6 +9,8 @@ import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table
 import { useRouter } from "next/navigation";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/toast";
 import { upsertDirectoryRow } from "@/lib/actions/directory";
 import { upsertCase, upsertQuoteItem, deleteQuoteItem } from "@/lib/actions/cases";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
@@ -51,8 +53,9 @@ export function CaseTab({
       specialty: String(fd.get("specialty") ?? ""),
     });
     setDoctorSaving(false);
-    if (r.error) alert(r.error);
+    if (r.error) toast.error(r.error);
     else {
+      toast.success("Doctor added.");
       setDoctorOpen(false);
       router.refresh();
     }
@@ -82,7 +85,13 @@ export function CaseTab({
     };
     const result = await upsertCase(patient.id, values, activeCase?.id);
     setSaving(false);
-    if (result.error) setError(result.error);
+    if (result.error) {
+      setError(result.error);
+      toast.error(result.error);
+    } else {
+      toast.success(activeCase ? "Case saved. Reminders regenerated." : "Case created.");
+      router.refresh();
+    }
   }
 
   const selectFields: {
@@ -188,8 +197,8 @@ export function CaseTab({
               </p>
             )}
             <div className="sm:col-span-2">
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving…" : activeCase ? "Save case" : "Create case"}
+              <Button type="submit" pending={saving}>
+                {activeCase ? "Save case" : "Create case"}
               </Button>
               <p className="mt-2 text-xs text-muted-light">
                 Saving regenerates arrival, operation and aftercare reminders from the dates above.
@@ -227,8 +236,8 @@ export function CaseTab({
             <Button type="button" variant="secondary" onClick={() => setDoctorOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={doctorSaving}>
-              {doctorSaving ? "Saving…" : "Add doctor"}
+            <Button type="submit" pending={doctorSaving}>
+              Add doctor
             </Button>
           </div>
         </form>
@@ -250,9 +259,24 @@ function QuoteEditor({
   items: QuoteItem[];
   isAdmin: boolean;
 }) {
+  const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = React.useState<QuoteItem | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
+
+  async function onDelete(item: QuoteItem) {
+    setDeleting(true);
+    const r = await deleteQuoteItem(patientId, item.id);
+    setDeleting(false);
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Quote item deleted.");
+      setConfirmDelete(null);
+      router.refresh();
+    }
+  }
 
   const totalPrice = items.reduce((s, i) => s + Number(i.price), 0);
   const totalCost = items.reduce((s, i) => s + Number(i.cost ?? 0), 0);
@@ -270,8 +294,14 @@ function QuoteEditor({
       sort_order: items.length,
     });
     setBusy(false);
-    if (result.error) setError(result.error);
-    else formRef.current?.reset();
+    if (result.error) {
+      setError(result.error);
+      toast.error(result.error);
+    } else {
+      toast.success("Quote item added.");
+      formRef.current?.reset();
+      router.refresh();
+    }
   }
 
   return (
@@ -324,10 +354,7 @@ function QuoteEditor({
                     size="icon"
                     aria-label="Delete item"
                     className="hover:text-danger"
-                    onClick={async () => {
-                      const r = await deleteQuoteItem(patientId, item.id);
-                      if (r.error) alert(r.error);
-                    }}
+                    onClick={() => setConfirmDelete(item)}
                   >
                     <Trash2 />
                   </Button>
@@ -361,11 +388,24 @@ function QuoteEditor({
             </Field>
           </div>
           {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
-          <Button type="submit" variant="soft" size="sm" disabled={busy}>
+          <Button type="submit" variant="soft" size="sm" pending={busy}>
             <Plus /> Add item
           </Button>
         </form>
       </CardContent>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && onDelete(confirmDelete)}
+        pending={deleting}
+        title="Delete quote item"
+        description={
+          <>
+            Remove <strong>{confirmDelete?.description}</strong> from the quote? This cannot be
+            undone.
+          </>
+        }
+      />
     </Card>
   );
 }

@@ -9,6 +9,9 @@ import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { Badge, PAYMENT_STATUS_TONE } from "@/components/ui/badge";
 import { DatePicker } from "@/components/ui/date-picker";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/toast";
+import { useRouter } from "next/navigation";
 import { upsertPayment, deletePayment } from "@/lib/actions/payments";
 import { CURRENCIES, formatMoney, formatDate } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
@@ -36,11 +39,14 @@ export function PaymentsTab({
   directories: Directories;
 }) {
   const activeCase = cases[0] ?? null;
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Payment | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [counterparty, setCounterparty] = React.useState<CounterpartyType>("patient");
+  const [confirmDelete, setConfirmDelete] = React.useState<Payment | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   if (!activeCase) {
     return (
@@ -119,8 +125,27 @@ export function PaymentsTab({
     };
     const result = await upsertPayment(patient.id, values, editing?.id);
     setSaving(false);
-    if (result.error) setError(result.error);
-    else setOpen(false);
+    if (result.error) {
+      setError(result.error);
+      toast.error(result.error);
+    } else {
+      toast.success(editing ? "Payment updated." : "Payment recorded.");
+      setOpen(false);
+      router.refresh();
+    }
+  }
+
+  async function onDelete(p: Payment) {
+    setDeleting(true);
+    const r = await deletePayment(patient.id, p.id);
+    setDeleting(false);
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Payment deleted.");
+      setConfirmDelete(null);
+      setOpen(false);
+      router.refresh();
+    }
   }
 
   const section = (title: string, list: Payment[], icon: React.ReactNode) => (
@@ -172,11 +197,7 @@ export function PaymentsTab({
                       size="icon"
                       aria-label="Delete payment"
                       className="hover:text-danger"
-                      onClick={async () => {
-                        if (!confirm("Delete this payment?")) return;
-                        const r = await deletePayment(patient.id, p.id);
-                        if (r.error) alert(r.error);
-                      }}
+                      onClick={() => setConfirmDelete(p)}
                     >
                       <Trash2 />
                     </Button>
@@ -278,16 +299,44 @@ export function PaymentsTab({
           {error && (
             <p className="sm:col-span-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
           )}
-          <div className="flex justify-end gap-2 sm:col-span-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
+          <div className="flex items-center justify-between gap-2 sm:col-span-2">
+            <div>
+              {editing && isAdmin && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-danger hover:bg-danger-soft"
+                  onClick={() => setConfirmDelete(editing)}
+                >
+                  <Trash2 /> Delete
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" pending={saving}>
+                Save
+              </Button>
+            </div>
           </div>
         </form>
       </Dialog>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && onDelete(confirmDelete)}
+        pending={deleting}
+        title="Delete payment"
+        description={
+          <>
+            Permanently delete this{" "}
+            {confirmDelete ? formatMoney(Number(confirmDelete.amount), confirmDelete.currency) : ""}{" "}
+            payment? This cannot be undone.
+          </>
+        }
+      />
     </div>
   );
 }

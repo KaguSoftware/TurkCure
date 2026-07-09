@@ -7,6 +7,8 @@ import { Input, Select, Field } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "@/components/ui/toast";
+import { useRouter } from "next/navigation";
 import { inviteUser, setUserActive, setUserRole } from "@/lib/actions/users";
 import type { Profile, Role } from "@/lib/types";
 
@@ -17,9 +19,11 @@ export function UsersManager({
   users: Profile[];
   currentUserId: string;
 }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [togglingId, setTogglingId] = React.useState<string | null>(null);
 
   async function onInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,8 +37,14 @@ export function UsersManager({
       String(fd.get("password"))
     );
     setSaving(false);
-    if (result.error) setError(result.error);
-    else setOpen(false);
+    if (result.error) {
+      setError(result.error);
+      toast.error(result.error);
+    } else {
+      toast.success("Team member created.");
+      setOpen(false);
+      router.refresh();
+    }
   }
 
   return (
@@ -69,8 +79,13 @@ export function UsersManager({
                   value={u.role}
                   disabled={u.id === currentUserId}
                   onChange={async (e) => {
-                    const r = await setUserRole(u.id, e.target.value as Role);
-                    if (r.error) alert(r.error);
+                    const role = e.target.value as Role;
+                    const r = await setUserRole(u.id, role);
+                    if (r.error) toast.error(r.error);
+                    else {
+                      toast.success(`${u.name} is now ${role === "admin" ? "an admin" : "an agent"}.`);
+                      router.refresh();
+                    }
                   }}
                 >
                   <option value="admin">Admin</option>
@@ -85,9 +100,16 @@ export function UsersManager({
                   <Button
                     variant="secondary"
                     size="sm"
+                    pending={togglingId === u.id}
                     onClick={async () => {
+                      setTogglingId(u.id);
                       const r = await setUserActive(u.id, !u.active);
-                      if (r.error) alert(r.error);
+                      setTogglingId(null);
+                      if (r.error) toast.error(r.error);
+                      else {
+                        toast.success(`${u.name} ${u.active ? "disabled" : "enabled"}.`);
+                        router.refresh();
+                      }
                     }}
                   >
                     {u.active ? "Disable" : "Enable"}
@@ -121,8 +143,8 @@ export function UsersManager({
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Creating…" : "Create account"}
+            <Button type="submit" pending={saving}>
+              Create account
             </Button>
           </div>
         </form>

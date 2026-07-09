@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
+import { toast } from "@/components/ui/toast";
 import { importPatients } from "@/lib/actions/patients";
 
 const TARGETS = [
@@ -73,9 +74,12 @@ export function CsvImporter() {
     setError(null);
     const res = await importPatients(mapped as { full_name: string }[]);
     setImporting(false);
-    if (res.error) setError(res.error);
-    else {
+    if (res.error) {
+      setError(res.error);
+      toast.error(res.error);
+    } else {
       setResult({ inserted: res.inserted ?? 0, skipped: res.skipped ?? 0 });
+      toast.success(`${res.inserted ?? 0} patients imported, ${res.skipped ?? 0} duplicates skipped.`);
       router.refresh();
     }
   }
@@ -153,8 +157,8 @@ export function CsvImporter() {
           </Card>
 
           <div className="flex items-center gap-3">
-            <Button onClick={onImport} disabled={importing}>
-              {importing ? "Importing…" : `Import ${mapped.length} leads`}
+            <Button onClick={onImport} pending={importing}>
+              Import {mapped.length} leads
             </Button>
             {result && (
               <span className="flex items-center gap-1.5 text-sm text-success">

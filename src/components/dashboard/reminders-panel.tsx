@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { DateTimePicker } from "@/components/ui/date-picker";
+import { toast } from "@/components/ui/toast";
 import { upsertReminder, toggleReminderDone, deleteReminder } from "@/lib/actions/reminders";
 import type { Reminder, ReminderType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -134,6 +135,7 @@ export function RemindersPanel({
     if (result.error) {
       setItems((prev) => prev.filter((r) => r.id !== tempId));
       setListError(`Couldn't save reminder: ${result.error}`);
+      toast.error(`Couldn't save reminder: ${result.error}`);
     } else if (result.reminder) {
       const saved = result.reminder;
       setItems((prev) =>
@@ -164,6 +166,7 @@ export function RemindersPanel({
             : [...prev, r].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         );
         setListError(`Couldn't mark done: ${result.error}`);
+        toast.error(`Couldn't mark done: ${result.error}`);
       }
     });
   }
@@ -184,6 +187,7 @@ export function RemindersPanel({
             : [...prev, r].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         );
         setListError(`Couldn't delete: ${result.error}`);
+        toast.error(`Couldn't delete: ${result.error}`);
       }
     });
   }

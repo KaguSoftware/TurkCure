@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Select, Textarea } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/toast";
 import { attachInstruction, updateInstruction, removeInstruction } from "@/lib/actions/cases";
 import type { Case, CaseInstruction, Patient } from "@/lib/types";
 
@@ -40,8 +42,11 @@ export function InstructionsTab({
     setBusy(true);
     const r = await attachInstruction(patient.id, activeCase!.id, templateId);
     setBusy(false);
-    if (r.error) alert(r.error);
-    else setTemplateId("");
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Instructions attached.");
+      setTemplateId("");
+    }
   }
 
   return (
@@ -57,7 +62,7 @@ export function InstructionsTab({
             ))}
           </Select>
         </div>
-        <Button onClick={onAttach} disabled={!templateId || busy}>
+        <Button onClick={onAttach} disabled={!templateId} pending={busy}>
           <Plus /> Attach
         </Button>
       </div>
@@ -90,6 +95,8 @@ function InstructionCard({
   const [saving, setSaving] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [thumbs, setThumbs] = React.useState<Record<string, string>>({});
+  const [confirmRemove, setConfirmRemove] = React.useState(false);
+  const [removing, setRemoving] = React.useState(false);
   const dirty = body !== instruction.body_md;
   const images = instruction.image_paths ?? [];
 
@@ -122,7 +129,7 @@ function InstructionCard({
       .from("case_instructions")
       .update({ image_paths: paths })
       .eq("id", instruction.id);
-    if (error) alert(error.message);
+    if (error) toast.error(error.message);
     else router.refresh();
   }
 
@@ -135,9 +142,10 @@ function InstructionCard({
     const { error } = await supabase.storage.from("patient-files").upload(path, file);
     setUploading(false);
     if (error) {
-      alert(error.message);
+      toast.error(error.message);
       return;
     }
+    toast.success("Image added.");
     await setImagePaths([...images, path]);
   }
 
@@ -156,14 +164,19 @@ function InstructionCard({
             <Button
               size="sm"
               disabled={saving}
+              pending={saving}
               onClick={async () => {
                 setSaving(true);
                 const r = await updateInstruction(patientId, instruction.id, body);
                 setSaving(false);
-                if (r.error) alert(r.error);
+                if (r.error) toast.error(r.error);
+                else {
+                  toast.success("Instructions saved.");
+                  router.refresh();
+                }
               }}
             >
-              <Save /> {saving ? "Saving…" : "Save"}
+              <Save /> Save
             </Button>
           )}
           <a href={`/api/pdf/instruction/${instruction.id}`} target="_blank" rel="noreferrer">
@@ -176,15 +189,35 @@ function InstructionCard({
             size="icon"
             aria-label="Remove"
             className="hover:text-danger"
-            onClick={async () => {
-              if (!confirm("Remove these instructions from the case?")) return;
-              const r = await removeInstruction(patientId, instruction.id);
-              if (r.error) alert(r.error);
-            }}
+            onClick={() => setConfirmRemove(true)}
           >
             <Trash2 />
           </Button>
         </div>
+        <ConfirmDialog
+          open={confirmRemove}
+          onClose={() => setConfirmRemove(false)}
+          onConfirm={async () => {
+            setRemoving(true);
+            const r = await removeInstruction(patientId, instruction.id);
+            setRemoving(false);
+            if (r.error) toast.error(r.error);
+            else {
+              toast.success("Instructions removed.");
+              setConfirmRemove(false);
+              router.refresh();
+            }
+          }}
+          pending={removing}
+          title="Remove instructions"
+          confirmLabel="Remove"
+          description={
+            <>
+              Remove <strong>{instruction.title}</strong> from this case? It will no longer appear
+              in the patient PDF.
+            </>
+          }
+        />
       </CardHeader>
       <CardContent className="space-y-3">
         <Textarea

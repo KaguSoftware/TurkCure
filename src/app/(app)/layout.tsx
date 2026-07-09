@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
+import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 // Per-user accent themes, keyed by auth email.
@@ -24,6 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Topbar />
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
+      <Toaster />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { createClient, requireProfile } from "@/lib/supabase/server";
 import { DirectoryManager } from "@/components/directory/directory-manager";
 import { PageHeader } from "@/components/page-header";
+import { ISTANBUL_DISTRICT_OPTIONS } from "@/lib/istanbul";
 
 export const metadata = { title: "Hospitals" };
 
@@ -19,7 +20,7 @@ export default async function HospitalsPage() {
         rows={hospitals ?? []}
         fields={[
           { key: "name", label: "Name", required: true },
-          { key: "city", label: "City" },
+          { key: "city", label: "District", type: "select", options: ISTANBUL_DISTRICT_OPTIONS },
           { key: "contact", label: "Contact" },
           { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
         ]}

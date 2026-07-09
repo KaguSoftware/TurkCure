@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient, requireProfile } from "@/lib/supabase/server";
-import { getQuoteItems } from "@/lib/actions/cases";
+import { getQuoteItemsForCases } from "@/lib/actions/cases";
 import { PatientDetail } from "@/components/patients/patient-detail";
 import type { Case, Patient, QuoteItem } from "@/lib/types";
 
@@ -45,19 +45,17 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   ]);
 
   const caseIds = (cases ?? []).map((c) => c.id);
-  const [{ data: payments }, { data: instructions }] = await Promise.all([
+  const [{ data: payments }, { data: instructions }, quoteItemsRaw] = await Promise.all([
     caseIds.length
       ? supabase.from("payments").select("*").in("case_id", caseIds).order("created_at", { ascending: false })
       : Promise.resolve({ data: [] }),
     caseIds.length
       ? supabase.from("case_instructions").select("*").in("case_id", caseIds).order("created_at")
       : Promise.resolve({ data: [] }),
+    getQuoteItemsForCases(caseIds),
   ]);
 
-  const quoteItemsByCase: Record<string, QuoteItem[]> = {};
-  for (const caseId of caseIds) {
-    quoteItemsByCase[caseId] = (await getQuoteItems(caseId)) as unknown as QuoteItem[];
-  }
+  const quoteItemsByCase = quoteItemsRaw as unknown as Record<string, QuoteItem[]>;
 
   return (
     <PatientDetail

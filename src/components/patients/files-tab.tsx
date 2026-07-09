@@ -6,6 +6,8 @@ import { Download, FileText, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/utils";
 import type { Patient, PatientFile } from "@/lib/types";
 
@@ -21,6 +23,8 @@ export function FilesTab({
   const router = useRouter();
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = React.useState<PatientFile | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -32,6 +36,7 @@ export function FilesTab({
     const { error: upErr } = await supabase.storage.from("patient-files").upload(path, file);
     if (upErr) {
       setError(upErr.message);
+      toast.error(`Upload failed: ${upErr.message}`);
       setUploading(false);
       return;
     }
@@ -42,8 +47,13 @@ export function FilesTab({
       uploaded_by: currentUserId,
     });
     setUploading(false);
-    if (dbErr) setError(dbErr.message);
-    else router.refresh();
+    if (dbErr) {
+      setError(dbErr.message);
+      toast.error(dbErr.message);
+    } else {
+      toast.success(`${file.name} uploaded.`);
+      router.refresh();
+    }
   }
 
   async function onDownload(f: PatientFile) {
@@ -52,19 +62,24 @@ export function FilesTab({
       .from("patient-files")
       .createSignedUrl(f.storage_path, 300);
     if (error || !data) {
-      alert(error?.message ?? "Could not create download link");
+      toast.error(error?.message ?? "Could not create download link");
       return;
     }
     window.open(data.signedUrl, "_blank");
   }
 
   async function onDelete(f: PatientFile) {
-    if (!confirm(`Delete ${f.label}?`)) return;
+    setDeleting(true);
     const supabase = createClient();
     await supabase.storage.from("patient-files").remove([f.storage_path]);
     const { error } = await supabase.from("patient_files").delete().eq("id", f.id);
-    if (error) alert(error.message);
-    else router.refresh();
+    setDeleting(false);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`${f.label} deleted.`);
+      setConfirmDelete(null);
+      router.refresh();
+    }
   }
 
   return (
@@ -101,7 +116,7 @@ export function FilesTab({
                     size="icon"
                     aria-label="Delete"
                     className="hover:text-danger"
-                    onClick={() => onDelete(f)}
+                    onClick={() => setConfirmDelete(f)}
                   >
                     <Trash2 />
                   </Button>
@@ -111,6 +126,18 @@ export function FilesTab({
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && onDelete(confirmDelete)}
+        pending={deleting}
+        title="Delete file"
+        description={
+          <>
+            Permanently delete <strong>{confirmDelete?.label}</strong>? This cannot be undone.
+          </>
+        }
+      />
     </div>
   );
 }

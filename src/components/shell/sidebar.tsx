@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -11,6 +11,7 @@ import {
   Wallet,
   Settings,
   ClipboardList,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,16 @@ const NAV = [
 ];
 
 const ADMIN_NAV = [{ href: "/finance", label: "Finance", icon: Wallet }];
+
+/** Shows the nav icon, swapping in a spinner while this link's navigation is pending. */
+function NavIcon({ Icon }: { Icon: (typeof NAV)[number]["icon"] }) {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <Loader2 className="size-4 shrink-0 animate-spin" />
+  ) : (
+    <Icon className="size-4 shrink-0" />
+  );
+}
 
 export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: string }) {
   const pathname = usePathname();
@@ -41,7 +52,7 @@ export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: str
             : "text-muted hover:bg-surface-hover hover:text-foreground"
         )}
       >
-        <item.icon className="size-4 shrink-0" />
+        <NavIcon Icon={item.icon} />
         {item.label}
       </Link>
     );

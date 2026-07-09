@@ -9,6 +9,8 @@ import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table
 import { StatusBadge, PATIENT_STATUS_LABEL, PATIENT_STATUS_TONE, Badge } from "@/components/ui/badge";
 import { PatientFormDialog } from "./patient-form";
 import { setPatientStatus } from "@/lib/actions/patients";
+import { toast } from "@/components/ui/toast";
+import { useRouter } from "next/navigation";
 import { PATIENT_STATUSES, type Patient, type PatientStatus } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -18,13 +20,18 @@ export function PatientsView({
   agents,
   currentUserId,
   caseDirectories,
+  isAdmin = false,
 }: {
   patients: Patient[];
   countries: { id: string; name: string }[];
   agents: { id: string; name: string }[];
   currentUserId: string;
   caseDirectories: import("./patient-form").CaseDirectories;
+  isAdmin?: boolean;
 }) {
+  const router = useRouter();
+  // Optimistic status overrides so the board moves cards instantly.
+  const [statusOverrides, setStatusOverrides] = React.useState<Record<string, PatientStatus>>({});
   const [mode, setMode] = React.useState<"board" | "table">("board");
   const [query, setQuery] = React.useState("");
   const [formOpen, setFormOpen] = React.useState(false);
@@ -36,7 +43,24 @@ export function PatientsView({
   // Manual column collapse state; empty columns auto-collapse unless toggled open
   const [colToggles, setColToggles] = React.useState<Record<string, boolean>>({});
 
-  const filtered = patients.filter((p) => {
+  const effective = patients.map((p) =>
+    statusOverrides[p.id] ? { ...p, status: statusOverrides[p.id] } : p
+  );
+
+  async function onStatusChange(p: Patient, status: PatientStatus) {
+    const prev = p.status;
+    setStatusOverrides((o) => ({ ...o, [p.id]: status }));
+    const result = await setPatientStatus(p.id, status);
+    if (result.error) {
+      setStatusOverrides((o) => ({ ...o, [p.id]: prev }));
+      toast.error(`Could not update status: ${result.error}`);
+    } else {
+      toast.success(`${p.full_name} moved to ${PATIENT_STATUS_LABEL[status]}.`);
+      router.refresh();
+    }
+  }
+
+  const filtered = effective.filter((p) => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
     if (agentFilter !== "all" && p.assigned_agent_id !== agentFilter) return false;
     if (countryFilter !== "all" && p.country_id !== countryFilter) return false;
@@ -198,7 +222,7 @@ export function PatientsView({
                       <Select
                         className="mt-2 h-7 text-xs shadow-none"
                         value={p.status}
-                        onChange={(e) => setPatientStatus(p.id, e.target.value as PatientStatus)}
+                        onChange={(e) => onStatusChange(p, e.target.value as PatientStatus)}
                       >
                         {PATIENT_STATUSES.map((s) => (
                           <option key={s} value={s}>
@@ -260,6 +284,7 @@ export function PatientsView({
         agents={agents}
         currentUserId={currentUserId}
         caseDirectories={caseDirectories}
+        isAdmin={isAdmin}
       />
     </div>
   );
