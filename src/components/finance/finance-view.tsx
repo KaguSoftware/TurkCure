@@ -13,8 +13,10 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { CURRENCIES, formatMoney, cn } from "@/lib/utils";
 import { toUsd, FX_RATES_AS_OF } from "@/lib/fx";
@@ -67,6 +69,47 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
   const margin = totalRevenue - totalCost;
   const outstanding = totalRevenue - totalCollected;
 
+  function exportCsv() {
+    const esc = (v: string | number) => {
+      const str = String(v);
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+    const header = [
+      "Patient",
+      "Operation",
+      "Status",
+      "Month",
+      "Currency",
+      `Revenue (${displayCurrency})`,
+      `Collected (${displayCurrency})`,
+      `Cost (${displayCurrency})`,
+      `Margin (${displayCurrency})`,
+    ];
+    const lines = filtered.map((r) =>
+      [
+        r.patientName,
+        r.operation,
+        r.status,
+        r.month,
+        r.currency,
+        r.revenue.toFixed(2),
+        r.collected.toFixed(2),
+        r.cost.toFixed(2),
+        (r.revenue - r.cost).toFixed(2),
+      ]
+        .map(esc)
+        .join(",")
+    );
+    const csv = [header.map(esc).join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `turkcure-finance-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const byMonth = new Map<string, { revenue: number; cost: number }>();
   for (const r of filtered) {
     const entry = byMonth.get(r.month) ?? { revenue: 0, cost: 0 };
@@ -112,17 +155,24 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
           {stat("Internal cost", totalCost)}
           {stat("Margin (quoted)", margin, margin >= 0 ? "text-success" : "text-danger")}
         </div>
-        <div className="ml-4 w-36 shrink-0">
-          <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            <option value="ALL">All (in USD)</option>
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
+        <div className="ml-4 flex shrink-0 flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
+              <Download /> Export CSV
+            </Button>
+            <div className="w-36">
+              <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                <option value="ALL">All (in USD)</option>
+                {CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
           {isAll && (
-            <p className="mt-1.5 text-right text-[10px] leading-tight text-muted-light">
+            <p className="text-right text-[10px] leading-tight text-muted-light">
               FX rates as of {FX_RATES_AS_OF}
             </p>
           )}

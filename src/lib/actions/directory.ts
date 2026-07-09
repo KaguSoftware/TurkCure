@@ -6,7 +6,7 @@ import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/serve
 const TABLES = {
   countries: "/countries",
   hospitals: "/hospitals",
-  doctors: "/doctors",
+  doctors: "/hospitals",
   hotels: "/hotels",
   drivers: "/drivers",
   operation_types: "/templates",

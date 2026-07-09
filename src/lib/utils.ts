@@ -23,6 +23,13 @@ export function formatMoney(amount: number, currency: string) {
   })}`;
 }
 
+/** wa.me link from a phone number (keeps a leading +, strips other non-digits). */
+export function waLink(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/[^\d]/g, "");
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
 export function formatDate(date: string | Date | null | undefined) {
   if (!date) return "—";
   return new Date(date).toLocaleDateString("en-GB", {

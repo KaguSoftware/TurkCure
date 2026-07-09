@@ -8,15 +8,20 @@ export const metadata = { title: "Hospitals" };
 export default async function HospitalsPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const { data: hospitals } = await supabase.from("hospitals").select("*").order("name");
+  const [{ data: hospitals }, { data: doctors }] = await Promise.all([
+    supabase.from("hospitals").select("*").order("name"),
+    supabase.from("doctors").select("*, hospitals(name)").order("name"),
+  ]);
+  const isAdmin = profile.role === "admin";
+  const hospitalOptions = (hospitals ?? []).map((h) => ({ value: h.id as string, label: h.name as string }));
 
   return (
     <>
-      <PageHeader title="Hospitals" subtitle="Partner hospitals and clinics" />
+      <PageHeader title="Hospitals" subtitle="Partner hospitals, clinics and their doctors" />
       <DirectoryManager
         table="hospitals"
         entityName="Hospital"
-        isAdmin={profile.role === "admin"}
+        isAdmin={isAdmin}
         rows={hospitals ?? []}
         fields={[
           { key: "name", label: "Name", required: true },
@@ -25,6 +30,29 @@ export default async function HospitalsPage() {
           { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
         ]}
       />
+
+      <div className="mt-10">
+        <h2 className="mb-4 text-lg font-semibold">Doctors</h2>
+        <DirectoryManager
+          table="doctors"
+          entityName="Doctor"
+          isAdmin={isAdmin}
+          rows={doctors ?? []}
+          fields={[
+            { key: "name", label: "Name", required: true },
+            { key: "specialty", label: "Specialty" },
+            {
+              key: "hospital_id",
+              label: "Hospital",
+              type: "select",
+              options: hospitalOptions,
+              displayKey: "hospitals",
+            },
+            { key: "contact", label: "Contact", type: "tel" },
+            { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
+          ]}
+        />
+      </div>
     </>
   );
 }

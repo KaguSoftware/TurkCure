@@ -69,6 +69,7 @@ export async function upsertPayment(
     due_date: dueDate,
     paid_at: paidAt,
     status,
+    receipt_path: values.receipt_path ? String(values.receipt_path) : "",
     notes: values.notes ? String(values.notes) : "",
   };
 

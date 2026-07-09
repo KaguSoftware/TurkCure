@@ -2,10 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, FileDown, Pencil } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileDown, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/badge";
-import { cn, formatDate, formatMoney } from "@/lib/utils";
+import { StatusBadge, Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useAction } from "@/lib/use-action";
+import { completeCase } from "@/lib/actions/cases";
+import { cn, formatDate, formatMoney, waLink } from "@/lib/utils";
+import { MessageCircle } from "lucide-react";
 import type {
   Case,
   CaseInstruction,
@@ -56,6 +60,8 @@ export function PatientDetail({
 }) {
   const [tab, setTab] = React.useState<(typeof TABS)[number]>("Case & Quote");
   const [editOpen, setEditOpen] = React.useState(false);
+  const [confirmDone, setConfirmDone] = React.useState(false);
+  const complete = useAction();
   const activeCase = cases[0] ?? null;
   const totalPrice = activeCase
     ? (quoteItemsByCase[activeCase.id] ?? []).reduce((s, i) => s + Number(i.price), 0)
@@ -104,23 +110,46 @@ export function PatientDetail({
                 </span>
               )}
             </div>
-            <p className="mt-1 text-sm text-muted">
-              {[patient.countries?.name, patient.email, patient.phone, patient.source]
-                .filter(Boolean)
-                .join(" · ") || "No contact details yet"}
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+              <span>
+                {[patient.countries?.name, patient.email, patient.phone, patient.source]
+                  .filter(Boolean)
+                  .join(" · ") || "No contact details yet"}
+              </span>
+              {waLink(patient.phone) && (
+                <a
+                  href={waLink(patient.phone)!}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Message on WhatsApp"
+                  className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success hover:opacity-80"
+                >
+                  <MessageCircle className="size-3.5" /> WhatsApp
+                </a>
+              )}
             </p>
             <p className="mt-0.5 text-xs text-muted-light">
               Agent: {patient.profiles?.name ?? "Unassigned"} · Added {formatDate(patient.created_at)}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {activeCase && (
               <a href={`/api/pdf/${activeCase.id}`} target="_blank" rel="noreferrer">
-                <Button variant={caseCompleted ? "primary" : "secondary"}>
-                  <FileDown /> {caseCompleted ? "Create Patient PDF" : "Patient PDF"}
+                <Button variant="secondary">
+                  <FileDown /> Download PDF
                 </Button>
               </a>
             )}
+            {activeCase &&
+              (caseCompleted ? (
+                <Badge tone="green" className="gap-1 px-3 py-1.5">
+                  <CheckCircle2 className="size-3.5" /> Completed
+                </Badge>
+              ) : (
+                <Button onClick={() => setConfirmDone(true)}>
+                  <CheckCircle2 /> Done
+                </Button>
+              ))}
             <Button variant="secondary" onClick={() => setEditOpen(true)}>
               <Pencil /> Edit
             </Button>
@@ -189,6 +218,28 @@ export function PatientDetail({
         agents={directories.agents}
         currentUserId={currentUserId}
         isAdmin={isAdmin}
+      />
+
+      <ConfirmDialog
+        open={confirmDone}
+        onClose={() => setConfirmDone(false)}
+        onConfirm={async () => {
+          if (!activeCase) return;
+          const { ok } = await complete.run(completeCase(patient.id, activeCase.id), {
+            success: "Case marked as completed.",
+          });
+          if (ok) setConfirmDone(false);
+        }}
+        pending={complete.pending}
+        title="Mark case as completed"
+        confirmLabel="Mark as done"
+        description={
+          <>
+            This sets the case status to <strong>Completed</strong> and refreshes the arrival,
+            operation and aftercare reminders on the dashboard. Downloading the PDF does not require
+            this.
+          </>
+        }
       />
     </div>
   );

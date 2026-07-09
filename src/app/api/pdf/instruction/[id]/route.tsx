@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import React from "react";
 import { renderToBuffer, Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
-import { BLUE, GREEN, MUTED, COMPANY, pdfStyles as s, mdLines } from "@/lib/pdf/common";
+import { pdfStyles as s, mdLines, PdfHeader, PdfFooter } from "@/lib/pdf/common";
 
 export const runtime = "nodejs";
 
@@ -38,27 +38,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const doc = (
     <Document title={`TurkCure — ${ins.title}`}>
       <Page size="A4" style={s.page}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <View>
-            <Text style={[s.brand, { color: BLUE }]}>Turk</Text>
-            <Text style={[s.brand, { color: GREEN }]}>Cure</Text>
-          </View>
-          <View>
-            <Text style={s.docTitle}>{ins.title}</Text>
-            {patientName ? (
-              <Text style={{ color: MUTED, textAlign: "right", marginTop: 3 }}>
-                Prepared for {patientName}
-              </Text>
-            ) : null}
-          </View>
-        </View>
+        <PdfHeader
+          title={<Text style={s.docTitle}>{ins.title}</Text>}
+          meta={patientName ? `Prepared for ${patientName}` : undefined}
+        />
 
         {mdLines(ins.body_md).map((line, j) =>
           line.heading ? (
@@ -82,12 +65,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           </View>
         )}
 
-        <View style={s.footer} fixed>
-          <Text style={s.bold}>
-            Adres: <Text style={{ color: MUTED, fontFamily: "Helvetica" }}>{COMPANY.address}</Text>
-          </Text>
-          <Text style={{ color: BLUE, marginTop: 2 }}>{COMPANY.url}</Text>
-        </View>
+        <PdfFooter />
       </Page>
     </Document>
   );

@@ -3,10 +3,78 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createAdminClient, requireProfile } from "@/lib/supabase/server";
 import { addDays, formatISO } from "date-fns";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 function revalidateCase(patientId: string) {
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
+}
+
+/**
+ * Rebuild the arrival/operation/aftercare reminders for a case from its dates.
+ * Deletes existing open ones of those types first so it stays idempotent.
+ */
+async function regenerateCaseReminders(
+  supabase: SupabaseClient,
+  caseId: string,
+  patientId: string,
+  arrival: string | null,
+  surgery: string | null
+) {
+  const { data: patient } = await supabase
+    .from("patients")
+    .select("full_name, assigned_agent_id")
+    .eq("id", patientId)
+    .single();
+  if (!patient) return;
+
+  await supabase
+    .from("reminders")
+    .delete()
+    .eq("case_id", caseId)
+    .is("done_at", null)
+    .in("type", ["arrival", "operation", "aftercare"]);
+
+  const reminders: Record<string, unknown>[] = [];
+  if (arrival) {
+    reminders.push({
+      type: "arrival",
+      case_id: caseId,
+      patient_id: patientId,
+      title: `${patient.full_name} arrives tomorrow`,
+      due_at: formatISO(addDays(new Date(arrival), -1)),
+      assigned_to: patient.assigned_agent_id,
+    });
+  }
+  if (surgery) {
+    reminders.push(
+      {
+        type: "operation",
+        case_id: caseId,
+        patient_id: patientId,
+        title: `${patient.full_name} — operation day`,
+        due_at: formatISO(new Date(surgery)),
+        assigned_to: patient.assigned_agent_id,
+      },
+      {
+        type: "aftercare",
+        case_id: caseId,
+        patient_id: patientId,
+        title: `${patient.full_name} — 1 week aftercare check-in`,
+        due_at: formatISO(addDays(new Date(surgery), 7)),
+        assigned_to: patient.assigned_agent_id,
+      },
+      {
+        type: "aftercare",
+        case_id: caseId,
+        patient_id: patientId,
+        title: `${patient.full_name} — 1 month aftercare check-in`,
+        due_at: formatISO(addDays(new Date(surgery), 30)),
+        assigned_to: patient.assigned_agent_id,
+      }
+    );
+  }
+  if (reminders.length) await supabase.from("reminders").insert(reminders);
 }
 
 export async function upsertCase(
@@ -30,62 +98,49 @@ export async function upsertCase(
     caseId = data.id;
   }
 
-  // Auto-generate reminders for key dates (idempotent per case+type+date)
-  const arrival = values.arrival_date as string | null;
-  const surgery = values.surgery_date as string | null;
-  const { data: patient } = await supabase
-    .from("patients")
-    .select("full_name, assigned_agent_id")
-    .eq("id", patientId)
-    .single();
-
-  if (patient && caseId) {
-    await supabase.from("reminders").delete().eq("case_id", caseId).is("done_at", null)
-      .in("type", ["arrival", "operation", "aftercare"]);
-    const reminders: Record<string, unknown>[] = [];
-    if (arrival) {
-      reminders.push({
-        type: "arrival",
-        case_id: caseId,
-        patient_id: patientId,
-        title: `${patient.full_name} arrives tomorrow`,
-        due_at: formatISO(addDays(new Date(arrival), -1)),
-        assigned_to: patient.assigned_agent_id,
-      });
-    }
-    if (surgery) {
-      reminders.push(
-        {
-          type: "operation",
-          case_id: caseId,
-          patient_id: patientId,
-          title: `${patient.full_name} — operation day`,
-          due_at: formatISO(new Date(surgery)),
-          assigned_to: patient.assigned_agent_id,
-        },
-        {
-          type: "aftercare",
-          case_id: caseId,
-          patient_id: patientId,
-          title: `${patient.full_name} — 1 week aftercare check-in`,
-          due_at: formatISO(addDays(new Date(surgery), 7)),
-          assigned_to: patient.assigned_agent_id,
-        },
-        {
-          type: "aftercare",
-          case_id: caseId,
-          patient_id: patientId,
-          title: `${patient.full_name} — 1 month aftercare check-in`,
-          due_at: formatISO(addDays(new Date(surgery), 30)),
-          assigned_to: patient.assigned_agent_id,
-        }
-      );
-    }
-    if (reminders.length) await supabase.from("reminders").insert(reminders);
+  if (caseId) {
+    await regenerateCaseReminders(
+      supabase,
+      caseId,
+      patientId,
+      (values.arrival_date as string | null) ?? null,
+      (values.surgery_date as string | null) ?? null
+    );
   }
 
   revalidateCase(patientId);
   return { id: caseId };
+}
+
+/**
+ * Mark a case completed and refresh its reminders. This is the write-heavy
+ * "Done" action, deliberately separate from downloading the PDF (which is
+ * read-only) so the two are no longer coupled in the UI.
+ */
+export async function completeCase(
+  patientId: string,
+  caseId: string
+): Promise<{ error?: string }> {
+  await requireProfile();
+  const supabase = await createClient();
+  const { data: caseRow, error } = await supabase
+    .from("cases")
+    .update({ status: "completed" })
+    .eq("id", caseId)
+    .select("arrival_date, surgery_date")
+    .single();
+  if (error) return { error: error.message };
+
+  await regenerateCaseReminders(
+    supabase,
+    caseId,
+    patientId,
+    caseRow.arrival_date,
+    caseRow.surgery_date
+  );
+
+  revalidateCase(patientId);
+  return {};
 }
 
 /**

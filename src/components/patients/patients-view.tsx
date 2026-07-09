@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Kanban, List, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, Kanban, List, MessageCircle, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
@@ -12,7 +12,7 @@ import { setPatientStatus } from "@/lib/actions/patients";
 import { toast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
 import { PATIENT_STATUSES, type Patient, type PatientStatus } from "@/lib/types";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, waLink } from "@/lib/utils";
 
 export function PatientsView({
   patients,
@@ -266,7 +266,23 @@ export function PatientsView({
                   <StatusBadge status={p.status} />
                 </Td>
                 <Td className="text-muted">{p.countries?.name ?? "—"}</Td>
-                <Td className="text-muted">{p.email || p.phone || "—"}</Td>
+                <Td className="text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    {p.email || p.phone || "—"}
+                    {waLink(p.phone) && (
+                      <a
+                        href={waLink(p.phone)!}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Message on WhatsApp"
+                        className="text-success hover:opacity-70"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MessageCircle className="size-3.5" />
+                      </a>
+                    )}
+                  </span>
+                </Td>
                 <Td className="text-muted">{p.source || "—"}</Td>
                 <Td className="text-muted">{p.profiles?.name ?? "—"}</Td>
                 <Td className="text-muted">{formatDate(p.created_at)}</Td>

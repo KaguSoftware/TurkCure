@@ -3,21 +3,31 @@ import React from "react";
 import { renderToBuffer, Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
 import {
-  BLUE,
-  GREEN,
-  MUTED,
   COMPANY,
   pdfStyles as s,
   mdLines,
   fmtDate,
   nightsBetween,
+  PdfHeader,
+  PdfFooter,
 } from "@/lib/pdf/common";
 
 export const runtime = "nodejs";
 
-function Row({ label, value, last }: { label: string; value: string; last?: boolean }) {
+function Row({
+  label,
+  value,
+  last,
+  alt,
+}: {
+  label: string;
+  value: string;
+  last?: boolean;
+  alt?: boolean;
+}) {
+  const style = last ? (alt ? s.rowLastAlt : s.rowLast) : alt ? s.rowAlt : s.row;
   return (
-    <View style={last ? s.rowLast : s.row}>
+    <View style={style}>
       <Text style={s.cellLabel}>{label}</Text>
       <Text style={s.cellValue}>{value || " "}</Text>
     </View>
@@ -106,7 +116,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
   const currency = caseRow.currency === "EUR" ? "Euros" : (caseRow.currency as string);
   const money = (n: number) => `${n.toLocaleString("en-US")} ${currency}`;
 
-  const hotelNights = nightsBetween(caseRow.hospital_checkout ?? caseRow.arrival_date, caseRow.departure_date);
+  // The hotel is booked for the whole stay (arrival → departure). Any nights the
+  // patient spends in hospital overlap this window; they are reported separately
+  // in the Hospital section, not deducted from the hotel booking.
   const totalNights = nightsBetween(caseRow.arrival_date, caseRow.departure_date);
   const hospitalNights = nightsBetween(caseRow.hospital_checkin, caseRow.hospital_checkout);
 
@@ -115,7 +127,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     "Surgical procedure",
     "Hospital operating room costs",
     ...(hospitalNights ? [`${hospitalNights} night hospital accommodation`] : []),
-    ...(hotelNights ? [`${hotelNights} nights hotel accommodation`] : []),
+    ...(totalNights ? [`${totalNights} nights hotel accommodation`] : []),
     ...(items ?? []).map((i) => i.description),
     "English speaking medical translator",
     "VIP Airport – Hotel – Hospital transfers",
@@ -124,44 +136,28 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
   const doc = (
     <Document title={`TurkCure WOF — ${patient?.full_name ?? "Patient"}`}>
       <Page size="A4" style={s.page}>
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 14,
-          }}
-        >
-          <View>
-            <Text style={[s.brand, { color: BLUE }]}>Turk</Text>
-            <Text style={[s.brand, { color: GREEN }]}>Cure</Text>
-          </View>
-          <View>
-            <Text style={s.docTitle}>Treatment & Reservation</Text>
-            <Text style={s.docTitle}>Confirmation (WOF)</Text>
-          </View>
-        </View>
-
-        <View style={[s.table, { borderBottomWidth: 0 }]}>
-          <View style={s.row}>
-            <Text style={s.cellLabel}>Date</Text>
-            <Text style={[s.cellValue, s.bold]}>: {fmtDate(new Date().toISOString())}</Text>
-          </View>
-        </View>
+        <PdfHeader
+          title={
+            <>
+              <Text style={s.docTitle}>Treatment & Reservation</Text>
+              <Text style={s.docTitle}>Confirmation (WOF)</Text>
+            </>
+          }
+          meta={`Issued ${fmtDate(new Date().toISOString())}  ·  Ref ${caseId.slice(0, 8).toUpperCase()}`}
+        />
 
         {/* 1. Patient */}
-        <View style={s.table}>
-          <Text style={s.sectionHead}>1.  Treatment & Reservation Confirmation (WOF)</Text>
+        <View style={s.table} wrap={false}>
+          <Text style={s.sectionHead}>1.  Patient Information</Text>
           <Row label="FULL NAMES" value={patient?.full_name?.toUpperCase() ?? ""} />
-          <Row label="DATE OF BIRTH" value={fmtDate(patient?.date_of_birth)} />
+          <Row label="DATE OF BIRTH" value={fmtDate(patient?.date_of_birth)} alt />
           <Row label="PASSPORT NUMBER" value={patient?.passport_number ?? ""} />
-          <Row label="COUNTRY" value={patient?.countries?.name ?? ""} />
+          <Row label="COUNTRY" value={patient?.countries?.name ?? ""} alt />
           <Row label="PHONE / WHATSAPP" value={patient?.phone ?? ""} />
-          <Row label="E-MAIL" value={patient?.email ?? ""} />
+          <Row label="E-MAIL" value={patient?.email ?? ""} alt />
           <View style={s.rowLast}>
             <Text style={s.cellLabel}>GENDER</Text>
-            <Text style={[s.cellValue, { borderRightWidth: 1, borderRightColor: "#94a3b8" }]}>
+            <Text style={[s.cellValue, { borderRightWidth: 1, borderRightColor: s.cellLabel.borderRightColor }]}>
               FEMALE {patient?.gender === "female" ? "  ✓" : ""}
             </Text>
             <Text style={s.cellValue}>MALE {patient?.gender === "male" ? "  ✓" : ""}</Text>
@@ -169,30 +165,30 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         </View>
 
         {/* 2. Travel */}
-        <View style={s.table}>
+        <View style={s.table} wrap={false}>
           <Text style={s.sectionHead}>2.  Travel Information</Text>
           <Row label="Arrival Date" value={fmtDate(caseRow.arrival_date)} />
-          <Row label="Departure Date" value={fmtDate(caseRow.departure_date)} />
-          <Row label="AIRPORT" value={caseRow.airport ?? ""} />
-          <Row label="AIRPORT PICKUP" value={caseRow.airport_pickup ?? ""} last />
+          <Row label="Departure Date" value={fmtDate(caseRow.departure_date)} alt />
+          <Row label="Airport" value={caseRow.airport ?? ""} />
+          <Row label="Airport Pickup" value={caseRow.airport_pickup ?? ""} last alt />
         </View>
 
-        {/* 3. Hotel */}
-        <View style={s.table}>
+        {/* 3. Hotel — booked for the whole stay (arrival → departure) */}
+        <View style={s.table} wrap={false}>
           <Text style={s.sectionHead}>3.  Hotel Information</Text>
-          <Row label="Hotel Name:" value={hotel} />
-          <Row label="Check-in Date:" value={fmtDate(caseRow.hospital_checkout ?? caseRow.arrival_date)} />
-          <Row label="Check-out Date:" value={fmtDate(caseRow.departure_date)} />
-          <Row label="Total Nights:" value={totalNights ? `${totalNights} Nights` : ""} last />
+          <Row label="Hotel Name" value={hotel} />
+          <Row label="Check-in Date" value={fmtDate(caseRow.arrival_date)} alt />
+          <Row label="Check-out Date" value={fmtDate(caseRow.departure_date)} />
+          <Row label="Total Nights" value={totalNights ? `${totalNights} Nights` : ""} last alt />
         </View>
 
         {/* 4. Hospital */}
-        <View style={s.table}>
+        <View style={s.table} wrap={false}>
           <Text style={s.sectionHead}>4.  Hospital Information</Text>
-          <Row label="Hospital Name:" value={hospital} />
-          <Row label="Operation Date:" value={fmtDate(caseRow.surgery_date)} />
+          <Row label="Hospital Name" value={hospital} />
+          <Row label="Operation Date" value={fmtDate(caseRow.surgery_date)} alt />
           <Row
-            label="Hospital Stay:"
+            label="Hospital Stay"
             value={
               hospitalNights
                 ? `${hospitalNights} Night${hospitalNights > 1 ? "s" : ""} Hospital Accommodation Included`
@@ -203,10 +199,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         </View>
 
         {/* 5. Package */}
-        <View style={s.table}>
+        <View style={s.table} wrap={false}>
           <Text style={s.sectionHead}>5.  Package Details</Text>
-          <View style={{ padding: 6 }}>
-            <Text style={[s.bold, { marginBottom: 5 }]}>Procedure: {op}</Text>
+          <View style={{ padding: 9 }}>
+            <Text style={[s.bold, { marginBottom: 6 }]}>Procedure: {op}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {packageBullets.map((b, i) => (
                 <Text key={i} style={s.bullet}>
@@ -218,28 +214,30 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         </View>
 
         {/* Payment */}
-        <View style={s.table}>
+        <View style={s.table} wrap={false}>
           <Text style={s.sectionHead}>Payment Information</Text>
-          <Row label="Total Package Price:" value={money(total)} />
-          <Row label="Deposit Paid:" value={money(deposit)} />
-          <Row label="Remaining Balance:" value={money(Math.max(total - deposit, 0))} last />
+          <Row label="Total Package Price" value={money(total)} />
+          <Row label="Deposit Paid" value={money(deposit)} alt />
+          <Row label="Remaining Balance" value={money(Math.max(total - deposit, 0))} last />
         </View>
 
-        <View style={s.table}>
-          <Text style={s.sectionHead}>Payment Method:</Text>
+        <View style={s.table} wrap={false}>
+          <Text style={s.sectionHead}>Payment Method</Text>
           <View style={s.rowLast}>
             <Text style={[s.cellValue, s.bold]}>Cash / Bank Transfer / Card</Text>
           </View>
         </View>
 
-        <Text style={{ fontSize: 11, marginTop: 4, marginBottom: 12 }}>
+        <Text style={{ fontSize: 10, marginTop: 2, marginBottom: 12, color: "#334155" }}>
           Remaining balance is to be paid upon arrival in Istanbul before the procedure.
         </Text>
 
         {/* Instructions */}
         {(instructions ?? []).map((ins, idx) => (
           <View key={idx}>
-            <Text style={s.instrHeading}>{ins.title}</Text>
+            <Text style={s.instrHeading} minPresenceAhead={40}>
+              {ins.title}
+            </Text>
             {mdLines(ins.body_md).map((line, j) =>
               line.heading ? (
                 <Text key={j} style={[s.bold, { marginTop: 5, marginBottom: 2, fontSize: 9.5 }]}>
@@ -253,7 +251,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
               )
             )}
             {(ins.image_paths ?? []).filter((p: string) => imageUrls[p]).length > 0 && (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }} wrap={false}>
                 {(ins.image_paths ?? [])
                   .filter((p: string) => imageUrls[p])
                   .map((p: string, k: number) => (
@@ -268,29 +266,32 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         {/* Company */}
         <View style={[s.table, { marginTop: 12 }]} wrap={false}>
           <Text style={s.sectionHead}>{COMPANY.name}</Text>
-          <Row label="Patient Coordinator:" value={coordinator} />
-          <Row label="WhatsApp:" value={COMPANY.whatsapp} />
-          <Row label="Website:" value={COMPANY.website} />
-          <Row label="Location:" value={COMPANY.location} last />
+          <Row label="Patient Coordinator" value={coordinator} />
+          <Row label="WhatsApp" value={COMPANY.whatsapp} alt />
+          <Row label="Website" value={COMPANY.website} />
+          <Row label="Location" value={COMPANY.location} last alt />
         </View>
 
-        {/* Confirmation */}
+        {/* Confirmation + two-column signature block */}
         <View wrap={false}>
           <Text style={s.instrHeading}>Confirmation</Text>
-          <Text style={{ marginBottom: 10, lineHeight: 1.4 }}>
+          <Text style={{ marginBottom: 18, lineHeight: 1.45 }}>
             By confirming this document, the patient acknowledges the reservation and treatment plan
             organized by Turkcure.
           </Text>
-          <Text style={{ marginBottom: 14 }}>Patient Signature:</Text>
-          <Text>Date:</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 30 }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ borderTopWidth: 1, borderTopColor: s.cellLabel.borderRightColor, marginBottom: 3 }} />
+              <Text style={s.bold}>Patient Signature</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ borderTopWidth: 1, borderTopColor: s.cellLabel.borderRightColor, marginBottom: 3 }} />
+              <Text style={s.bold}>Date</Text>
+            </View>
+          </View>
         </View>
 
-        <View style={s.footer} fixed>
-          <Text style={s.bold}>
-            Adres: <Text style={{ color: MUTED, fontFamily: "Helvetica" }}>{COMPANY.address}</Text>
-          </Text>
-          <Text style={{ color: BLUE, marginTop: 2 }}>{COMPANY.url}</Text>
-        </View>
+        <PdfFooter />
       </Page>
     </Document>
   );

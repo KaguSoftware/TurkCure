@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDownLeft, ArrowUpRight, Plus, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { upsertPayment, deletePayment } from "@/lib/actions/payments";
 import { CURRENCIES, formatMoney, formatDate } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
@@ -52,6 +53,8 @@ export function PaymentsTab({
   const [providerType, setProviderType] = React.useState<CounterpartyType>("hospital");
   const [providerId, setProviderId] = React.useState<string>("");
   const [paidAt, setPaidAt] = React.useState<string>("");
+  const [receiptPath, setReceiptPath] = React.useState<string>("");
+  const [uploadingReceipt, setUploadingReceipt] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<Payment | null>(null);
   const [deleting, setDeleting] = React.useState(false);
 
@@ -113,6 +116,7 @@ export function PaymentsTab({
     setProviderType("hospital");
     setProviderId("");
     setPaidAt("");
+    setReceiptPath("");
     setError(null);
     setOpen(true);
   }
@@ -123,8 +127,31 @@ export function PaymentsTab({
     setProviderType(p.counterparty_type === "patient" ? "hospital" : p.counterparty_type);
     setProviderId(p.counterparty_id ?? "");
     setPaidAt(p.paid_at ?? "");
+    setReceiptPath(p.receipt_path ?? "");
     setError(null);
     setOpen(true);
+  }
+
+  async function onUploadReceipt(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingReceipt(true);
+    const supabase = createClient();
+    const path = `${activeCase!.id}/${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("receipts").upload(path, file);
+    setUploadingReceipt(false);
+    if (upErr) toast.error(`Receipt upload failed: ${upErr.message}`);
+    else {
+      setReceiptPath(path);
+      toast.success("Receipt attached.");
+    }
+  }
+
+  async function viewReceipt(path: string) {
+    const supabase = createClient();
+    const { data, error } = await supabase.storage.from("receipts").createSignedUrl(path, 300);
+    if (error || !data) toast.error(error?.message ?? "Could not open receipt");
+    else window.open(data.signedUrl, "_blank");
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -143,6 +170,7 @@ export function PaymentsTab({
       iban: fd.get("iban") ?? "",
       due_date: fd.get("due_date") || null,
       paid_at: fd.get("paid_at") || null,
+      receipt_path: receiptPath,
       notes: fd.get("notes") ?? "",
     };
     const result = await upsertPayment(patient.id, values, editing?.id);
@@ -204,7 +232,24 @@ export function PaymentsTab({
                   </span>
                 </Td>
                 <Td className="text-right font-medium">{formatMoney(Number(p.amount), p.currency)}</Td>
-                <Td className="text-muted">{p.method || "—"}</Td>
+                <Td className="text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    {p.method || "—"}
+                    {p.receipt_path && (
+                      <button
+                        type="button"
+                        aria-label="View receipt"
+                        className="text-primary hover:opacity-70 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          viewReceipt(p.receipt_path);
+                        }}
+                      >
+                        <Paperclip className="size-3.5" />
+                      </button>
+                    )}
+                  </span>
+                </Td>
                 <Td className="text-muted">{formatDate(p.due_date)}</Td>
                 <Td className="text-muted">{formatDate(p.paid_at)}</Td>
                 <Td>
@@ -389,6 +434,37 @@ export function PaymentsTab({
             Status is set automatically: <span className="font-medium text-success">Paid</span> once a
             paid date is set, otherwise <span className="font-medium text-warning">Pending</span>.
           </div>
+          <Field label="Receipt" className="sm:col-span-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted shadow-card transition-colors hover:border-primary hover:text-primary">
+                <Upload className="size-4" />
+                {uploadingReceipt ? "Uploading…" : receiptPath ? "Replace receipt" : "Attach receipt"}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={onUploadReceipt}
+                  disabled={uploadingReceipt}
+                />
+              </label>
+              {receiptPath && (
+                <>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => viewReceipt(receiptPath)}>
+                    <Paperclip /> View
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-danger hover:bg-danger-soft"
+                    onClick={() => setReceiptPath("")}
+                  >
+                    Remove
+                  </Button>
+                </>
+              )}
+            </div>
+          </Field>
           <Field label="Notes" className="sm:col-span-2">
             <Input name="notes" defaultValue={editing?.notes ?? ""} />
           </Field>

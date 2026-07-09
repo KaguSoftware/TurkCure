@@ -1,4 +1,5 @@
 import { createClient, requireProfile } from "@/lib/supabase/server";
+import { getDirectories } from "@/lib/data/directory";
 import { PatientsView } from "@/components/patients/patients-view";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -8,31 +9,22 @@ import type { Patient } from "@/lib/types";
 
 export const metadata = { title: "Patients" };
 
+// Columns the patients list/board renders, plus the fields the edit dialog
+// (openable from the board) needs. Still narrower and faster than select("*").
+const PATIENT_LIST_COLUMNS =
+  "id, full_name, email, phone, source, status, country_id, assigned_agent_id, created_at, date_of_birth, gender, passport_number, notes, countries(name), profiles(name)";
+
 export default async function PatientsPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const [
-    { data: patients },
-    { data: countries },
-    { data: agents },
-    { data: doctors },
-    { data: hospitals },
-    { data: hotels },
-    { data: drivers },
-    { data: operationTypes },
-  ] = await Promise.all([
+  const [{ data: patients }, directories] = await Promise.all([
     supabase
       .from("patients")
-      .select("*, countries(name), profiles(name)")
+      .select(PATIENT_LIST_COLUMNS)
       .order("created_at", { ascending: false }),
-    supabase.from("countries").select("id, name").order("name"),
-    supabase.from("profiles").select("id, name").eq("active", true).order("name"),
-    supabase.from("doctors").select("id, name").order("name"),
-    supabase.from("hospitals").select("id, name").order("name"),
-    supabase.from("hotels").select("id, name").order("name"),
-    supabase.from("drivers").select("id, name").order("name"),
-    supabase.from("operation_types").select("id, name").order("name"),
+    getDirectories(),
   ]);
+  const { countries, agents, doctors, hospitals, hotels, drivers, operationTypes } = directories;
 
   return (
     <>
@@ -44,7 +36,7 @@ export default async function PatientsPage() {
         </Link>
       </PageHeader>
       <PatientsView
-        patients={(patients ?? []) as Patient[]}
+        patients={(patients ?? []) as unknown as Patient[]}
         countries={countries ?? []}
         agents={agents ?? []}
         currentUserId={profile.id}

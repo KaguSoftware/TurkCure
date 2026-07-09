@@ -6,6 +6,7 @@ import { Badge, PATIENT_STATUS_LABEL, PATIENT_STATUS_TONE } from "@/components/u
 import { RemindersPanel } from "@/components/dashboard/reminders-panel";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { PATIENT_STATUSES, type Reminder } from "@/lib/types";
+import { syncOverduePaymentReminders } from "@/lib/data/overdue";
 import { addDays } from "date-fns";
 
 export const metadata = { title: "Dashboard" };
@@ -15,6 +16,9 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const now = new Date();
   const horizon = addDays(now, 14).toISOString();
+
+  // Surface any newly-overdue payments as reminders before we read the list.
+  await syncOverduePaymentReminders();
 
   const [{ data: reminders }, { data: statusCounts }, { data: arrivals }, { data: paymentsDue }, { data: agents }] =
     await Promise.all([
