@@ -1,26 +1,114 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* TurkCure brand: blue → teal-green gradient */
+  --brand-blue: #2563eb;
+  --brand-teal: #0ea5a4;
+  --brand-green: #10b981;
+
+  --background: #f7f8fa;
+  --surface: #ffffff;
+  --surface-hover: #f1f3f6;
+  --foreground: #10151c;
+  --muted: #64748b;
+  --muted-light: #94a3b8;
+  --border: #e5e8ee;
+  --border-strong: #d4d9e3;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-fg: #ffffff;
+  --primary-soft: #eff4ff;
+  --success: #059669;
+  --success-soft: #e7f8f1;
+  --warning: #d97706;
+  --warning-soft: #fdf3e3;
+  --danger: #dc2626;
+  --danger-soft: #fdeaea;
+  --info: #0d9488;
+  --info-soft: #e6f7f7;
+  --violet: #7c3aed;
+  --violet-soft: #f3edfd;
+  --ring: rgba(37, 99, 235, 0.35);
+  --shadow-card: 0 1px 2px rgba(16, 21, 28, 0.04), 0 1px 3px rgba(16, 21, 28, 0.06);
+  --shadow-pop: 0 4px 12px rgba(16, 21, 28, 0.08), 0 12px 32px rgba(16, 21, 28, 0.1);
+}
+
+.dark {
+  --background: #0c1017;
+  --surface: #131926;
+  --surface-hover: #1a2233;
+  --foreground: #eef1f6;
+  --muted: #94a3b8;
+  --muted-light: #64748b;
+  --border: #212a3b;
+  --border-strong: #2e3a50;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-fg: #ffffff;
+  --primary-soft: #182038;
+  --success: #34d399;
+  --success-soft: #0d2b22;
+  --warning: #fbbf24;
+  --warning-soft: #2d2412;
+  --danger: #f87171;
+  --danger-soft: #321a1a;
+  --info: #2dd4bf;
+  --info-soft: #0e2a29;
+  --violet: #a78bfa;
+  --violet-soft: #241a3a;
+  --ring: rgba(96, 165, 250, 0.4);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-green: var(--brand-green);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.brand-gradient-text {
+  background: linear-gradient(90deg, var(--brand-blue), var(--brand-green));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand-gradient-bg {
+  background: linear-gradient(135deg, var(--brand-blue), var(--brand-green));
 }
