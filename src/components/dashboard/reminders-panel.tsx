@@ -33,7 +33,7 @@ export function RemindersPanel({
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const now = Date.now();
+  const [now] = React.useState(() => Date.now());
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

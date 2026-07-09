@@ -36,14 +36,38 @@ const SERIES = {
   dark: { revenue: "#3b82f6", cost: "#d97706" },
 };
 
+// Approximate mid-market rates for the aggregate "All" view — update as needed
+const RATES_TO_USD: Record<string, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.27,
+  TRY: 0.03,
+};
+
+function toUsd(amount: number, currency: string) {
+  return amount * (RATES_TO_USD[currency] ?? 1);
+}
+
 export function FinanceView({ rows }: { rows: CaseFinance[] }) {
   const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-  const [currency, setCurrency] = React.useState("EUR");
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [currency, setCurrency] = React.useState("ALL");
 
   const colors = SERIES[resolvedTheme === "dark" ? "dark" : "light"];
-  const filtered = rows.filter((r) => r.currency === currency);
+  const isAll = currency === "ALL";
+  const displayCurrency = isAll ? "USD" : currency;
+  // In "All" mode every case is converted to USD; otherwise filter to one currency
+  const filtered = isAll
+    ? rows.map((r) => ({
+        ...r,
+        revenue: toUsd(r.revenue, r.currency),
+        cost: toUsd(r.cost, r.currency),
+      }))
+    : rows.filter((r) => r.currency === currency);
 
   const totalRevenue = filtered.reduce((s, r) => s + r.revenue, 0);
   const totalCost = filtered.reduce((s, r) => s + r.cost, 0);
@@ -73,7 +97,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
       <CardContent className="pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
         <p className={cn("mt-1 text-2xl font-bold tabular-nums", accent)}>
-          {formatMoney(value, currency)}
+          {formatMoney(value, displayCurrency)}
         </p>
       </CardContent>
     </Card>
@@ -87,8 +111,9 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
           {stat("Internal cost", totalCost)}
           {stat("Margin", margin, margin >= 0 ? "text-success" : "text-danger")}
         </div>
-        <div className="ml-4 w-28">
+        <div className="ml-4 w-36">
           <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <option value="ALL">All (in USD)</option>
             {CURRENCIES.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -100,12 +125,14 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Monthly revenue vs. cost ({currency})</CardTitle>
+          <CardTitle>
+            Monthly revenue vs. cost ({isAll ? "all currencies → USD" : currency})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {!mounted || chartData.length === 0 ? (
             <p className="py-16 text-center text-sm text-muted">
-              No quoted cases in {currency} yet.
+              No quoted cases {isAll ? "" : `in ${currency} `}yet.
             </p>
           ) : (
             <div className="h-72">
@@ -125,7 +152,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                     width={70}
                   />
                   <Tooltip
-                    formatter={(value) => formatMoney(Number(value), currency)}
+                    formatter={(value) => formatMoney(Number(value), displayCurrency)}
                     contentStyle={{
                       background: "var(--surface)",
                       border: "1px solid var(--border)",
@@ -151,7 +178,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Per-case margins ({currency})</CardTitle>
+          <CardTitle>Per-case margins ({isAll ? "all currencies → USD" : currency})</CardTitle>
         </CardHeader>
         <CardContent className="px-0 pb-0">
           <Table className="border-0 shadow-none">
@@ -178,9 +205,14 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                     </Td>
                     <Td className="text-muted">{r.operation}</Td>
                     <Td className="capitalize text-muted">{r.status.replace("_", " ")}</Td>
-                    <Td className="text-right tabular-nums">{formatMoney(r.revenue, r.currency)}</Td>
+                    <Td className="text-right tabular-nums">
+                      {formatMoney(r.revenue, displayCurrency)}
+                      {isAll && r.currency !== "USD" && (
+                        <span className="ml-1 text-xs text-muted-light">({r.currency})</span>
+                      )}
+                    </Td>
                     <Td className="text-right tabular-nums text-muted">
-                      {formatMoney(r.cost, r.currency)}
+                      {formatMoney(r.cost, displayCurrency)}
                     </Td>
                     <Td
                       className={cn(
@@ -188,7 +220,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                         m >= 0 ? "text-success" : "text-danger"
                       )}
                     >
-                      {formatMoney(m, r.currency)}
+                      {formatMoney(m, displayCurrency)}
                     </Td>
                   </Tr>
                 );

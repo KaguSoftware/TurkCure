@@ -249,7 +249,15 @@ export function PaymentsTab({
             <Input name="method" placeholder="Bank transfer, cash, card…" defaultValue={editing?.method ?? ""} />
           </Field>
           <Field label="IBAN">
-            <Input name="iban" defaultValue={editing?.iban ?? ""} />
+            <Input
+              name="iban"
+              autoComplete="off"
+              autoCapitalize="characters"
+              pattern="[A-Za-z]{2}[0-9A-Za-z ]*"
+              title="IBAN, e.g. TR12 0006 4000 0011 2345 6789 01"
+              placeholder="TR12 0006 4000 0011 2345 6789 01"
+              defaultValue={editing?.iban ?? ""}
+            />
           </Field>
           <Field label="Due date">
             <DatePicker name="due_date" defaultValue={editing?.due_date ?? ""} />

@@ -71,10 +71,12 @@ export function PatientFormDialog({
   const [saving, setSaving] = React.useState(false);
   const initialPhone = splitPhone(patient?.phone ?? "");
   const [dob, setDob] = React.useState(patient?.date_of_birth ?? "");
-
-  React.useEffect(() => {
+  // Reset the DOB field when a different patient is loaded (adjust-state-during-render pattern)
+  const [prevPatient, setPrevPatient] = React.useState(patient);
+  if (patient !== prevPatient) {
+    setPrevPatient(patient);
     setDob(patient?.date_of_birth ?? "");
-  }, [patient]);
+  }
 
   function onAgeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const age = Number(e.target.value);
@@ -95,6 +97,7 @@ export function PatientFormDialog({
       phone: rawPhone ? `${fd.get("dial_code")} ${rawPhone}` : "",
       date_of_birth: fd.get("date_of_birth") || null,
       gender: fd.get("gender") ?? "",
+      passport_number: fd.get("passport_number") ?? "",
       country_id: fd.get("country_id") || null,
       source: fd.get("source") ?? "",
       status: fd.get("status"),
@@ -121,6 +124,8 @@ export function PatientFormDialog({
         "departure_date",
         "hospital_checkin",
         "hospital_checkout",
+        "airport",
+        "airport_pickup",
       ];
       const caseValues: Record<string, unknown> = {};
       let hasCase = false;
@@ -149,7 +154,7 @@ export function PatientFormDialog({
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full name">
-            <Input name="full_name" required defaultValue={patient?.full_name ?? ""} />
+            <Input name="full_name" required autoComplete="name" defaultValue={patient?.full_name ?? ""} />
           </Field>
           <Field label="Status">
             <Select name="status" defaultValue={patient?.status ?? "lead"}>
@@ -161,7 +166,7 @@ export function PatientFormDialog({
             </Select>
           </Field>
           <Field label="Email">
-            <Input name="email" type="email" defaultValue={patient?.email ?? ""} />
+            <Input name="email" type="email" inputMode="email" autoComplete="email" defaultValue={patient?.email ?? ""} />
           </Field>
           <Field label="Phone">
             <div className="flex gap-1.5">
@@ -172,7 +177,16 @@ export function PatientFormDialog({
                   </option>
                 ))}
               </Select>
-              <Input name="phone" defaultValue={initialPhone.rest} placeholder="7911 123456" />
+              <Input
+                name="phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel-national"
+                pattern="[0-9 ()-]*"
+                title="Digits, spaces, parentheses and dashes only"
+                defaultValue={initialPhone.rest}
+                placeholder="7911 123456"
+              />
             </div>
           </Field>
           <Field label="Date of birth (or type age)">
@@ -194,6 +208,14 @@ export function PatientFormDialog({
               <option value="female">Female</option>
               <option value="male">Male</option>
             </Select>
+          </Field>
+          <Field label="Passport number">
+            <Input
+              name="passport_number"
+              autoComplete="off"
+              autoCapitalize="characters"
+              defaultValue={patient?.passport_number ?? ""}
+            />
           </Field>
           <Field label="Country">
             <Select name="country_id" defaultValue={patient?.country_id ?? ""}>
@@ -310,6 +332,12 @@ export function PatientFormDialog({
                 </Field>
                 <Field label="Hospital check-out">
                   <DatePicker name="hospital_checkout" />
+                </Field>
+                <Field label="Airport">
+                  <Input name="airport" placeholder="IST" />
+                </Field>
+                <Field label="Airport pickup">
+                  <Input name="airport_pickup" placeholder="IST" />
                 </Field>
               </div>
             </div>

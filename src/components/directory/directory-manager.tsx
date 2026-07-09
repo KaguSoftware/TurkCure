@@ -15,7 +15,7 @@ import {
 export interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "textarea" | "select";
+  type?: "text" | "number" | "textarea" | "select" | "tel" | "email";
   options?: { value: string; label: string }[];
   required?: boolean;
   hideInTable?: boolean;
@@ -177,7 +177,8 @@ export function DirectoryManager({
               ) : (
                 <Input
                   name={f.key}
-                  type={f.type === "number" ? "number" : "text"}
+                  type={f.type ?? "text"}
+                  inputMode={f.type === "tel" ? "tel" : f.type === "email" ? "email" : undefined}
                   required={f.required}
                   defaultValue={(editing?.[f.key] as string) ?? ""}
                 />

@@ -87,6 +87,7 @@ export interface Patient {
   phone: string;
   date_of_birth: string | null;
   gender: string;
+  passport_number: string;
   country_id: string | null;
   source: string;
   status: PatientStatus;
@@ -110,6 +111,8 @@ export interface Case {
   departure_date: string | null;
   hospital_checkin: string | null;
   hospital_checkout: string | null;
+  airport: string;
+  airport_pickup: string;
   currency: string;
   status: CaseStatus;
   notes: string;
@@ -175,4 +178,5 @@ export interface CaseInstruction {
   template_id: string | null;
   title: string;
   body_md: string;
+  image_paths: string[];
 }

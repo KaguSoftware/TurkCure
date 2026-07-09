@@ -74,6 +74,8 @@ export function CaseTab({
       departure_date: fd.get("departure_date") || null,
       hospital_checkin: fd.get("hospital_checkin") || null,
       hospital_checkout: fd.get("hospital_checkout") || null,
+      airport: fd.get("airport") ?? "",
+      airport_pickup: fd.get("airport_pickup") ?? "",
       currency: fd.get("currency"),
       status: fd.get("status"),
       notes: fd.get("notes") ?? "",
@@ -161,6 +163,12 @@ export function CaseTab({
             </Field>
             <Field label="Hospital check-out">
               <DatePicker name="hospital_checkout" defaultValue={activeCase?.hospital_checkout ?? ""} />
+            </Field>
+            <Field label="Airport">
+              <Input name="airport" placeholder="IST" defaultValue={activeCase?.airport ?? ""} />
+            </Field>
+            <Field label="Airport pickup">
+              <Input name="airport_pickup" placeholder="IST" defaultValue={activeCase?.airport_pickup ?? ""} />
             </Field>
             <Field label="Currency">
               <Select name="currency" defaultValue={activeCase?.currency ?? "EUR"}>

@@ -15,6 +15,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Select } from "./input";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
@@ -42,29 +43,29 @@ function Calendar({
         >
           <ChevronLeft className="size-4" />
         </button>
-        <div className="flex items-center gap-1 text-sm font-semibold">
-          <select
-            value={view.getMonth()}
+        <div className="flex items-center gap-1">
+          <Select
+            value={String(view.getMonth())}
             onChange={(e) => setView(new Date(view.getFullYear(), Number(e.target.value), 1))}
-            className="cursor-pointer rounded-md bg-transparent py-0.5 text-sm font-semibold hover:bg-surface-hover"
+            className="w-28"
           >
             {Array.from({ length: 12 }, (_, m) => (
-              <option key={m} value={m}>
-                {format(new Date(2000, m, 1), "MMMM")}
+              <option key={m} value={String(m)}>
+                {format(new Date(2000, m, 1), "MMM")}
               </option>
             ))}
-          </select>
-          <select
-            value={view.getFullYear()}
+          </Select>
+          <Select
+            value={String(view.getFullYear())}
             onChange={(e) => setView(new Date(Number(e.target.value), view.getMonth(), 1))}
-            className="cursor-pointer rounded-md bg-transparent py-0.5 text-sm font-semibold hover:bg-surface-hover"
+            className="w-22"
           >
             {Array.from({ length: 111 }, (_, i) => today.getFullYear() + 5 - i).map((y) => (
-              <option key={y} value={y}>
+              <option key={y} value={String(y)}>
                 {y}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <button
           type="button"
@@ -218,10 +219,10 @@ export function DateTimePicker({
     <div className={cn("flex gap-1.5", className)}>
       <input type="hidden" name={name} value={date ? `${date}T${time}` : ""} />
       <DatePicker value={date} onChange={setDate} className="flex-1" />
-      <select
+      <Select
         value={time}
         onChange={(e) => setTime(e.target.value)}
-        className="h-9 w-24 shrink-0 cursor-pointer rounded-lg border border-border bg-surface px-2 text-sm shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="w-24 shrink-0"
       >
         {Array.from({ length: 48 }, (_, i) => {
           const h = String(Math.floor(i / 2)).padStart(2, "0");
@@ -232,7 +233,7 @@ export function DateTimePicker({
             </option>
           );
         })}
-      </select>
+      </Select>
     </div>
   );
 }

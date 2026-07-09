@@ -19,7 +19,7 @@ export default async function DriversPage() {
         rows={drivers ?? []}
         fields={[
           { key: "name", label: "Name", required: true },
-          { key: "phone", label: "Phone" },
+          { key: "phone", label: "Phone", type: "tel" },
           { key: "vehicle", label: "Vehicle" },
           { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
         ]}
