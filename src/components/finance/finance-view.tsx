@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { CURRENCIES, formatMoney, cn } from "@/lib/utils";
+import { toUsd, FX_RATES_AS_OF } from "@/lib/fx";
 
 export interface CaseFinance {
   id: string;
@@ -28,6 +29,8 @@ export interface CaseFinance {
   month: string; // YYYY-MM
   revenue: number;
   cost: number;
+  /** Cash actually collected (incoming, paid, case currency). */
+  collected: number;
 }
 
 // Palette validated with the dataviz six-checks validator per mode
@@ -35,18 +38,6 @@ const SERIES = {
   light: { revenue: "#2563eb", cost: "#b45309" },
   dark: { revenue: "#3b82f6", cost: "#d97706" },
 };
-
-// Approximate mid-market rates for the aggregate "All" view — update as needed
-const RATES_TO_USD: Record<string, number> = {
-  USD: 1,
-  EUR: 1.08,
-  GBP: 1.27,
-  TRY: 0.03,
-};
-
-function toUsd(amount: number, currency: string) {
-  return amount * (RATES_TO_USD[currency] ?? 1);
-}
 
 export function FinanceView({ rows }: { rows: CaseFinance[] }) {
   const { resolvedTheme } = useTheme();
@@ -66,12 +57,15 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
         ...r,
         revenue: toUsd(r.revenue, r.currency),
         cost: toUsd(r.cost, r.currency),
+        collected: toUsd(r.collected, r.currency),
       }))
     : rows.filter((r) => r.currency === currency);
 
   const totalRevenue = filtered.reduce((s, r) => s + r.revenue, 0);
   const totalCost = filtered.reduce((s, r) => s + r.cost, 0);
+  const totalCollected = filtered.reduce((s, r) => s + r.collected, 0);
   const margin = totalRevenue - totalCost;
+  const outstanding = totalRevenue - totalCollected;
 
   const byMonth = new Map<string, { revenue: number; cost: number }>();
   for (const r of filtered) {
@@ -92,26 +86,33 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
       Cost: v.cost,
     }));
 
-  const stat = (label: string, value: number, accent?: string) => (
+  const stat = (label: string, value: number, accent?: string, sub?: string) => (
     <Card>
       <CardContent className="pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
         <p className={cn("mt-1 text-2xl font-bold tabular-nums", accent)}>
           {formatMoney(value, displayCurrency)}
         </p>
+        {sub && <p className="mt-0.5 text-xs text-muted-light">{sub}</p>}
       </CardContent>
     </Card>
   );
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="flex items-start justify-between">
+        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {stat("Revenue (quoted)", totalRevenue)}
+          {stat(
+            "Collected",
+            totalCollected,
+            "text-success",
+            outstanding > 0 ? `${formatMoney(outstanding, displayCurrency)} outstanding` : "Fully collected"
+          )}
           {stat("Internal cost", totalCost)}
-          {stat("Margin", margin, margin >= 0 ? "text-success" : "text-danger")}
+          {stat("Margin (quoted)", margin, margin >= 0 ? "text-success" : "text-danger")}
         </div>
-        <div className="ml-4 w-36">
+        <div className="ml-4 w-36 shrink-0">
           <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
             <option value="ALL">All (in USD)</option>
             {CURRENCIES.map((c) => (
@@ -120,6 +121,11 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
               </option>
             ))}
           </Select>
+          {isAll && (
+            <p className="mt-1.5 text-right text-[10px] leading-tight text-muted-light">
+              FX rates as of {FX_RATES_AS_OF}
+            </p>
+          )}
         </div>
       </div>
 
@@ -188,14 +194,16 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                 <Th>Operation</Th>
                 <Th>Status</Th>
                 <Th className="text-right">Revenue</Th>
+                <Th className="text-right">Collected</Th>
                 <Th className="text-right">Cost</Th>
                 <Th className="text-right">Margin</Th>
               </tr>
             </THead>
             <TBody>
-              {filtered.length === 0 && <EmptyRow colSpan={6} message="No cases in this currency." />}
+              {filtered.length === 0 && <EmptyRow colSpan={7} message="No cases in this currency." />}
               {filtered.map((r) => {
                 const m = r.revenue - r.cost;
+                const fullyPaid = r.collected >= r.revenue && r.revenue > 0;
                 return (
                   <Tr key={r.id}>
                     <Td className="font-medium">
@@ -210,6 +218,14 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                       {isAll && r.currency !== "USD" && (
                         <span className="ml-1 text-xs text-muted-light">({r.currency})</span>
                       )}
+                    </Td>
+                    <Td
+                      className={cn(
+                        "text-right tabular-nums",
+                        fullyPaid ? "text-success" : "text-muted"
+                      )}
+                    >
+                      {formatMoney(r.collected, displayCurrency)}
                     </Td>
                     <Td className="text-right tabular-nums text-muted">
                       {formatMoney(r.cost, displayCurrency)}

@@ -17,24 +17,26 @@ import { CURRENCIES, formatMoney, formatDate } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
 import type { Directories } from "./patient-detail";
 
-const COUNTERPARTIES: { value: CounterpartyType; label: string }[] = [
-  { value: "patient", label: "Patient" },
-  { value: "doctor", label: "Doctor" },
+const PROVIDER_TYPES: { value: CounterpartyType; label: string }[] = [
   { value: "hospital", label: "Hospital" },
   { value: "hotel", label: "Hotel" },
   { value: "driver", label: "Driver" },
+  { value: "doctor", label: "Doctor" },
 ];
 
 export function PaymentsTab({
   patient,
   cases,
   payments,
+  quotedTotal,
   isAdmin,
   directories,
 }: {
   patient: Patient;
   cases: Case[];
   payments: Payment[];
+  /** Sum of the active case's quote item prices, in the case currency. */
+  quotedTotal: number;
   isAdmin: boolean;
   directories: Directories;
 }) {
@@ -44,7 +46,12 @@ export function PaymentsTab({
   const [editing, setEditing] = React.useState<Payment | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [counterparty, setCounterparty] = React.useState<CounterpartyType>("patient");
+  // Form state (controlled) so direction drives the counterparty fields and
+  // switching provider type clears the stale provider id.
+  const [direction, setDirection] = React.useState<"in" | "out">("in");
+  const [providerType, setProviderType] = React.useState<CounterpartyType>("hospital");
+  const [providerId, setProviderId] = React.useState<string>("");
+  const [paidAt, setPaidAt] = React.useState<string>("");
   const [confirmDelete, setConfirmDelete] = React.useState<Payment | null>(null);
   const [deleting, setDeleting] = React.useState(false);
 
@@ -58,17 +65,28 @@ export function PaymentsTab({
     );
   }
 
+  const caseCurrency = activeCase.currency;
+
   // Doctor payouts are boss-only: agents never see them
   const visiblePayments = isAdmin
     ? payments
     : payments.filter((p) => p.counterparty_type !== "doctor");
   const incoming = visiblePayments.filter((p) => p.direction === "in");
   const outgoing = visiblePayments.filter((p) => p.direction === "out");
-  const counterpartyChoices = isAdmin
-    ? COUNTERPARTIES
-    : COUNTERPARTIES.filter((c) => c.value !== "doctor");
 
-  function counterpartyOptions(type: CounterpartyType) {
+  // Reconciliation is only meaningful within a single currency. Sum patient
+  // payments that match the case currency; flag anything recorded in another.
+  const paidInCaseCurrency = incoming
+    .filter((p) => p.currency === caseCurrency && p.paid_at)
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const outstanding = quotedTotal - paidInCaseCurrency;
+  const otherCurrencyCount = incoming.filter((p) => p.currency !== caseCurrency).length;
+
+  const providerChoices = isAdmin
+    ? PROVIDER_TYPES
+    : PROVIDER_TYPES.filter((c) => c.value !== "doctor");
+
+  function providerOptions(type: CounterpartyType) {
     switch (type) {
       case "doctor":
         return directories.doctors;
@@ -85,20 +103,26 @@ export function PaymentsTab({
 
   function counterpartyName(p: Payment) {
     if (p.counterparty_type === "patient") return patient.full_name;
-    const match = counterpartyOptions(p.counterparty_type).find((o) => o.id === p.counterparty_id);
+    const match = providerOptions(p.counterparty_type).find((o) => o.id === p.counterparty_id);
     return match?.name ?? p.counterparty_type;
   }
 
   function openNew() {
     setEditing(null);
-    setCounterparty("patient");
+    setDirection("in");
+    setProviderType("hospital");
+    setProviderId("");
+    setPaidAt("");
     setError(null);
     setOpen(true);
   }
 
   function openEdit(p: Payment) {
     setEditing(p);
-    setCounterparty(p.counterparty_type);
+    setDirection(p.direction);
+    setProviderType(p.counterparty_type === "patient" ? "hospital" : p.counterparty_type);
+    setProviderId(p.counterparty_id ?? "");
+    setPaidAt(p.paid_at ?? "");
     setError(null);
     setOpen(true);
   }
@@ -108,19 +132,17 @@ export function PaymentsTab({
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const direction = String(fd.get("direction"));
     const values = {
       case_id: activeCase!.id,
       direction,
-      counterparty_type: fd.get("counterparty_type"),
-      counterparty_id: fd.get("counterparty_id") || null,
+      counterparty_type: direction === "in" ? "patient" : providerType,
+      counterparty_id: direction === "in" ? null : providerId || null,
       amount: Number(fd.get("amount") || 0),
       currency: fd.get("currency"),
       method: fd.get("method") ?? "",
       iban: fd.get("iban") ?? "",
       due_date: fd.get("due_date") || null,
       paid_at: fd.get("paid_at") || null,
-      status: fd.get("status"),
       notes: fd.get("notes") ?? "",
     };
     const result = await upsertPayment(patient.id, values, editing?.id);
@@ -213,6 +235,47 @@ export function PaymentsTab({
 
   return (
     <div className="space-y-5">
+      {/* Reconciliation: quoted vs collected vs outstanding, case currency only */}
+      <Card>
+        <CardContent className="grid grid-cols-1 gap-4 pt-5 sm:grid-cols-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Quoted total</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {formatMoney(quotedTotal, caseCurrency)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Paid by patient</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums text-success">
+              {formatMoney(paidInCaseCurrency, caseCurrency)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Outstanding</p>
+            <p
+              className={
+                "mt-1 text-2xl font-bold tabular-nums " +
+                (outstanding <= 0 ? "text-success" : "text-warning")
+              }
+            >
+              {formatMoney(Math.max(outstanding, 0), caseCurrency)}
+            </p>
+            {outstanding < 0 && (
+              <p className="mt-0.5 text-xs text-success">
+                Overpaid by {formatMoney(-outstanding, caseCurrency)}
+              </p>
+            )}
+          </div>
+          {otherCurrencyCount > 0 && (
+            <p className="sm:col-span-3 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+              {otherCurrencyCount} incoming payment{otherCurrencyCount === 1 ? " is" : "s are"} in a
+              currency other than the case currency ({caseCurrency}) and {otherCurrencyCount === 1 ? "is" : "are"} not
+              included in the paid/outstanding figures above.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end">
         <Button onClick={openNew}>
           <Plus /> Record payment
@@ -221,44 +284,68 @@ export function PaymentsTab({
       {section("Incoming — patient pays TurkCure", incoming, <ArrowDownLeft className="size-4 text-success" />)}
       {section("Outgoing — payouts to providers", outgoing, <ArrowUpRight className="size-4 text-warning" />)}
 
-      <Dialog open={open} onClose={() => setOpen(false)} title={editing ? "Edit payment" : "Record payment"} wide>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editing ? "Edit payment" : "Record payment"}
+        wide
+      >
         <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Direction">
-            <Select name="direction" defaultValue={editing?.direction ?? "in"}>
-              <option value="in">Incoming (patient → TurkCure)</option>
-              <option value="out">Outgoing (TurkCure → provider)</option>
-            </Select>
-          </Field>
-          <Field label="Counterparty type">
             <Select
-              name="counterparty_type"
-              value={counterparty}
-              onChange={(e) => setCounterparty(e.target.value as CounterpartyType)}
+              name="direction"
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as "in" | "out")}
             >
-              {counterpartyChoices.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
+              <option value="in">Incoming — patient pays TurkCure</option>
+              <option value="out">Outgoing — TurkCure pays a provider</option>
             </Select>
           </Field>
-          {counterparty !== "patient" && (
-            <Field label="Counterparty">
-              <Select name="counterparty_id" defaultValue={editing?.counterparty_id ?? ""}>
-                <option value="">—</option>
-                {counterpartyOptions(counterparty).map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </Select>
+          {direction === "in" ? (
+            <Field label="From">
+              <Input value={patient.full_name} disabled readOnly />
             </Field>
+          ) : (
+            <>
+              <Field label="Provider type">
+                <Select
+                  value={providerType}
+                  onChange={(e) => {
+                    setProviderType(e.target.value as CounterpartyType);
+                    setProviderId(""); // clear stale id from the previous type's directory
+                  }}
+                >
+                  {providerChoices.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Provider" className="sm:col-span-2">
+                <Select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+                  <option value="">— select —</option>
+                  {providerOptions(providerType).map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </>
           )}
           <Field label="Amount">
-            <Input name="amount" type="number" step="0.01" min="0" required defaultValue={editing?.amount ?? ""} />
+            <Input
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              defaultValue={editing?.amount ?? ""}
+            />
           </Field>
           <Field label="Currency">
-            <Select name="currency" defaultValue={editing?.currency ?? activeCase.currency}>
+            <Select name="currency" defaultValue={editing?.currency ?? caseCurrency}>
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -283,16 +370,25 @@ export function PaymentsTab({
           <Field label="Due date">
             <DatePicker name="due_date" defaultValue={editing?.due_date ?? ""} />
           </Field>
-          <Field label="Paid date">
-            <DatePicker name="paid_at" defaultValue={editing?.paid_at ?? ""} />
+          <Field label="Paid date — leave empty until paid">
+            <div className="flex items-center gap-2">
+              <DatePicker name="paid_at" value={paidAt} onChange={setPaidAt} className="flex-1" />
+              {!paidAt && (
+                <Button
+                  type="button"
+                  variant="soft"
+                  size="sm"
+                  onClick={() => setPaidAt(new Date().toISOString().slice(0, 10))}
+                >
+                  Mark paid today
+                </Button>
+              )}
+            </div>
           </Field>
-          <Field label="Status">
-            <Select name="status" defaultValue={editing?.status ?? "pending"}>
-              <option value="pending">Pending</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
-            </Select>
-          </Field>
+          <div className="sm:col-span-2 -mt-1 text-xs text-muted-light">
+            Status is set automatically: <span className="font-medium text-success">Paid</span> once a
+            paid date is set, otherwise <span className="font-medium text-warning">Pending</span>.
+          </div>
           <Field label="Notes" className="sm:col-span-2">
             <Input name="notes" defaultValue={editing?.notes ?? ""} />
           </Field>

@@ -111,7 +111,7 @@ export default async function DashboardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Payments due (14 days)</CardTitle>
+              <CardTitle>Payments due & overdue</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {(paymentsDue ?? []).length === 0 && (

@@ -60,6 +60,17 @@ export function PatientDetail({
   const totalPrice = activeCase
     ? (quoteItemsByCase[activeCase.id] ?? []).reduce((s, i) => s + Number(i.price), 0)
     : 0;
+  // Paid = incoming payments with a paid date, in the case currency (same basis
+  // as the reconciliation in the Payments tab).
+  const paidTotal = activeCase
+    ? payments
+        .filter(
+          (p) =>
+            p.direction === "in" && p.paid_at && p.currency === activeCase.currency
+        )
+        .reduce((s, p) => s + Number(p.amount), 0)
+    : 0;
+  const outstanding = totalPrice - paidTotal;
   const caseCompleted = activeCase?.status === "completed";
 
   return (
@@ -77,8 +88,19 @@ export function PatientDetail({
               <h1 className="text-2xl font-bold tracking-tight">{patient.full_name}</h1>
               <StatusBadge status={patient.status} />
               {activeCase && totalPrice > 0 && (
-                <span className="rounded-full bg-success-soft px-3 py-1 text-sm font-semibold text-success">
-                  {formatMoney(totalPrice, activeCase.currency)}
+                <span className="inline-flex items-center gap-2 rounded-full bg-surface-hover px-3 py-1 text-sm font-semibold">
+                  <span>{formatMoney(totalPrice, activeCase.currency)}</span>
+                  <span className="text-xs font-normal text-muted-light">quoted</span>
+                  <span
+                    className={
+                      "text-xs font-medium " +
+                      (outstanding <= 0 ? "text-success" : "text-warning")
+                    }
+                  >
+                    {outstanding <= 0
+                      ? "Paid in full"
+                      : `${formatMoney(outstanding, activeCase.currency)} due`}
+                  </span>
                 </span>
               )}
             </div>
@@ -142,6 +164,7 @@ export function PatientDetail({
           patient={patient}
           cases={cases}
           payments={payments}
+          quotedTotal={totalPrice}
           isAdmin={isAdmin}
           directories={directories}
         />
