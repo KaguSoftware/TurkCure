@@ -19,7 +19,8 @@ export interface FieldDef {
   options?: { value: string; label: string }[];
   required?: boolean;
   hideInTable?: boolean;
-  render?: (row: Record<string, unknown>) => React.ReactNode;
+  /** For select fields: joined relation key whose .name is shown in the table (serializable — no render functions across the server/client boundary). */
+  displayKey?: string;
 }
 
 export function DirectoryManager({
@@ -120,8 +121,8 @@ export function DirectoryManager({
             <Tr key={row.id as string}>
               {visible.map((f) => (
                 <Td key={f.key} className={f === visible[0] ? "font-medium" : "text-muted"}>
-                  {f.render
-                    ? f.render(row)
+                  {f.displayKey
+                    ? ((row[f.displayKey] as { name?: string } | null)?.name ?? "—")
                     : f.type === "select"
                       ? f.options?.find((o) => o.value === row[f.key])?.label ?? "—"
                       : String(row[f.key] ?? "") || "—"}

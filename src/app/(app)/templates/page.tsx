@@ -30,8 +30,7 @@ export default async function TemplatesPage() {
             label: "Operation",
             type: "select",
             options: (operationTypes ?? []).map((o) => ({ value: o.id, label: o.name })),
-            render: (row) =>
-              ((row as { operation_types?: { name: string } | null }).operation_types?.name ?? "—"),
+            displayKey: "operation_types",
           },
           { key: "body_md", label: "Instructions (Markdown)", type: "textarea", hideInTable: true },
         ]}
