@@ -5,8 +5,9 @@ import { Topbar } from "@/components/shell/topbar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getProfile();
-  if (!profile) redirect("/login");
-  if (!profile.active) redirect("/login");
+  // No profile row or deactivated: sign out via route handler instead of
+  // redirecting to /login, which would loop (proxy bounces sessions off /login).
+  if (!profile || !profile.active) redirect("/auth/signout");
 
   return (
     <div className="flex min-h-screen w-full">
