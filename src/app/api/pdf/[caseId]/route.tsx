@@ -4,35 +4,22 @@ import { renderToBuffer, Document, Page, Text, View, Image } from "@react-pdf/re
 import { createClient, getProfile } from "@/lib/supabase/server";
 import {
   COMPANY,
+  BLUE_DEEP,
+  MUTED,
+  INK,
+  TEXT,
   pdfStyles as s,
   mdLines,
   fmtDate,
+  fmtGender,
   nightsBetween,
   PdfHeader,
   PdfFooter,
+  Section,
+  KV,
 } from "@/lib/pdf/common";
 
 export const runtime = "nodejs";
-
-function Row({
-  label,
-  value,
-  last,
-  alt,
-}: {
-  label: string;
-  value: string;
-  last?: boolean;
-  alt?: boolean;
-}) {
-  const style = last ? (alt ? s.rowLastAlt : s.rowLast) : alt ? s.rowAlt : s.row;
-  return (
-    <View style={style}>
-      <Text style={s.cellLabel}>{label}</Text>
-      <Text style={s.cellValue}>{value || " "}</Text>
-    </View>
-  );
-}
 
 export async function GET(_request: Request, { params }: { params: Promise<{ caseId: string }> }) {
   const profile = await getProfile();
@@ -137,100 +124,116 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     <Document title={`TurkCure WOF — ${patient?.full_name ?? "Patient"}`}>
       <Page size="A4" style={s.page}>
         <PdfHeader
-          title={
-            <>
-              <Text style={s.docTitle}>Treatment & Reservation</Text>
-              <Text style={s.docTitle}>Confirmation (WOF)</Text>
-            </>
-          }
-          meta={`Issued ${fmtDate(new Date().toISOString())}  ·  Ref ${caseId.slice(0, 8).toUpperCase()}`}
+          title={<Text style={s.docTitle}>Treatment & Reservation Confirmation</Text>}
+          meta={`WOF  ·  Issued ${fmtDate(new Date().toISOString())}  ·  Ref ${caseId
+            .slice(0, 8)
+            .toUpperCase()}`}
         />
 
-        {/* 1. Patient */}
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>1.  Patient Information</Text>
-          <Row label="FULL NAMES" value={patient?.full_name?.toUpperCase() ?? ""} />
-          <Row label="DATE OF BIRTH" value={fmtDate(patient?.date_of_birth)} alt />
-          <Row label="PASSPORT NUMBER" value={patient?.passport_number ?? ""} />
-          <Row label="COUNTRY" value={patient?.countries?.name ?? ""} alt />
-          <Row label="PHONE / WHATSAPP" value={patient?.phone ?? ""} />
-          <Row label="E-MAIL" value={patient?.email ?? ""} alt />
-          <View style={s.rowLast}>
-            <Text style={s.cellLabel}>GENDER</Text>
-            <Text style={[s.cellValue, { borderRightWidth: 1, borderRightColor: s.cellLabel.borderRightColor }]}>
-              FEMALE {patient?.gender === "female" ? "  ✓" : ""}
-            </Text>
-            <Text style={s.cellValue}>MALE {patient?.gender === "male" ? "  ✓" : ""}</Text>
-          </View>
+        {/* Patient name banner */}
+        <View
+          style={{
+            marginBottom: 18,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderRadius: 8,
+            backgroundColor: "#eef4ff",
+          }}
+          wrap={false}
+        >
+          <Text style={{ fontSize: 8.5, color: MUTED, textTransform: "uppercase", letterSpacing: 0.6 }}>
+            Prepared for
+          </Text>
+          <Text style={{ fontSize: 16, fontFamily: "Helvetica-Bold", color: INK, marginTop: 2 }}>
+            {patient?.full_name ?? "Patient"}
+          </Text>
+          {op ? <Text style={{ fontSize: 9.5, color: BLUE_DEEP, marginTop: 2 }}>{op}</Text> : null}
         </View>
 
-        {/* 2. Travel */}
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>2.  Travel Information</Text>
-          <Row label="Arrival Date" value={fmtDate(caseRow.arrival_date)} />
-          <Row label="Departure Date" value={fmtDate(caseRow.departure_date)} alt />
-          <Row label="Airport" value={caseRow.airport ?? ""} />
-          <Row label="Airport Pickup" value={caseRow.airport_pickup ?? ""} last alt />
-        </View>
+        <Section title="Patient Information" wrap={false}>
+          <KV label="Date of birth" value={fmtDate(patient?.date_of_birth)} />
+          <KV label="Gender" value={fmtGender(patient?.gender)} />
+          <KV label="Passport number" value={patient?.passport_number} />
+          <KV label="Country" value={patient?.countries?.name} />
+          <KV label="Phone / WhatsApp" value={patient?.phone} />
+          <KV label="E-mail" value={patient?.email} last />
+        </Section>
 
-        {/* 3. Hotel — booked for the whole stay (arrival → departure) */}
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>3.  Hotel Information</Text>
-          <Row label="Hotel Name" value={hotel} />
-          <Row label="Check-in Date" value={fmtDate(caseRow.arrival_date)} alt />
-          <Row label="Check-out Date" value={fmtDate(caseRow.departure_date)} />
-          <Row label="Total Nights" value={totalNights ? `${totalNights} Nights` : ""} last alt />
-        </View>
+        <Section title="Travel" wrap={false}>
+          <KV label="Arrival date" value={fmtDate(caseRow.arrival_date)} />
+          <KV label="Departure date" value={fmtDate(caseRow.departure_date)} />
+          <KV label="Airport" value={caseRow.airport} />
+          <KV label="Airport pickup" value={caseRow.airport_pickup} last />
+        </Section>
 
-        {/* 4. Hospital */}
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>4.  Hospital Information</Text>
-          <Row label="Hospital Name" value={hospital} />
-          <Row label="Operation Date" value={fmtDate(caseRow.surgery_date)} alt />
-          <Row
-            label="Hospital Stay"
+        {/* Hotel is booked for the whole stay (arrival → departure) */}
+        <Section title="Hotel" wrap={false}>
+          <KV label="Hotel name" value={hotel} />
+          <KV label="Check-in date" value={fmtDate(caseRow.arrival_date)} />
+          <KV label="Check-out date" value={fmtDate(caseRow.departure_date)} />
+          <KV label="Total nights" value={totalNights ? `${totalNights} nights` : null} last />
+        </Section>
+
+        <Section title="Hospital" wrap={false}>
+          <KV label="Hospital name" value={hospital} />
+          <KV label="Operation date" value={fmtDate(caseRow.surgery_date)} />
+          <KV
+            label="Hospital stay"
             value={
               hospitalNights
-                ? `${hospitalNights} Night${hospitalNights > 1 ? "s" : ""} Hospital Accommodation Included`
-                : ""
+                ? `${hospitalNights} night${hospitalNights > 1 ? "s" : ""} accommodation included`
+                : null
             }
             last
           />
-        </View>
+        </Section>
 
-        {/* 5. Package */}
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>5.  Package Details</Text>
-          <View style={{ padding: 9 }}>
-            <Text style={[s.bold, { marginBottom: 6 }]}>Procedure: {op}</Text>
+        <Section title="Package Details" wrap={false}>
+          <View style={{ paddingVertical: 8 }}>
+            <Text style={{ fontFamily: "Helvetica-Bold", color: INK, marginBottom: 7, fontSize: 10 }}>
+              {op || "Treatment package"}
+            </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {packageBullets.map((b, i) => (
-                <Text key={i} style={s.bullet}>
-                  •  {b}
-                </Text>
+                <View key={i} style={{ flexDirection: "row", width: "50%", paddingVertical: 2.5, paddingRight: 10 }}>
+                  <Text style={{ color: "#0ea5a4", marginRight: 5 }}>•</Text>
+                  <Text style={{ flex: 1, color: TEXT }}>{b}</Text>
+                </View>
               ))}
             </View>
           </View>
-        </View>
+        </Section>
 
-        {/* Payment */}
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>Payment Information</Text>
-          <Row label="Total Package Price" value={money(total)} />
-          <Row label="Deposit Paid" value={money(deposit)} alt />
-          <Row label="Remaining Balance" value={money(Math.max(total - deposit, 0))} last />
-        </View>
-
-        <View style={s.table} wrap={false}>
-          <Text style={s.sectionHead}>Payment Method</Text>
-          <View style={s.rowLast}>
-            <Text style={[s.cellValue, s.bold]}>Cash / Bank Transfer / Card</Text>
+        {/* Payment — highlighted summary card */}
+        <View style={s.section} wrap={false}>
+          <View style={s.sectionHead}>
+            <View style={s.sectionTick} />
+            <Text style={s.sectionTitle}>Payment</Text>
           </View>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: "#d7e3fb",
+              borderRadius: 6,
+              backgroundColor: "#f5f9ff",
+              paddingVertical: 3,
+              paddingHorizontal: 12,
+            }}
+          >
+            <KV label="Total package price" value={money(total)} />
+            <KV label="Deposit paid" value={money(deposit)} />
+            <View style={{ flexDirection: "row", paddingVertical: 9, alignItems: "center" }}>
+              <Text style={[s.kvLabel, { color: BLUE_DEEP }]}>Remaining balance</Text>
+              <Text style={{ flex: 1, fontFamily: "Helvetica-Bold", fontSize: 12, color: BLUE_DEEP }}>
+                {money(Math.max(total - deposit, 0))}
+              </Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: 8.5, marginTop: 6, color: MUTED }}>
+            Payment method: Cash / Bank Transfer / Card. Remaining balance is to be paid upon arrival
+            in Istanbul before the procedure.
+          </Text>
         </View>
-
-        <Text style={{ fontSize: 10, marginTop: 2, marginBottom: 12, color: "#334155" }}>
-          Remaining balance is to be paid upon arrival in Istanbul before the procedure.
-        </Text>
 
         {/* Instructions */}
         {(instructions ?? []).map((ins, idx) => (
@@ -264,29 +267,28 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         ))}
 
         {/* Company */}
-        <View style={[s.table, { marginTop: 12 }]} wrap={false}>
-          <Text style={s.sectionHead}>{COMPANY.name}</Text>
-          <Row label="Patient Coordinator" value={coordinator} />
-          <Row label="WhatsApp" value={COMPANY.whatsapp} alt />
-          <Row label="Website" value={COMPANY.website} />
-          <Row label="Location" value={COMPANY.location} last alt />
-        </View>
+        <Section title={COMPANY.name} wrap={false}>
+          <KV label="Patient coordinator" value={coordinator} />
+          <KV label="WhatsApp" value={COMPANY.whatsapp} />
+          <KV label="Website" value={COMPANY.website} />
+          <KV label="Location" value={COMPANY.location} last />
+        </Section>
 
         {/* Confirmation + two-column signature block */}
-        <View wrap={false}>
+        <View wrap={false} style={{ marginTop: 4 }}>
           <Text style={s.instrHeading}>Confirmation</Text>
-          <Text style={{ marginBottom: 18, lineHeight: 1.45 }}>
+          <Text style={{ marginBottom: 22, lineHeight: 1.5, color: TEXT }}>
             By confirming this document, the patient acknowledges the reservation and treatment plan
             organized by Turkcure.
           </Text>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 30 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 34 }}>
             <View style={{ flex: 1 }}>
-              <View style={{ borderTopWidth: 1, borderTopColor: s.cellLabel.borderRightColor, marginBottom: 3 }} />
-              <Text style={s.bold}>Patient Signature</Text>
+              <View style={{ borderTopWidth: 1, borderTopColor: "#c3ccd8", marginBottom: 4 }} />
+              <Text style={{ color: MUTED, fontSize: 8.5 }}>Patient Signature</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <View style={{ borderTopWidth: 1, borderTopColor: s.cellLabel.borderRightColor, marginBottom: 3 }} />
-              <Text style={s.bold}>Date</Text>
+              <View style={{ borderTopWidth: 1, borderTopColor: "#c3ccd8", marginBottom: 4 }} />
+              <Text style={{ color: MUTED, fontSize: 8.5 }}>Date</Text>
             </View>
           </View>
         </View>

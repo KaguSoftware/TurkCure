@@ -1,16 +1,19 @@
 import React from "react";
 import { StyleSheet, View, Text, Svg, Defs, LinearGradient, Stop, Rect } from "@react-pdf/renderer";
 
-// Brand palette (matches the app's blue → teal → green identity).
-export const BLUE = "#2563eb";
+// Brand palette — "clean medical": airy white, brand blue, teal→green accent.
+export const BLUE = "#1d59d6";
+export const BLUE_DEEP = "#123a94";
+export const CYAN = "#1aa0c8";
 export const TEAL = "#0ea5a4";
-export const GREEN = "#10b981";
-export const TEXT = "#1e293b";
-export const MUTED = "#64748b";
-export const BORDER = "#d9e2ec"; // softer than the old #94a3b8
-export const BORDER_STRONG = "#c3ccd8";
-export const HEAD_BG = "#f2f6fc";
-export const ZEBRA = "#f8fafc";
+export const GREEN = "#16b364";
+export const INK = "#0f1b2d";
+export const TEXT = "#243244";
+export const MUTED = "#6b7a8d";
+export const FAINT = "#9aa7b6";
+export const HAIRLINE = "#e7ecf2";
+export const CARD_BG = "#fbfcfe";
+export const ACCENT_SOFT = "#eef4ff";
 
 export const COMPANY = {
   name: "Turkcure Health Tourism",
@@ -23,117 +26,132 @@ export const COMPANY = {
 
 export const pdfStyles = StyleSheet.create({
   page: {
-    paddingTop: 38,
-    paddingHorizontal: 42,
-    paddingBottom: 66,
-    fontSize: 9,
+    paddingTop: 44,
+    paddingHorizontal: 46,
+    paddingBottom: 70,
+    fontSize: 9.5,
     color: TEXT,
     fontFamily: "Helvetica",
-    lineHeight: 1.35,
+    lineHeight: 1.4,
   },
-  brand: { fontSize: 26, fontFamily: "Helvetica-Bold", lineHeight: 1 },
-  docTitle: { fontSize: 14, color: BLUE, textAlign: "right", fontFamily: "Helvetica-Bold" },
-  docMeta: { fontSize: 8, color: MUTED, textAlign: "right", marginTop: 3 },
-  // A card-like table with rounded feel via a solid border and clipped rows.
-  table: {
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 4,
-    marginBottom: 11,
-    overflow: "hidden",
+  docTitle: { fontSize: 13, color: INK, textAlign: "right", fontFamily: "Helvetica-Bold" },
+  docSub: { fontSize: 8.5, color: MUTED, textAlign: "right", marginTop: 3 },
+
+  // A light "card" section — no heavy borders, just a hairline frame + soft head.
+  section: {
+    marginBottom: 15,
   },
   sectionHead: {
-    backgroundColor: HEAD_BG,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-    fontFamily: "Helvetica-Bold",
-    fontSize: 10,
-    color: BLUE,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    // left accent bar
-    borderLeftWidth: 3,
-    borderLeftColor: TEAL,
-  },
-  row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: BORDER },
-  rowAlt: {
     flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    backgroundColor: ZEBRA,
+    alignItems: "center",
+    marginBottom: 7,
   },
-  rowLast: { flexDirection: "row" },
-  rowLastAlt: { flexDirection: "row", backgroundColor: ZEBRA },
-  cellLabel: {
-    width: "34%",
-    paddingVertical: 6,
-    paddingHorizontal: 9,
+  sectionTick: {
+    width: 3,
+    height: 11,
+    borderRadius: 2,
+    backgroundColor: TEAL,
+    marginRight: 7,
+  },
+  sectionTitle: {
     fontFamily: "Helvetica-Bold",
-    color: "#334155",
-    borderRightWidth: 1,
-    borderRightColor: BORDER,
+    fontSize: 10.5,
+    color: BLUE_DEEP,
+    letterSpacing: 0.3,
   },
-  cellValue: { flex: 1, paddingVertical: 6, paddingHorizontal: 9 },
+  card: {
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    borderRadius: 6,
+    backgroundColor: CARD_BG,
+    paddingVertical: 3,
+    paddingHorizontal: 12,
+  },
+  kvRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderBottomWidth: 1,
+    borderBottomColor: HAIRLINE,
+    paddingVertical: 6.5,
+  },
+  kvRowLast: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 6.5,
+  },
+  kvLabel: {
+    width: "38%",
+    color: MUTED,
+    fontSize: 9,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  kvValue: { flex: 1, color: INK, fontFamily: "Helvetica-Bold", fontSize: 9.5 },
+
   bold: { fontFamily: "Helvetica-Bold" },
-  bullet: { width: "50%", paddingVertical: 2.5, paddingRight: 8 },
+  bullet: { width: "50%", paddingVertical: 2.5, paddingRight: 8, color: TEXT },
+
   footer: {
     position: "absolute",
-    bottom: 26,
-    left: 42,
-    right: 42,
+    bottom: 30,
+    left: 46,
+    right: 46,
     textAlign: "center",
     color: MUTED,
     fontSize: 7.5,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
-    paddingTop: 6,
+    borderTopColor: HAIRLINE,
+    paddingTop: 7,
   },
   pageNumber: {
     position: "absolute",
-    bottom: 13,
-    left: 42,
-    right: 42,
+    bottom: 15,
+    left: 46,
+    right: 46,
     textAlign: "center",
-    color: MUTED,
+    color: FAINT,
     fontSize: 7,
   },
   instrHeading: {
     fontFamily: "Helvetica-Bold",
     fontSize: 10.5,
-    color: BLUE,
-    marginTop: 10,
-    marginBottom: 4,
-    paddingBottom: 3,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    color: BLUE_DEEP,
+    marginTop: 12,
+    marginBottom: 5,
   },
-  instrLine: { marginBottom: 2.5, lineHeight: 1.45 },
+  instrLine: { marginBottom: 3, lineHeight: 1.5, color: TEXT },
 });
 
 /**
- * The TurkCure wordmark: "Turk" in blue, "Cure" filled with a teal→green
- * gradient, rendered in SVG so the gradient is real (mirrors the app's
- * brand-gradient-text). `scale` sizes it; base is ~150×26pt.
+ * The TurkCure wordmark, rebuilt in vector to match the brand: "Turk" in solid
+ * brand blue, "Cure" filled with a left-to-right blue→cyan→green gradient.
+ * Bold, tight tracking, single line. `scale` sizes it (base ≈ 132×26pt).
  */
 export function Wordmark({ scale = 1 }: { scale?: number }) {
-  const w = 150 * scale;
-  const h = 30 * scale;
+  const w = 132 * scale;
+  const h = 28 * scale;
   return (
-    <Svg width={w} height={h} viewBox="0 0 150 30">
+    <Svg width={w} height={h} viewBox="0 0 132 28">
       <Defs>
         <LinearGradient id="cureGrad" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={TEAL} />
+          <Stop offset="0" stopColor={BLUE} />
+          <Stop offset="0.5" stopColor={CYAN} />
           <Stop offset="1" stopColor={GREEN} />
         </LinearGradient>
       </Defs>
-      <Text x={0} y={23} fill={BLUE} style={{ fontFamily: "Helvetica-Bold", fontSize: 26 }}>
+      <Text
+        x={0}
+        y={21}
+        fill={BLUE}
+        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+      >
         Turk
       </Text>
       <Text
-        x={66}
-        y={23}
+        x={58}
+        y={21}
         fill="url(#cureGrad)"
-        style={{ fontFamily: "Helvetica-Bold", fontSize: 26 }}
+        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
       >
         Cure
       </Text>
@@ -141,23 +159,7 @@ export function Wordmark({ scale = 1 }: { scale?: number }) {
   );
 }
 
-/** Thin blue→teal→green rule used under the header. */
-export function BrandRule() {
-  return (
-    <Svg width="100%" height={3} style={{ marginBottom: 14 }}>
-      <Defs>
-        <LinearGradient id="ruleGrad" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={BLUE} />
-          <Stop offset="0.5" stopColor={TEAL} />
-          <Stop offset="1" stopColor={GREEN} />
-        </LinearGradient>
-      </Defs>
-      <Rect x={0} y={0} width="100%" height={3} fill="url(#ruleGrad)" rx={1.5} />
-    </Svg>
-  );
-}
-
-/** Standard document header: wordmark left, title + meta right, gradient rule. */
+/** Standard header: wordmark left, title + meta right, hairline divider. */
 export function PdfHeader({ title, meta }: { title: React.ReactNode; meta?: string }) {
   return (
     <View>
@@ -166,16 +168,57 @@ export function PdfHeader({ title, meta }: { title: React.ReactNode; meta?: stri
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: 10,
+          marginBottom: 12,
         }}
       >
         <Wordmark />
         <View>
           {title}
-          {meta ? <Text style={pdfStyles.docMeta}>{meta}</Text> : null}
+          {meta ? <Text style={pdfStyles.docSub}>{meta}</Text> : null}
         </View>
       </View>
-      <BrandRule />
+      {/* Thin gradient rule */}
+      <Svg width="100%" height={2.5} style={{ marginBottom: 20 }}>
+        <Defs>
+          <LinearGradient id="ruleGrad" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={BLUE} />
+            <Stop offset="0.5" stopColor={CYAN} />
+            <Stop offset="1" stopColor={GREEN} />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width="100%" height={2.5} fill="url(#ruleGrad)" rx={1.25} />
+      </Svg>
+    </View>
+  );
+}
+
+/** Section wrapper: accent-tick title + a light hairline card of rows. */
+export function Section({
+  title,
+  children,
+  wrap,
+}: {
+  title: string;
+  children: React.ReactNode;
+  wrap?: boolean;
+}) {
+  return (
+    <View style={pdfStyles.section} wrap={wrap}>
+      <View style={pdfStyles.sectionHead}>
+        <View style={pdfStyles.sectionTick} />
+        <Text style={pdfStyles.sectionTitle}>{title}</Text>
+      </View>
+      <View style={pdfStyles.card}>{children}</View>
+    </View>
+  );
+}
+
+/** A key/value row inside a Section card. */
+export function KV({ label, value, last }: { label: string; value?: string | null; last?: boolean }) {
+  return (
+    <View style={last ? pdfStyles.kvRowLast : pdfStyles.kvRow}>
+      <Text style={pdfStyles.kvLabel}>{label}</Text>
+      <Text style={pdfStyles.kvValue}>{value ? value : "—"}</Text>
     </View>
   );
 }
@@ -185,9 +228,7 @@ export function PdfFooter() {
   return (
     <>
       <View style={pdfStyles.footer} fixed>
-        <Text style={pdfStyles.bold}>
-          {COMPANY.address}
-        </Text>
+        <Text style={pdfStyles.bold}>{COMPANY.address}</Text>
         <Text style={{ color: BLUE, marginTop: 2 }}>{COMPANY.url}</Text>
       </View>
       <Text
@@ -224,4 +265,11 @@ export function nightsBetween(from: string | null, to: string | null): number | 
   const ms = new Date(to).getTime() - new Date(from).getTime();
   const nights = Math.round(ms / 86400000);
   return nights > 0 ? nights : null;
+}
+
+/** Human-readable gender, or "—" when unknown. */
+export function fmtGender(g: string | null | undefined): string {
+  if (g === "female") return "Female";
+  if (g === "male") return "Male";
+  return "—";
 }
