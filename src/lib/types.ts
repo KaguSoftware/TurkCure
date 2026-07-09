@@ -21,6 +21,8 @@ export interface Profile {
   name: string;
   role: Role;
   active: boolean;
+  /** Auth email; attached by getProfile(), not a profiles column. */
+  email?: string;
 }
 
 export interface Country {

@@ -43,7 +43,8 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   } = await supabase.auth.getUser();
   if (!user) return null;
   const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-  return data as Profile | null;
+  if (!data) return null;
+  return { ...(data as Profile), email: user.email };
 });
 
 export async function requireProfile(): Promise<Profile> {

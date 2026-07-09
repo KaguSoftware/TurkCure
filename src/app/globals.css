@@ -63,6 +63,29 @@
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
+/* Per-user accent override: everything blue goes "treated" violet. */
+.theme-violet {
+  --brand-blue: #7c3aed;
+  --brand-teal: #8b5cf6;
+  --brand-green: #a78bfa;
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-soft: #f3edfd;
+  --ring: rgba(124, 58, 237, 0.35);
+}
+
+.dark .theme-violet,
+.theme-violet .dark,
+.dark.theme-violet {
+  --brand-blue: #a78bfa;
+  --brand-teal: #9d7bfa;
+  --brand-green: #c4b5fd;
+  --primary: #a78bfa;
+  --primary-hover: #c4b5fd;
+  --primary-soft: #241a3a;
+  --ring: rgba(167, 139, 250, 0.4);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -111,4 +134,86 @@ body {
 
 .brand-gradient-bg {
   background: linear-gradient(135deg, var(--brand-blue), var(--brand-green));
+}
+
+/* Reminders panel micro-interactions */
+@keyframes reminder-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reminder-enter {
+  animation: reminder-in 220ms ease-out;
+}
+
+@keyframes reminder-check-pop {
+  0% {
+    transform: scale(0);
+  }
+  60% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.reminder-check-pop {
+  animation: reminder-check-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Notebook-style strike: a line drawn left → right over the text. */
+.reminder-strike {
+  position: relative;
+}
+
+.reminder-strike::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 50%;
+  height: 1.5px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.reminder-strike.struck {
+  color: var(--muted);
+  transition: color 350ms ease;
+}
+
+.reminder-strike.struck::after {
+  transform: scaleX(1);
+  transition: transform 350ms cubic-bezier(0.4, 0, 0.2, 1) 120ms;
+}
+
+@keyframes reminder-out {
+  from {
+    opacity: 1;
+    max-height: 5rem;
+    margin-bottom: 0.5rem;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-width: 0;
+    transform: translateX(12px);
+  }
+}
+
+.reminder-exit {
+  animation: reminder-out 260ms ease-in forwards;
+  overflow: hidden;
 }
