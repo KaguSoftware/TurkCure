@@ -11,13 +11,27 @@ export const metadata = { title: "Patients" };
 export default async function PatientsPage() {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const [{ data: patients }, { data: countries }, { data: agents }] = await Promise.all([
+  const [
+    { data: patients },
+    { data: countries },
+    { data: agents },
+    { data: doctors },
+    { data: hospitals },
+    { data: hotels },
+    { data: drivers },
+    { data: operationTypes },
+  ] = await Promise.all([
     supabase
       .from("patients")
       .select("*, countries(name), profiles(name)")
       .order("created_at", { ascending: false }),
     supabase.from("countries").select("id, name").order("name"),
     supabase.from("profiles").select("id, name").eq("active", true).order("name"),
+    supabase.from("doctors").select("id, name").order("name"),
+    supabase.from("hospitals").select("id, name").order("name"),
+    supabase.from("hotels").select("id, name").order("name"),
+    supabase.from("drivers").select("id, name").order("name"),
+    supabase.from("operation_types").select("id, name").order("name"),
   ]);
 
   return (
@@ -34,6 +48,13 @@ export default async function PatientsPage() {
         countries={countries ?? []}
         agents={agents ?? []}
         currentUserId={profile.id}
+        caseDirectories={{
+          doctors: doctors ?? [],
+          hospitals: hospitals ?? [],
+          hotels: hotels ?? [],
+          drivers: drivers ?? [],
+          operationTypes: operationTypes ?? [],
+        }}
       />
     </>
   );

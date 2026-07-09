@@ -108,6 +108,8 @@ export interface Case {
   arrival_date: string | null;
   surgery_date: string | null;
   departure_date: string | null;
+  hospital_checkin: string | null;
+  hospital_checkout: string | null;
   currency: string;
   status: CaseStatus;
   notes: string;

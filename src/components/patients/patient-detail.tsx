@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, FileDown, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatMoney } from "@/lib/utils";
 import type {
   Case,
   CaseInstruction,
@@ -57,6 +57,10 @@ export function PatientDetail({
   const [tab, setTab] = React.useState<(typeof TABS)[number]>("Case & Quote");
   const [editOpen, setEditOpen] = React.useState(false);
   const activeCase = cases[0] ?? null;
+  const totalPrice = activeCase
+    ? (quoteItemsByCase[activeCase.id] ?? []).reduce((s, i) => s + Number(i.price), 0)
+    : 0;
+  const caseCompleted = activeCase?.status === "completed";
 
   return (
     <div className="space-y-5">
@@ -72,6 +76,11 @@ export function PatientDetail({
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">{patient.full_name}</h1>
               <StatusBadge status={patient.status} />
+              {activeCase && totalPrice > 0 && (
+                <span className="rounded-full bg-success-soft px-3 py-1 text-sm font-semibold text-success">
+                  {formatMoney(totalPrice, activeCase.currency)}
+                </span>
+              )}
             </div>
             <p className="mt-1 text-sm text-muted">
               {[patient.countries?.name, patient.email, patient.phone, patient.source]
@@ -85,8 +94,8 @@ export function PatientDetail({
           <div className="flex gap-2">
             {activeCase && (
               <a href={`/api/pdf/${activeCase.id}`} target="_blank" rel="noreferrer">
-                <Button variant="secondary">
-                  <FileDown /> Patient PDF
+                <Button variant={caseCompleted ? "primary" : "secondary"}>
+                  <FileDown /> {caseCompleted ? "Create Patient PDF" : "Patient PDF"}
                 </Button>
               </a>
             )}

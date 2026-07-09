@@ -5,12 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  Stethoscope,
   Building2,
   Hotel,
   Car,
-  Globe2,
-  FileText,
   Wallet,
   Settings,
   ClipboardList,
@@ -20,11 +17,9 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/patients", label: "Patients", icon: Users },
-  { href: "/doctors", label: "Doctors", icon: Stethoscope },
   { href: "/hospitals", label: "Hospitals", icon: Building2 },
   { href: "/hotels", label: "Hotels", icon: Hotel },
   { href: "/drivers", label: "Drivers", icon: Car },
-  { href: "/countries", label: "Countries", icon: Globe2 },
   { href: "/templates", label: "Instructions", icon: ClipboardList },
 ];
 

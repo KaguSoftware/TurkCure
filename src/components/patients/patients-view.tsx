@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Kanban, List, Plus, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Kanban, List, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
@@ -17,24 +17,37 @@ export function PatientsView({
   countries,
   agents,
   currentUserId,
+  caseDirectories,
 }: {
   patients: Patient[];
   countries: { id: string; name: string }[];
   agents: { id: string; name: string }[];
   currentUserId: string;
+  caseDirectories: import("./patient-form").CaseDirectories;
 }) {
   const [mode, setMode] = React.useState<"board" | "table">("board");
   const [query, setQuery] = React.useState("");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Patient | null>(null);
+  const [showFilters, setShowFilters] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState("all");
+  const [agentFilter, setAgentFilter] = React.useState("all");
+  const [countryFilter, setCountryFilter] = React.useState("all");
+  // Manual column collapse state; empty columns auto-collapse unless toggled open
+  const [colToggles, setColToggles] = React.useState<Record<string, boolean>>({});
 
-  const filtered = query
-    ? patients.filter((p) =>
-        [p.full_name, p.email, p.phone, p.countries?.name]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(query.toLowerCase()))
-      )
-    : patients;
+  const filtered = patients.filter((p) => {
+    if (statusFilter !== "all" && p.status !== statusFilter) return false;
+    if (agentFilter !== "all" && p.assigned_agent_id !== agentFilter) return false;
+    if (countryFilter !== "all" && p.country_id !== countryFilter) return false;
+    if (!query) return true;
+    return [p.full_name, p.email, p.phone, p.countries?.name]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(query.toLowerCase()));
+  });
+
+  const filtersActive =
+    statusFilter !== "all" || agentFilter !== "all" || countryFilter !== "all";
 
   function openNew() {
     setEditing(null);
@@ -54,6 +67,13 @@ export function PatientsView({
           />
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={showFilters || filtersActive ? "soft" : "secondary"}
+            size="sm"
+            onClick={() => setShowFilters((s) => !s)}
+          >
+            <SlidersHorizontal /> Filters
+          </Button>
           <div className="flex rounded-lg border border-border bg-surface p-0.5 shadow-card">
             <button
               onClick={() => setMode("board")}
@@ -80,17 +100,87 @@ export function PatientsView({
         </div>
       </div>
 
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card">
+          <Select
+            className="w-40"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            {PATIENT_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {PATIENT_STATUS_LABEL[s]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="w-44"
+            value={agentFilter}
+            onChange={(e) => setAgentFilter(e.target.value)}
+          >
+            <option value="all">All agents</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="w-44"
+            value={countryFilter}
+            onChange={(e) => setCountryFilter(e.target.value)}
+          >
+            <option value="all">All countries</option>
+            {countries.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStatusFilter("all");
+                setAgentFilter("all");
+                setCountryFilter("all");
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      )}
+
       {mode === "board" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {PATIENT_STATUSES.map((status) => {
             const col = filtered.filter((p) => p.status === status);
+            const collapsed = colToggles[status] ?? col.length === 0;
             return (
               <div key={status} className="flex flex-col gap-2">
-                <div className="flex items-center justify-between px-1">
-                  <Badge tone={PATIENT_STATUS_TONE[status]}>{PATIENT_STATUS_LABEL[status]}</Badge>
+                <button
+                  className="flex w-full cursor-pointer items-center justify-between px-1"
+                  onClick={() => setColToggles((t) => ({ ...t, [status]: !collapsed }))}
+                >
+                  <span className="flex items-center gap-1">
+                    {collapsed ? (
+                      <ChevronRight className="size-3.5 text-muted-light" />
+                    ) : (
+                      <ChevronDown className="size-3.5 text-muted-light" />
+                    )}
+                    <Badge tone={PATIENT_STATUS_TONE[status]}>{PATIENT_STATUS_LABEL[status]}</Badge>
+                  </span>
                   <span className="text-xs font-medium text-muted-light">{col.length}</span>
-                </div>
-                <div className="flex min-h-24 flex-col gap-2 rounded-xl bg-surface-hover/50 p-2">
+                </button>
+                <div
+                  className={cn(
+                    "flex min-h-24 flex-col gap-2 rounded-xl bg-surface-hover/50 p-2",
+                    collapsed && "hidden"
+                  )}
+                >
                   {col.map((p) => (
                     <div
                       key={p.id}
@@ -169,6 +259,7 @@ export function PatientsView({
         countries={countries}
         agents={agents}
         currentUserId={currentUserId}
+        caseDirectories={caseDirectories}
       />
     </div>
   );

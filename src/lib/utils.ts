@@ -5,12 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const CURRENCIES = ["EUR", "USD", "TRY"] as const;
+export const CURRENCIES = ["EUR", "USD", "GBP", "TRY"] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
 const CURRENCY_SYMBOLS: Record<Currency, string> = {
   EUR: "€",
   USD: "$",
+  GBP: "£",
   TRY: "₺",
 };
 

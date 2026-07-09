@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { Badge, PAYMENT_STATUS_TONE } from "@/components/ui/badge";
+import { DatePicker } from "@/components/ui/date-picker";
 import { upsertPayment, deletePayment } from "@/lib/actions/payments";
 import { CURRENCIES, formatMoney, formatDate } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
@@ -51,8 +52,15 @@ export function PaymentsTab({
     );
   }
 
-  const incoming = payments.filter((p) => p.direction === "in");
-  const outgoing = payments.filter((p) => p.direction === "out");
+  // Doctor payouts are boss-only: agents never see them
+  const visiblePayments = isAdmin
+    ? payments
+    : payments.filter((p) => p.counterparty_type !== "doctor");
+  const incoming = visiblePayments.filter((p) => p.direction === "in");
+  const outgoing = visiblePayments.filter((p) => p.direction === "out");
+  const counterpartyChoices = isAdmin
+    ? COUNTERPARTIES
+    : COUNTERPARTIES.filter((c) => c.value !== "doctor");
 
   function counterpartyOptions(type: CounterpartyType) {
     switch (type) {
@@ -206,7 +214,7 @@ export function PaymentsTab({
               value={counterparty}
               onChange={(e) => setCounterparty(e.target.value as CounterpartyType)}
             >
-              {COUNTERPARTIES.map((c) => (
+              {counterpartyChoices.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
                 </option>
@@ -244,10 +252,10 @@ export function PaymentsTab({
             <Input name="iban" defaultValue={editing?.iban ?? ""} />
           </Field>
           <Field label="Due date">
-            <Input name="due_date" type="date" defaultValue={editing?.due_date ?? ""} />
+            <DatePicker name="due_date" defaultValue={editing?.due_date ?? ""} />
           </Field>
           <Field label="Paid date">
-            <Input name="paid_at" type="date" defaultValue={editing?.paid_at ?? ""} />
+            <DatePicker name="paid_at" defaultValue={editing?.paid_at ?? ""} />
           </Field>
           <Field label="Status">
             <Select name="status" defaultValue={editing?.status ?? "pending"}>

@@ -4,9 +4,50 @@ import * as React from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { upsertPatient } from "@/lib/actions/patients";
+import { upsertCase } from "@/lib/actions/cases";
 import { PATIENT_STATUSES, type Patient } from "@/lib/types";
 import { PATIENT_STATUS_LABEL } from "@/components/ui/badge";
+import { CURRENCIES } from "@/lib/utils";
+
+export interface CaseDirectories {
+  doctors: { id: string; name: string }[];
+  hospitals: { id: string; name: string }[];
+  hotels: { id: string; name: string }[];
+  drivers: { id: string; name: string }[];
+  operationTypes: { id: string; name: string }[];
+}
+
+const DIAL_CODES = [
+  { code: "+44", label: "UK +44" },
+  { code: "+49", label: "DE +49" },
+  { code: "+31", label: "NL +31" },
+  { code: "+33", label: "FR +33" },
+  { code: "+1", label: "US/CA +1" },
+  { code: "+90", label: "TR +90" },
+  { code: "+43", label: "AT +43" },
+  { code: "+41", label: "CH +41" },
+  { code: "+32", label: "BE +32" },
+  { code: "+46", label: "SE +46" },
+  { code: "+47", label: "NO +47" },
+  { code: "+45", label: "DK +45" },
+  { code: "+39", label: "IT +39" },
+  { code: "+34", label: "ES +34" },
+  { code: "+353", label: "IE +353" },
+  { code: "+971", label: "AE +971" },
+  { code: "+966", label: "SA +966" },
+  { code: "+974", label: "QA +974" },
+  { code: "+965", label: "KW +965" },
+  { code: "+61", label: "AU +61" },
+];
+
+function splitPhone(phone: string): { code: string; rest: string } {
+  const match = DIAL_CODES.map((d) => d.code)
+    .sort((a, b) => b.length - a.length)
+    .find((c) => phone.startsWith(c));
+  return match ? { code: match, rest: phone.slice(match.length).trim() } : { code: "+44", rest: phone };
+}
 
 export function PatientFormDialog({
   open,
@@ -15,6 +56,7 @@ export function PatientFormDialog({
   countries,
   agents,
   currentUserId,
+  caseDirectories,
 }: {
   open: boolean;
   onClose: () => void;
@@ -22,19 +64,35 @@ export function PatientFormDialog({
   countries: { id: string; name: string }[];
   agents: { id: string; name: string }[];
   currentUserId: string;
+  /** When present (and creating a new patient), shows the full treatment & travel section. */
+  caseDirectories?: CaseDirectories;
 }) {
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const initialPhone = splitPhone(patient?.phone ?? "");
+  const [dob, setDob] = React.useState(patient?.date_of_birth ?? "");
+
+  React.useEffect(() => {
+    setDob(patient?.date_of_birth ?? "");
+  }, [patient]);
+
+  function onAgeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const age = Number(e.target.value);
+    if (!age || age < 1 || age > 120) return;
+    const year = new Date().getFullYear() - age;
+    setDob(`${year}-01-01`);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    const rawPhone = String(fd.get("phone") ?? "").trim();
     const values = {
       full_name: fd.get("full_name"),
       email: fd.get("email") ?? "",
-      phone: fd.get("phone") ?? "",
+      phone: rawPhone ? `${fd.get("dial_code")} ${rawPhone}` : "",
       date_of_birth: fd.get("date_of_birth") || null,
       gender: fd.get("gender") ?? "",
       country_id: fd.get("country_id") || null,
@@ -44,9 +102,46 @@ export function PatientFormDialog({
       notes: fd.get("notes") ?? "",
     };
     const result = await upsertPatient(values, patient?.id);
+    if (result.error) {
+      setError(result.error);
+      setSaving(false);
+      return;
+    }
+
+    // New patient with any treatment/travel details filled → create the case too
+    if (!patient && caseDirectories && result.id) {
+      const caseKeys = [
+        "operation_type_id",
+        "doctor_id",
+        "hospital_id",
+        "hotel_id",
+        "driver_id",
+        "arrival_date",
+        "surgery_date",
+        "departure_date",
+        "hospital_checkin",
+        "hospital_checkout",
+      ];
+      const caseValues: Record<string, unknown> = {};
+      let hasCase = false;
+      for (const k of caseKeys) {
+        const v = fd.get(k);
+        caseValues[k] = v || null;
+        if (v) hasCase = true;
+      }
+      if (hasCase) {
+        caseValues.currency = fd.get("currency") ?? "EUR";
+        const caseResult = await upsertCase(result.id, caseValues);
+        if (caseResult.error) {
+          setError(`Patient saved, but case failed: ${caseResult.error}`);
+          setSaving(false);
+          return;
+        }
+      }
+    }
+
     setSaving(false);
-    if (result.error) setError(result.error);
-    else onClose();
+    onClose();
   }
 
   return (
@@ -69,10 +164,29 @@ export function PatientFormDialog({
             <Input name="email" type="email" defaultValue={patient?.email ?? ""} />
           </Field>
           <Field label="Phone">
-            <Input name="phone" defaultValue={patient?.phone ?? ""} />
+            <div className="flex gap-1.5">
+              <Select name="dial_code" defaultValue={initialPhone.code} className="w-28 shrink-0">
+                {DIAL_CODES.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.label}
+                  </option>
+                ))}
+              </Select>
+              <Input name="phone" defaultValue={initialPhone.rest} placeholder="7911 123456" />
+            </div>
           </Field>
-          <Field label="Date of birth">
-            <Input name="date_of_birth" type="date" defaultValue={patient?.date_of_birth ?? ""} />
+          <Field label="Date of birth (or type age)">
+            <div className="flex gap-1.5">
+              <DatePicker name="date_of_birth" value={dob} onChange={setDob} className="flex-1" />
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                placeholder="Age"
+                className="w-20 shrink-0"
+                onChange={onAgeChange}
+              />
+            </div>
           </Field>
           <Field label="Gender">
             <Select name="gender" defaultValue={patient?.gender ?? ""}>
@@ -115,6 +229,92 @@ export function PatientFormDialog({
         <Field label="Notes">
           <Textarea name="notes" rows={3} defaultValue={patient?.notes ?? ""} />
         </Field>
+
+        {!patient && caseDirectories && (
+          <>
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
+                Treatment & travel — all optional
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Operation">
+                  <Select name="operation_type_id" defaultValue="">
+                    <option value="">—</option>
+                    {caseDirectories.operationTypes.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Doctor">
+                  <Select name="doctor_id" defaultValue="">
+                    <option value="">—</option>
+                    {caseDirectories.doctors.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Hospital">
+                  <Select name="hospital_id" defaultValue="">
+                    <option value="">—</option>
+                    {caseDirectories.hospitals.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Hotel">
+                  <Select name="hotel_id" defaultValue="">
+                    <option value="">—</option>
+                    {caseDirectories.hotels.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Driver">
+                  <Select name="driver_id" defaultValue="">
+                    <option value="">—</option>
+                    {caseDirectories.drivers.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Currency">
+                  <Select name="currency" defaultValue="EUR">
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Arrival date">
+                  <DatePicker name="arrival_date" />
+                </Field>
+                <Field label="Surgery date">
+                  <DatePicker name="surgery_date" />
+                </Field>
+                <Field label="Departure date">
+                  <DatePicker name="departure_date" />
+                </Field>
+                <Field label="Hospital check-in">
+                  <DatePicker name="hospital_checkin" />
+                </Field>
+                <Field label="Hospital check-out">
+                  <DatePicker name="hospital_checkout" />
+                </Field>
+              </div>
+            </div>
+          </>
+        )}
         {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>

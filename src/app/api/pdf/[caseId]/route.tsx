@@ -98,6 +98,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     .eq("case_id", caseId)
     .order("sort_order");
 
+  // Deposit = what the patient has already paid
+  const { data: paidIn } = await supabase
+    .from("payments")
+    .select("amount")
+    .eq("case_id", caseId)
+    .eq("direction", "in")
+    .eq("status", "paid");
+  const deposit = (paidIn ?? []).reduce((s, p) => s + Number(p.amount), 0);
+
   const { data: instructions } = await supabase
     .from("case_instructions")
     .select("title, body_md")
@@ -163,12 +172,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         {(items ?? []).map((item, i) => (
           <View key={i} style={styles.tableRow}>
             <Text>{item.description}</Text>
-            <Text style={styles.bold}>{money(Number(item.price))}</Text>
           </View>
         ))}
         <View style={styles.total}>
           <Text style={styles.bold}>Total</Text>
           <Text style={[styles.bold, { color: GREEN, fontSize: 12 }]}>{money(total)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.muted}>Deposit received</Text>
+          <Text style={styles.bold}>{money(deposit)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.muted}>Remaining balance</Text>
+          <Text style={styles.bold}>{money(Math.max(total - deposit, 0))}</Text>
         </View>
 
         {(instructions ?? []).map((ins, i) => (

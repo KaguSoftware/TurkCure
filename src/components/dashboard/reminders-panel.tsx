@@ -8,6 +8,7 @@ import { Input, Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge, type Tone } from "@/components/ui/badge";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { upsertReminder, toggleReminderDone, deleteReminder } from "@/lib/actions/reminders";
 import type { Reminder, ReminderType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,11 @@ export function RemindersPanel({
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    if (!fd.get("due_at")) {
+      setError("Pick a due date");
+      setSaving(false);
+      return;
+    }
     const result = await upsertReminder({
       type: fd.get("type"),
       title: fd.get("title"),
@@ -137,7 +143,7 @@ export function RemindersPanel({
               </Select>
             </Field>
             <Field label="Due">
-              <Input name="due_at" type="datetime-local" required />
+              <DateTimePicker name="due_at" />
             </Field>
           </div>
           <Field label="Assign to">

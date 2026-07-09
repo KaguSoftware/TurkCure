@@ -64,7 +64,11 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
       patient={patient as Patient}
       cases={(cases ?? []) as Case[]}
       quoteItemsByCase={quoteItemsByCase}
-      payments={payments ?? []}
+      payments={
+        profile.role === "admin"
+          ? (payments ?? [])
+          : (payments ?? []).filter((p) => p.counterparty_type !== "doctor")
+      }
       instructions={instructions ?? []}
       files={files ?? []}
       isAdmin={profile.role === "admin"}

@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Field, Textarea } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
+import { useRouter } from "next/navigation";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Dialog } from "@/components/ui/dialog";
+import { upsertDirectoryRow } from "@/lib/actions/directory";
 import { upsertCase, upsertQuoteItem, deleteQuoteItem } from "@/lib/actions/cases";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
 import type { Case, Patient, QuoteItem, QuoteItemKind } from "@/lib/types";
@@ -32,8 +36,27 @@ export function CaseTab({
   directories: Directories;
 }) {
   const activeCase = cases[0] ?? null;
+  const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [doctorOpen, setDoctorOpen] = React.useState(false);
+  const [doctorSaving, setDoctorSaving] = React.useState(false);
+
+  async function onAddDoctor(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setDoctorSaving(true);
+    const fd = new FormData(e.currentTarget);
+    const r = await upsertDirectoryRow("doctors", {
+      name: String(fd.get("name")),
+      specialty: String(fd.get("specialty") ?? ""),
+    });
+    setDoctorSaving(false);
+    if (r.error) alert(r.error);
+    else {
+      setDoctorOpen(false);
+      router.refresh();
+    }
+  }
 
   async function onSaveCase(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -49,6 +72,8 @@ export function CaseTab({
       arrival_date: fd.get("arrival_date") || null,
       surgery_date: fd.get("surgery_date") || null,
       departure_date: fd.get("departure_date") || null,
+      hospital_checkin: fd.get("hospital_checkin") || null,
+      hospital_checkout: fd.get("hospital_checkout") || null,
       currency: fd.get("currency"),
       status: fd.get("status"),
       notes: fd.get("notes") ?? "",
@@ -89,14 +114,28 @@ export function CaseTab({
           <form onSubmit={onSaveCase} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {selectFields.map((f) => (
               <Field key={f.key} label={f.label}>
-                <Select name={f.key} defaultValue={f.value ?? ""}>
-                  <option value="">—</option>
-                  {f.options.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </Select>
+                <div className="flex gap-1.5">
+                  <Select name={f.key} defaultValue={f.value ?? ""}>
+                    <option value="">—</option>
+                    {f.options.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </Select>
+                  {f.key === "doctor_id" && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      aria-label="Add doctor"
+                      className="shrink-0"
+                      onClick={() => setDoctorOpen(true)}
+                    >
+                      <Plus />
+                    </Button>
+                  )}
+                </div>
               </Field>
             ))}
             <Field label="Status">
@@ -109,13 +148,19 @@ export function CaseTab({
               </Select>
             </Field>
             <Field label="Arrival date">
-              <Input name="arrival_date" type="date" defaultValue={activeCase?.arrival_date ?? ""} />
+              <DatePicker name="arrival_date" defaultValue={activeCase?.arrival_date ?? ""} />
             </Field>
             <Field label="Surgery date">
-              <Input name="surgery_date" type="date" defaultValue={activeCase?.surgery_date ?? ""} />
+              <DatePicker name="surgery_date" defaultValue={activeCase?.surgery_date ?? ""} />
             </Field>
             <Field label="Departure date">
-              <Input name="departure_date" type="date" defaultValue={activeCase?.departure_date ?? ""} />
+              <DatePicker name="departure_date" defaultValue={activeCase?.departure_date ?? ""} />
+            </Field>
+            <Field label="Hospital check-in">
+              <DatePicker name="hospital_checkin" defaultValue={activeCase?.hospital_checkin ?? ""} />
+            </Field>
+            <Field label="Hospital check-out">
+              <DatePicker name="hospital_checkout" defaultValue={activeCase?.hospital_checkout ?? ""} />
             </Field>
             <Field label="Currency">
               <Select name="currency" defaultValue={activeCase?.currency ?? "EUR"}>
@@ -161,6 +206,25 @@ export function CaseTab({
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={doctorOpen} onClose={() => setDoctorOpen(false)} title="Add doctor">
+        <form onSubmit={onAddDoctor} className="space-y-4">
+          <Field label="Name">
+            <Input name="name" required autoFocus />
+          </Field>
+          <Field label="Specialty">
+            <Input name="specialty" placeholder="e.g. Plastic surgery" />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setDoctorOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={doctorSaving}>
+              {doctorSaving ? "Saving…" : "Add doctor"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }
