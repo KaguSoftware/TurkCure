@@ -21,7 +21,7 @@ export default async function HotelsPage() {
         fields={[
           { key: "name", label: "Name", required: true },
           { key: "city", label: "District", type: "select", options: ISTANBUL_DISTRICT_OPTIONS },
-          { key: "stars", label: "Stars", type: "number" },
+          { key: "stars", label: "Stars", type: "stars" },
           { key: "contact", label: "Contact" },
           { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
         ]}

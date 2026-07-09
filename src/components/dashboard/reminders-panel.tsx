@@ -47,15 +47,28 @@ export function RemindersPanel({
   const [exiting, setExiting] = React.useState<ReadonlySet<string>>(new Set());
   const pendingIds = React.useRef(new Set<string>());
   const removedIds = React.useRef(new Set<string>());
+  // Rows whose exit animation is running. The server-sync effect must leave
+  // these completely alone — otherwise a revalidation landing mid-animation
+  // yanks the row out (cutting the animation) or, if a stale read still has it,
+  // puts it right back, which reads as "animates, then pops back, click again".
+  const animatingIds = React.useRef(new Set<string>());
   const timers = React.useRef(new Map<string, ReturnType<typeof setTimeout>[]>());
 
   React.useEffect(() => {
+    // Drop ids from removedIds once the server has actually caught up (row is
+    // gone AND we're no longer animating it), so the set can't grow unbounded.
     for (const id of removedIds.current)
-      if (!reminders.some((r) => r.id === id)) removedIds.current.delete(id);
+      if (!reminders.some((r) => r.id === id) && !animatingIds.current.has(id))
+        removedIds.current.delete(id);
     setItems((prev) => {
       const inFlight = prev.filter((p) => pendingIds.current.has(p.id));
-      const fromServer = reminders.filter((r) => !removedIds.current.has(r.id));
-      return [...fromServer, ...inFlight].sort(
+      // Preserve any row currently animating exactly as it is on screen.
+      const animating = prev.filter((p) => animatingIds.current.has(p.id));
+      const animatingSet = new Set(animating.map((p) => p.id));
+      const fromServer = reminders.filter(
+        (r) => !removedIds.current.has(r.id) && !animatingSet.has(r.id)
+      );
+      return [...fromServer, ...animating, ...inFlight].sort(
         (a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
       );
     });
@@ -81,6 +94,7 @@ export function RemindersPanel({
 
   function removeRow(id: string) {
     removedIds.current.add(id);
+    animatingIds.current.delete(id);
     setItems((prev) => prev.filter((r) => r.id !== id));
     setInSet(setCompleting, id, false);
     setInSet(setExiting, id, false);
@@ -149,6 +163,10 @@ export function RemindersPanel({
   function onMarkDone(r: Reminder) {
     if (completing.has(r.id) || exiting.has(r.id)) return;
     setListError(null);
+    // Protect the row from server sync for the whole animation, and mark it
+    // removed immediately so a revalidation arriving mid-strike can't re-add it.
+    animatingIds.current.add(r.id);
+    removedIds.current.add(r.id);
     setInSet(setCompleting, r.id, true);
     timers.current.set(r.id, [
       setTimeout(() => setInSet(setExiting, r.id, true), STRIKE_MS),
@@ -157,6 +175,7 @@ export function RemindersPanel({
     toggleReminderDone(r.id, true).then((result) => {
       if (result.error) {
         cancelTimers(r.id);
+        animatingIds.current.delete(r.id);
         removedIds.current.delete(r.id);
         setInSet(setCompleting, r.id, false);
         setInSet(setExiting, r.id, false);
@@ -174,11 +193,14 @@ export function RemindersPanel({
   function onDelete(r: Reminder) {
     if (exiting.has(r.id)) return;
     setListError(null);
+    animatingIds.current.add(r.id);
+    removedIds.current.add(r.id);
     setInSet(setExiting, r.id, true);
     timers.current.set(r.id, [setTimeout(() => removeRow(r.id), EXIT_MS)]);
     deleteReminder(r.id).then((result) => {
       if (result.error) {
         cancelTimers(r.id);
+        animatingIds.current.delete(r.id);
         removedIds.current.delete(r.id);
         setInSet(setExiting, r.id, false);
         setItems((prev) =>

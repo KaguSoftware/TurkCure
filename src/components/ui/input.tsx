@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
@@ -36,7 +36,20 @@ Textarea.displayName = "Textarea";
 interface OptionDef {
   value: string;
   label: React.ReactNode;
+  /** Flattened text of the label, used for searching. */
+  text: string;
   disabled?: boolean;
+}
+
+/** Recursively flatten a React node into plain searchable text. */
+function nodeText(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join(" ");
+  if (React.isValidElement(node)) {
+    return nodeText((node.props as { children?: React.ReactNode }).children);
+  }
+  return "";
 }
 
 function collectOptions(children: React.ReactNode): OptionDef[] {
@@ -48,6 +61,7 @@ function collectOptions(children: React.ReactNode): OptionDef[] {
       out.push({
         value: String(props.value ?? ""),
         label: props.children,
+        text: nodeText(props.children),
         disabled: props.disabled,
       });
     } else {
@@ -57,6 +71,9 @@ function collectOptions(children: React.ReactNode): OptionDef[] {
   });
   return out;
 }
+
+// Show the search box only once a dropdown has enough options to be worth filtering.
+const SEARCH_THRESHOLD = 7;
 
 /**
  * Custom dropdown with the same call-site API as a native <select>
@@ -69,10 +86,17 @@ export const Select = React.forwardRef<
 >(({ className, children, name, value, defaultValue, onChange, disabled }) => {
   const options = collectOptions(children);
   const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
   const [internal, setInternal] = React.useState(String(defaultValue ?? options[0]?.value ?? ""));
   const current = value !== undefined ? String(value) : internal;
   const rootRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
+
+  const showSearch = options.length > SEARCH_THRESHOLD;
+  const filtered = query
+    ? options.filter((o) => o.text.toLowerCase().includes(query.toLowerCase()))
+    : options;
 
   React.useEffect(() => {
     if (!open) return;
@@ -90,11 +114,17 @@ export const Select = React.forwardRef<
 
   React.useEffect(() => {
     if (open) {
-      listRef.current
-        ?.querySelector("[data-selected=true]")
-        ?.scrollIntoView({ block: "nearest" });
+      // Reset the query each open, then focus search or scroll to selection.
+      setQuery("");
+      if (showSearch) {
+        searchRef.current?.focus();
+      } else {
+        listRef.current
+          ?.querySelector("[data-selected=true]")
+          ?.scrollIntoView({ block: "nearest" });
+      }
     }
-  }, [open]);
+  }, [open, showSearch]);
 
   const selected = options.find((o) => o.value === current);
 
@@ -124,29 +154,50 @@ export const Select = React.forwardRef<
         />
       </button>
       {open && (
-        <div
-          ref={listRef}
-          className="absolute z-50 mt-1 max-h-64 w-full min-w-max overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-pop"
-        >
-          {options.map((o, i) => (
-            <button
-              key={o.value + i}
-              type="button"
-              disabled={o.disabled}
-              data-selected={o.value === current}
-              onClick={() => pick(o.value)}
-              className={cn(
-                "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-                o.value === current
-                  ? "bg-primary-soft font-medium text-primary"
-                  : "hover:bg-surface-hover",
-                o.disabled && "opacity-50"
-              )}
-            >
-              <span className="truncate">{o.label}</span>
-              {o.value === current && <Check className="size-3.5 shrink-0" />}
-            </button>
-          ))}
+        <div className="absolute z-50 mt-1 w-full min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop">
+          {showSearch && (
+            <div className="relative mb-1 px-1 pt-1">
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-light" />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const first = filtered.find((o) => !o.disabled);
+                    if (first) pick(first.value);
+                  }
+                }}
+                placeholder="Search…"
+                className="h-8 w-full rounded-md border border-border bg-surface pl-8 pr-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              />
+            </div>
+          )}
+          <div ref={listRef} className="max-h-56 overflow-y-auto">
+            {filtered.length === 0 && (
+              <p className="px-2.5 py-2 text-sm text-muted-light">No matches</p>
+            )}
+            {filtered.map((o, i) => (
+              <button
+                key={o.value + i}
+                type="button"
+                disabled={o.disabled}
+                data-selected={o.value === current}
+                onClick={() => pick(o.value)}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+                  o.value === current
+                    ? "bg-primary-soft font-medium text-primary"
+                    : "hover:bg-surface-hover",
+                  o.disabled && "opacity-50"
+                )}
+              >
+                <span className="truncate">{o.label}</span>
+                {o.value === current && <Check className="size-3.5 shrink-0" />}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

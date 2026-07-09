@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { StarRating } from "@/components/ui/star-rating";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { useAction } from "@/lib/use-action";
 import {
@@ -17,7 +18,7 @@ import {
 export interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "textarea" | "select" | "tel" | "email" | "list";
+  type?: "text" | "number" | "textarea" | "select" | "tel" | "email" | "list" | "stars";
   options?: { value: string; label: string }[];
   required?: boolean;
   hideInTable?: boolean;
@@ -108,7 +109,7 @@ export function DirectoryManager({
       const raw = fd.get(f.key);
       if (raw === null) continue;
       const s = String(raw);
-      if (f.type === "number") values[f.key] = s === "" ? null : Number(s);
+      if (f.type === "number" || f.type === "stars") values[f.key] = s === "" ? null : Number(s);
       else if (f.type === "select" && s === "") values[f.key] = null;
       else values[f.key] = s;
     }
@@ -140,6 +141,21 @@ export function DirectoryManager({
       return arr.length ? arr.join(", ") : "—";
     }
     return String(row[f.key] ?? "") || "—";
+  }
+
+  function renderCell(row: Record<string, unknown>, f: FieldDef): React.ReactNode {
+    if (f.type === "stars") {
+      const n = Number(row[f.key] ?? 0);
+      if (!n) return "—";
+      return (
+        <span className="inline-flex items-center gap-0.5 text-warning">
+          {Array.from({ length: n }).map((_, i) => (
+            <Star key={i} className="size-3.5 fill-warning" />
+          ))}
+        </span>
+      );
+    }
+    return cellValue(row, f);
   }
 
   return (
@@ -176,7 +192,7 @@ export function DirectoryManager({
             <Tr key={row.id as string}>
               {visible.map((f) => (
                 <Td key={f.key} className={f === visible[0] ? "font-medium" : "text-muted"}>
-                  {cellValue(row, f)}
+                  {renderCell(row, f)}
                 </Td>
               ))}
               <Td className="text-right">
@@ -231,6 +247,12 @@ export function DirectoryManager({
                   name={f.key}
                   label={f.label.replace(/s$/, "")}
                   defaultValue={(editing?.[f.key] as string[]) ?? []}
+                />
+              ) : f.type === "stars" ? (
+                <StarRating
+                  key={(editing?.id as string) ?? "new"}
+                  name={f.key}
+                  defaultValue={Number(editing?.[f.key] ?? 0)}
                 />
               ) : (
                 <Input
