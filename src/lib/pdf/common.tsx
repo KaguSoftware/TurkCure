@@ -1,5 +1,41 @@
 import React from "react";
-import { StyleSheet, View, Text, Svg, Defs, LinearGradient, Stop, Rect, Polygon, Line } from "@react-pdf/renderer";
+import path from "node:path";
+import {
+  StyleSheet,
+  Font,
+  View,
+  Text,
+  Svg,
+  Defs,
+  LinearGradient,
+  Stop,
+  Polygon,
+  Line,
+} from "@react-pdf/renderer";
+
+// Embedded brand fonts: Playfair Display (display serif) + Source Sans 3 (text).
+const FONT_DIR = path.join(process.cwd(), "src", "lib", "pdf", "fonts");
+
+Font.register({
+  family: "Playfair",
+  fonts: [
+    { src: path.join(FONT_DIR, "PlayfairDisplay-Regular.ttf"), fontWeight: 400 },
+    { src: path.join(FONT_DIR, "PlayfairDisplay-Bold.ttf"), fontWeight: 700 },
+    { src: path.join(FONT_DIR, "PlayfairDisplay-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
+  ],
+});
+
+Font.register({
+  family: "SourceSans",
+  fonts: [
+    { src: path.join(FONT_DIR, "SourceSans3-Regular.ttf"), fontWeight: 400 },
+    { src: path.join(FONT_DIR, "SourceSans3-SemiBold.ttf"), fontWeight: 600 },
+    { src: path.join(FONT_DIR, "SourceSans3-Bold.ttf"), fontWeight: 700 },
+  ],
+});
+
+// Never hyphenate — broken words look terrible on a formal document.
+Font.registerHyphenationCallback((word) => [word]);
 
 // Brand palette — "clean medical": airy white, brand blue, teal→green accent.
 export const BLUE = "#1d59d6";
@@ -31,18 +67,89 @@ export const COMPANY = {
   url: "https://turkcure.com",
 };
 
+// Warm hairline + label-column tint used by the table sections.
+export const TABLE_LINE = "#e5e0d4";
+export const LABEL_BG = "#faf8f2";
+export const GOLD_SOFT_BG = "#faf3e0";
+
 export const pdfStyles = StyleSheet.create({
   page: {
-    paddingTop: 44,
-    paddingHorizontal: 46,
-    paddingBottom: 70,
-    fontSize: 9.5,
+    paddingTop: 48,
+    paddingHorizontal: 50,
+    paddingBottom: 76,
+    fontSize: 10,
     color: TEXT,
-    fontFamily: "Helvetica",
-    lineHeight: 1.4,
+    fontFamily: "SourceSans",
+    lineHeight: 1.45,
   },
-  docTitle: { fontSize: 13, color: INK, textAlign: "right", fontFamily: "Helvetica-Bold" },
+  docTitle: { fontSize: 14, color: INK, textAlign: "right", fontFamily: "Playfair", fontWeight: 700 },
   docSub: { fontSize: 8.5, color: MUTED, textAlign: "right", marginTop: 3 },
+
+  // Numbered table section — navy header band + hairline-bordered body.
+  tableSection: {
+    marginBottom: 20,
+  },
+  tableHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: NAVY,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  tableHeadRule: {
+    width: 14,
+    height: 1.2,
+    backgroundColor: GOLD,
+    marginRight: 9,
+  },
+  tableHeadTitle: {
+    fontFamily: "Playfair",
+    fontWeight: 700,
+    fontSize: 11,
+    color: "#ffffff",
+    letterSpacing: 0.4,
+  },
+  tableBody: {
+    borderWidth: 1,
+    borderColor: TABLE_LINE,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    backgroundColor: "#ffffff",
+  },
+  tRow: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderBottomWidth: 1,
+    borderBottomColor: TABLE_LINE,
+  },
+  tRowLast: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  tLabel: {
+    width: "36%",
+    backgroundColor: LABEL_BG,
+    borderRightWidth: 1,
+    borderRightColor: TABLE_LINE,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    color: MUTED,
+    fontSize: 8.5,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  tValue: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    color: INK,
+    fontWeight: 600,
+    fontSize: 10,
+  },
 
   // A light "card" section — no heavy borders, just a hairline frame + soft head.
   section: {
@@ -61,8 +168,9 @@ export const pdfStyles = StyleSheet.create({
     marginRight: 7,
   },
   sectionTitle: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 10.5,
+    fontFamily: "Playfair",
+    fontWeight: 700,
+    fontSize: 11,
     color: BLUE_DEEP,
     letterSpacing: 0.3,
   },
@@ -93,38 +201,39 @@ export const pdfStyles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
-  kvValue: { flex: 1, color: INK, fontFamily: "Helvetica-Bold", fontSize: 9.5 },
+  kvValue: { flex: 1, color: INK, fontWeight: 600, fontSize: 10 },
 
-  bold: { fontFamily: "Helvetica-Bold" },
+  bold: { fontWeight: 700 },
   bullet: { width: "50%", paddingVertical: 2.5, paddingRight: 8, color: TEXT },
 
   footer: {
     position: "absolute",
     bottom: 30,
-    left: 46,
-    right: 46,
+    left: 50,
+    right: 50,
     textAlign: "center",
     color: MUTED,
     fontSize: 7.5,
     borderTopWidth: 1,
     borderTopColor: HAIRLINE,
-    paddingTop: 7,
+    paddingTop: 9,
   },
   pageNumber: {
     position: "absolute",
     bottom: 15,
-    left: 46,
-    right: 46,
+    left: 50,
+    right: 50,
     textAlign: "center",
     color: FAINT,
     fontSize: 7,
   },
   instrHeading: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 10.5,
+    fontFamily: "Playfair",
+    fontWeight: 700,
+    fontSize: 11,
     color: BLUE_DEEP,
-    marginTop: 12,
-    marginBottom: 5,
+    marginTop: 14,
+    marginBottom: 6,
   },
   instrLine: { marginBottom: 3, lineHeight: 1.5, color: TEXT },
 });
@@ -150,15 +259,15 @@ export function Wordmark({ scale = 1 }: { scale?: number }) {
         x={0}
         y={21}
         fill={BLUE}
-        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Turk
       </Text>
       <Text
-        x={58}
+        x={49}
         y={21}
         fill="url(#cureGrad)"
-        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Cure
       </Text>
@@ -186,15 +295,15 @@ export function WordmarkGold({ scale = 1 }: { scale?: number }) {
         x={0}
         y={21}
         fill="#f5f1e6"
-        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Turk
       </Text>
       <Text
-        x={58}
+        x={49}
         y={21}
         fill="url(#cureGoldGrad)"
-        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Cure
       </Text>
@@ -247,8 +356,7 @@ export function PdfHeader({
   meta?: string;
   accent?: "gold" | "brand";
 }) {
-  const stops =
-    accent === "gold" ? [GOLD_DARK, GOLD, GOLD_LIGHT] : [BLUE, CYAN, GREEN];
+  const ruleColor = accent === "gold" ? GOLD : BLUE;
   return (
     <View>
       <View
@@ -265,17 +373,15 @@ export function PdfHeader({
           {meta ? <Text style={pdfStyles.docSub}>{meta}</Text> : null}
         </View>
       </View>
-      {/* Thin gradient rule */}
-      <Svg width="100%" height={2.5} style={{ marginBottom: 20 }}>
-        <Defs>
-          <LinearGradient id="ruleGrad" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={stops[0]} />
-            <Stop offset="0.5" stopColor={stops[1]} />
-            <Stop offset="1" stopColor={stops[2]} />
-          </LinearGradient>
-        </Defs>
-        <Rect x={0} y={0} width="100%" height={2.5} fill="url(#ruleGrad)" rx={1.25} />
-      </Svg>
+      {/* Thin accent rule */}
+      <View
+        style={{
+          height: 2,
+          borderRadius: 1,
+          backgroundColor: ruleColor,
+          marginBottom: 22,
+        }}
+      />
     </View>
   );
 }
@@ -309,6 +415,45 @@ export function KV({ label, value, last }: { label: string; value?: string | nul
     <View style={last ? pdfStyles.kvRowLast : pdfStyles.kvRow}>
       <Text style={pdfStyles.kvLabel}>{label}</Text>
       <Text style={pdfStyles.kvValue}>{value ? value : "—"}</Text>
+    </View>
+  );
+}
+
+/**
+ * Numbered, table-style section: navy header band ("1. Patient Information")
+ * with a small gold rule, above a hairline-bordered white body.
+ */
+export function TableSection({
+  number,
+  title,
+  children,
+  wrap,
+}: {
+  number?: number;
+  title: string;
+  children: React.ReactNode;
+  wrap?: boolean;
+}) {
+  return (
+    <View style={pdfStyles.tableSection} wrap={wrap}>
+      <View style={pdfStyles.tableHead} minPresenceAhead={60}>
+        <View style={pdfStyles.tableHeadRule} />
+        <Text style={pdfStyles.tableHeadTitle}>
+          {number != null ? `${number}. ` : ""}
+          {title}
+        </Text>
+      </View>
+      <View style={pdfStyles.tableBody}>{children}</View>
+    </View>
+  );
+}
+
+/** A label/value table row inside a TableSection. */
+export function TRow({ label, value, last }: { label: string; value?: string | null; last?: boolean }) {
+  return (
+    <View style={last ? pdfStyles.tRowLast : pdfStyles.tRow}>
+      <Text style={pdfStyles.tLabel}>{label}</Text>
+      <Text style={pdfStyles.tValue}>{value ? value : "—"}</Text>
     </View>
   );
 }

@@ -1,29 +1,18 @@
 import { NextResponse } from "next/server";
 import React from "react";
-import {
-  renderToBuffer,
-  Document,
-  Page,
-  Text,
-  View,
-  Image,
-  Svg,
-  Rect,
-  Polygon,
-  Line,
-} from "@react-pdf/renderer";
+import { renderToBuffer, Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
 import {
   COMPANY,
-  BLUE_DEEP,
   MUTED,
   INK,
   TEXT,
   NAVY,
-  NAVY_DEEP,
   GOLD,
   GOLD_LIGHT,
   GOLD_DARK,
+  GOLD_SOFT_BG,
+  TABLE_LINE,
   pdfStyles as s,
   mdLines,
   fmtDate,
@@ -31,121 +20,11 @@ import {
   nightsBetween,
   PdfHeader,
   PdfFooter,
-  Section,
-  KV,
+  TableSection,
+  TRow,
   WordmarkGold,
   CoverOrnament,
-  Diamond,
 } from "@/lib/pdf/common";
-
-// A4 in pt
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-
-/** Full-bleed navy background with layered gold geometry for the cover page. */
-function CoverBackground() {
-  return (
-    <View style={{ position: "absolute", top: 0, left: 0 }}>
-      <Svg width={PAGE_W} height={PAGE_H} viewBox={`0 0 ${PAGE_W} ${PAGE_H}`}>
-      {/* Navy base */}
-      <Rect x={0} y={0} width={PAGE_W} height={PAGE_H} fill={NAVY} />
-
-      {/* Deep-navy diagonal bands, top-right and bottom-left */}
-      <Polygon points={`${PAGE_W},0 ${PAGE_W - 340},0 ${PAGE_W},260`} fill={NAVY_DEEP} />
-      <Polygon points={`${PAGE_W},60 ${PAGE_W - 220},0 ${PAGE_W},0`} fill={NAVY_DEEP} fillOpacity={0.7} />
-      <Polygon points={`0,${PAGE_H} 0,${PAGE_H - 300} 380,${PAGE_H}`} fill={NAVY_DEEP} />
-      <Polygon points={`0,${PAGE_H} 0,${PAGE_H - 160} 210,${PAGE_H}`} fill={NAVY_DEEP} fillOpacity={0.7} />
-
-      {/* Translucent gold bands echoing the corners */}
-      <Polygon
-        points={`${PAGE_W},0 ${PAGE_W - 420},0 ${PAGE_W},320`}
-        fill={GOLD}
-        fillOpacity={0.08}
-      />
-      <Polygon
-        points={`0,${PAGE_H} 0,${PAGE_H - 380} 470,${PAGE_H}`}
-        fill={GOLD}
-        fillOpacity={0.08}
-      />
-
-      {/* Thin gold diagonal lines along band edges */}
-      <Line x1={PAGE_W - 340} y1={0} x2={PAGE_W} y2={260} stroke={GOLD} strokeWidth={1} strokeOpacity={0.4} />
-      <Line x1={PAGE_W - 420} y1={0} x2={PAGE_W} y2={320} stroke={GOLD} strokeWidth={0.7} strokeOpacity={0.25} />
-      <Line x1={0} y1={PAGE_H - 300} x2={380} y2={PAGE_H} stroke={GOLD} strokeWidth={1} strokeOpacity={0.4} />
-      <Line x1={0} y1={PAGE_H - 380} x2={470} y2={PAGE_H} stroke={GOLD} strokeWidth={0.7} strokeOpacity={0.25} />
-
-      {/* Small gold diamond accents along the band edges */}
-      {[
-        { x: PAGE_W - 250, y: 68, r: 3.5, o: 0.9 },
-        { x: PAGE_W - 160, y: 137, r: 2.5, o: 0.6 },
-        { x: PAGE_W - 76, y: 202, r: 3, o: 0.8 },
-        { x: 96, y: PAGE_H - 224, r: 3.5, o: 0.9 },
-        { x: 200, y: PAGE_H - 142, r: 2.5, o: 0.6 },
-        { x: 296, y: PAGE_H - 66, r: 3, o: 0.8 },
-      ].map((d, i) => (
-        <Diamond key={i} cx={d.x} cy={d.y} r={d.r} opacity={d.o} />
-      ))}
-
-      {/* Subtle dot texture in the dark corner areas */}
-      {Array.from({ length: 9 }, (_, i) => (
-        <Rect
-          key={`t${i}`}
-          x={PAGE_W - 60 - (i % 3) * 22}
-          y={26 + Math.floor(i / 3) * 22}
-          width={1.6}
-          height={1.6}
-          fill={GOLD}
-          fillOpacity={0.35}
-        />
-      ))}
-      {Array.from({ length: 9 }, (_, i) => (
-        <Rect
-          key={`b${i}`}
-          x={38 + (i % 3) * 22}
-          y={PAGE_H - 70 + Math.floor(i / 3) * 22 - 22}
-          width={1.6}
-          height={1.6}
-          fill={GOLD}
-          fillOpacity={0.35}
-        />
-      ))}
-
-      {/* Thin gold frame */}
-      <Rect
-        x={24}
-        y={24}
-        width={PAGE_W - 48}
-        height={PAGE_H - 48}
-        fill="none"
-        stroke={GOLD}
-        strokeWidth={1}
-      />
-      </Svg>
-    </View>
-  );
-}
-
-/** Cover summary strip cell: gold caps label over a white value. */
-function CoverFact({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  return (
-    <View
-      style={{
-        paddingHorizontal: 14,
-        borderRightWidth: last ? 0 : 0.8,
-        borderRightColor: GOLD,
-        alignItems: "center",
-        maxWidth: 150,
-      }}
-    >
-      <Text style={{ fontSize: 7, color: GOLD_LIGHT, textTransform: "uppercase", letterSpacing: 1.2 }}>
-        {label}
-      </Text>
-      <Text style={{ fontSize: 9, color: "#ffffff", fontFamily: "Helvetica-Bold", marginTop: 3, textAlign: "center" }}>
-        {value}
-      </Text>
-    </View>
-  );
-}
 
 export const runtime = "nodejs";
 
@@ -250,106 +129,135 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
 
   const ref = caseId.slice(0, 8).toUpperCase();
   const issued = fmtDate(new Date().toISOString());
-  const coverFacts = [
-    { label: "Doctor", value: doctor },
-    { label: "Hospital", value: hospital },
-    { label: "Arrival", value: fmtDate(caseRow.arrival_date) },
-    { label: "Departure", value: fmtDate(caseRow.departure_date) },
-  ].filter((f) => f.value);
+  const coverLine1 = [doctor, hospital].filter(Boolean).join("   ·   ");
+  const coverLine2 =
+    caseRow.arrival_date && caseRow.departure_date
+      ? `${fmtDate(caseRow.arrival_date)}  —  ${fmtDate(caseRow.departure_date)}`
+      : "";
 
   const doc = (
     <Document title={`TurkCure WOF — ${patient?.full_name ?? "Patient"}`}>
-      {/* Premium cover page — full-bleed navy + gold */}
-      <Page size="A4" style={{ fontFamily: "Helvetica" }} wrap={false}>
-        <CoverBackground />
+      {/* Cover page — navy, gold frame, all content in normal flow */}
+      <Page size="A4" style={{ backgroundColor: NAVY, padding: 28, fontFamily: "SourceSans" }}>
         <View
           style={{
-            position: "absolute",
-            top: 24,
-            left: 24,
-            right: 24,
-            bottom: 24,
-            paddingHorizontal: 40,
-            paddingVertical: 56,
+            flex: 1,
+            borderWidth: 1,
+            borderColor: GOLD,
             alignItems: "center",
+            paddingVertical: 64,
+            paddingHorizontal: 48,
           }}
         >
           {/* Brand */}
-          <WordmarkGold scale={1.6} />
+          <WordmarkGold scale={1.7} />
           <Text
             style={{
-              fontSize: 8,
+              fontSize: 8.5,
               color: GOLD_LIGHT,
-              letterSpacing: 3,
-              marginTop: 8,
+              letterSpacing: 3.5,
+              marginTop: 10,
               textTransform: "uppercase",
             }}
           >
             Health Tourism · Istanbul
           </Text>
 
-          {/* Title block, vertically centered */}
-          <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-            <Text style={{ fontSize: 26, color: "#ffffff", fontFamily: "Helvetica-Bold", letterSpacing: 2, textAlign: "center" }}>
-              TREATMENT &
-            </Text>
-            <Text style={{ fontSize: 26, color: "#ffffff", fontFamily: "Helvetica-Bold", letterSpacing: 2, textAlign: "center", marginTop: 4 }}>
-              RESERVATION
-            </Text>
-            <Text style={{ fontSize: 26, color: GOLD, fontFamily: "Helvetica-Bold", letterSpacing: 2, textAlign: "center", marginTop: 4 }}>
-              CONFIRMATION
-            </Text>
-            <View style={{ marginTop: 18 }}>
-              <CoverOrnament width={200} />
-            </View>
+          <View style={{ flex: 1 }} />
 
+          {/* Title */}
+          <Text
+            style={{
+              fontSize: 30,
+              color: "#ffffff",
+              fontFamily: "Playfair",
+              fontWeight: 700,
+              textAlign: "center",
+            }}
+          >
+            Treatment & Reservation
+          </Text>
+          <Text
+            style={{
+              fontSize: 30,
+              color: GOLD,
+              fontFamily: "Playfair",
+              fontWeight: 700,
+              textAlign: "center",
+              marginTop: 6,
+            }}
+          >
+            Confirmation
+          </Text>
+          <View style={{ marginTop: 24 }}>
+            <CoverOrnament width={210} />
+          </View>
+
+          {/* Patient */}
+          <Text
+            style={{
+              fontSize: 9,
+              color: GOLD,
+              letterSpacing: 3,
+              textTransform: "uppercase",
+              marginTop: 44,
+            }}
+          >
+            Prepared for
+          </Text>
+          <Text
+            style={{
+              fontSize: 26,
+              color: "#ffffff",
+              fontFamily: "Playfair",
+              fontWeight: 700,
+              marginTop: 10,
+              textAlign: "center",
+            }}
+          >
+            {patient?.full_name ?? "Patient"}
+          </Text>
+          {op ? (
             <Text
               style={{
-                fontSize: 8.5,
-                color: GOLD,
-                letterSpacing: 2.5,
-                textTransform: "uppercase",
-                marginTop: 34,
+                fontSize: 13,
+                color: GOLD_LIGHT,
+                fontFamily: "Playfair",
+                fontStyle: "italic",
+                marginTop: 8,
+                textAlign: "center",
               }}
             >
-              Prepared for
+              {op}
             </Text>
+          ) : null}
+
+          <View style={{ flex: 1 }} />
+
+          {/* Basic facts */}
+          {coverLine1 ? (
+            <Text style={{ fontSize: 9.5, color: "#e8ecf5", letterSpacing: 0.5, textAlign: "center" }}>
+              {coverLine1}
+            </Text>
+          ) : null}
+          {coverLine2 ? (
             <Text
               style={{
-                fontSize: 24,
-                color: "#ffffff",
-                fontFamily: "Helvetica-Bold",
+                fontSize: 9.5,
+                color: GOLD_LIGHT,
+                letterSpacing: 0.8,
                 marginTop: 6,
                 textAlign: "center",
               }}
             >
-              {patient?.full_name ?? "Patient"}
+              {coverLine2}
             </Text>
-            {op ? (
-              <Text style={{ fontSize: 11, color: GOLD_LIGHT, marginTop: 6, textAlign: "center" }}>
-                {op}
-              </Text>
-            ) : null}
-          </View>
+          ) : null}
 
-          {/* Summary strip */}
-          {coverFacts.length > 0 && (
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "center",
-                alignItems: "flex-start",
-                marginBottom: 22,
-              }}
-            >
-              {coverFacts.map((f, i) => (
-                <CoverFact key={f.label} label={f.label} value={f.value} last={i === coverFacts.length - 1} />
-              ))}
-            </View>
-          )}
+          <View style={{ marginVertical: 22, width: 26, height: 1, backgroundColor: GOLD }} />
 
-          <Text style={{ fontSize: 8, color: GOLD_LIGHT, letterSpacing: 1, opacity: 0.85 }}>
-            Ref {ref}  ·  Issued {issued}  ·  turkcure.com
+          <Text style={{ fontSize: 8, color: GOLD_LIGHT, letterSpacing: 1.2, opacity: 0.9 }}>
+            Ref {ref}   ·   Issued {issued}   ·   turkcure.com
           </Text>
         </View>
       </Page>
@@ -361,56 +269,35 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
           meta={`WOF  ·  Issued ${issued}  ·  Ref ${ref}`}
         />
 
-        {/* Patient name banner */}
-        <View
-          style={{
-            marginBottom: 18,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            borderRadius: 8,
-            backgroundColor: "#faf6ec",
-            borderWidth: 1,
-            borderColor: "#e8d9ae",
-          }}
-          wrap={false}
-        >
-          <Text style={{ fontSize: 8.5, color: GOLD_DARK, textTransform: "uppercase", letterSpacing: 0.6 }}>
-            Prepared for
-          </Text>
-          <Text style={{ fontSize: 16, fontFamily: "Helvetica-Bold", color: INK, marginTop: 2 }}>
-            {patient?.full_name ?? "Patient"}
-          </Text>
-          {op ? <Text style={{ fontSize: 9.5, color: BLUE_DEEP, marginTop: 2 }}>{op}</Text> : null}
-        </View>
+        <TableSection number={1} title="Patient Information" wrap={false}>
+          <TRow label="Full name" value={patient?.full_name} />
+          <TRow label="Date of birth" value={fmtDate(patient?.date_of_birth)} />
+          <TRow label="Gender" value={fmtGender(patient?.gender)} />
+          <TRow label="Passport number" value={patient?.passport_number} />
+          <TRow label="Country" value={patient?.countries?.name} />
+          <TRow label="Phone / WhatsApp" value={patient?.phone} />
+          <TRow label="E-mail" value={patient?.email} last />
+        </TableSection>
 
-        <Section accent={GOLD} title="Patient Information" wrap={false}>
-          <KV label="Date of birth" value={fmtDate(patient?.date_of_birth)} />
-          <KV label="Gender" value={fmtGender(patient?.gender)} />
-          <KV label="Passport number" value={patient?.passport_number} />
-          <KV label="Country" value={patient?.countries?.name} />
-          <KV label="Phone / WhatsApp" value={patient?.phone} />
-          <KV label="E-mail" value={patient?.email} last />
-        </Section>
-
-        <Section accent={GOLD} title="Travel" wrap={false}>
-          <KV label="Arrival date" value={fmtDate(caseRow.arrival_date)} />
-          <KV label="Departure date" value={fmtDate(caseRow.departure_date)} />
-          <KV label="Airport" value={caseRow.airport} />
-          <KV label="Airport pickup" value={caseRow.airport_pickup} last />
-        </Section>
+        <TableSection number={2} title="Travel Information" wrap={false}>
+          <TRow label="Arrival date" value={fmtDate(caseRow.arrival_date)} />
+          <TRow label="Departure date" value={fmtDate(caseRow.departure_date)} />
+          <TRow label="Airport" value={caseRow.airport} />
+          <TRow label="Airport pickup" value={caseRow.airport_pickup} last />
+        </TableSection>
 
         {/* Hotel is booked for the whole stay (arrival → departure) */}
-        <Section accent={GOLD} title="Hotel" wrap={false}>
-          <KV label="Hotel name" value={hotel} />
-          <KV label="Check-in date" value={fmtDate(caseRow.arrival_date)} />
-          <KV label="Check-out date" value={fmtDate(caseRow.departure_date)} />
-          <KV label="Total nights" value={totalNights ? `${totalNights} nights` : null} last />
-        </Section>
+        <TableSection number={3} title="Hotel Information" wrap={false}>
+          <TRow label="Hotel name" value={hotel} />
+          <TRow label="Check-in date" value={fmtDate(caseRow.arrival_date)} />
+          <TRow label="Check-out date" value={fmtDate(caseRow.departure_date)} />
+          <TRow label="Total nights" value={totalNights ? `${totalNights} nights` : null} last />
+        </TableSection>
 
-        <Section accent={GOLD} title="Hospital" wrap={false}>
-          <KV label="Hospital name" value={hospital} />
-          <KV label="Operation date" value={fmtDate(caseRow.surgery_date)} />
-          <KV
+        <TableSection number={4} title="Hospital Information" wrap={false}>
+          <TRow label="Hospital name" value={hospital} />
+          <TRow label="Operation date" value={fmtDate(caseRow.surgery_date)} />
+          <TRow
             label="Hospital stay"
             value={
               hospitalNights
@@ -419,54 +306,43 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
             }
             last
           />
-        </Section>
+        </TableSection>
 
-        <Section accent={GOLD} title="Package Details" wrap={false}>
-          <View style={{ paddingVertical: 8 }}>
-            <Text style={{ fontFamily: "Helvetica-Bold", color: INK, marginBottom: 7, fontSize: 10 }}>
-              {op || "Treatment package"}
+        <TableSection number={5} title="Package Details" wrap={false}>
+          <View style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
+            <Text style={{ fontWeight: 700, color: INK, marginBottom: 8, fontSize: 10.5 }}>
+              Procedure: {op || "Treatment package"}
             </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {packageBullets.map((b, i) => (
-                <View key={i} style={{ flexDirection: "row", width: "50%", paddingVertical: 2.5, paddingRight: 10 }}>
-                  <Text style={{ color: GOLD, marginRight: 5 }}>•</Text>
+                <View
+                  key={i}
+                  style={{ flexDirection: "row", width: "50%", paddingVertical: 3, paddingRight: 12 }}
+                >
+                  <Text style={{ color: GOLD, marginRight: 6 }}>•</Text>
                   <Text style={{ flex: 1, color: TEXT }}>{b}</Text>
                 </View>
               ))}
             </View>
           </View>
-        </Section>
+        </TableSection>
 
-        {/* Payment — highlighted summary card */}
-        <View style={s.section} wrap={false}>
-          <View style={s.sectionHead}>
-            <View style={[s.sectionTick, { backgroundColor: GOLD }]} />
-            <Text style={s.sectionTitle}>Payment</Text>
+        <TableSection number={6} title="Payment Information" wrap={false}>
+          <TRow label="Total package price" value={money(total)} />
+          <TRow label="Deposit paid" value={money(deposit)} />
+          <View style={[s.tRowLast, { backgroundColor: GOLD_SOFT_BG }]}>
+            <Text style={[s.tLabel, { backgroundColor: "transparent", color: GOLD_DARK }]}>
+              Remaining balance
+            </Text>
+            <Text style={[s.tValue, { fontSize: 12, fontWeight: 700, color: NAVY }]}>
+              {money(Math.max(total - deposit, 0))}
+            </Text>
           </View>
-          <View
-            style={{
-              borderWidth: 1,
-              borderColor: "#e8d9ae",
-              borderRadius: 6,
-              backgroundColor: "#f5f9ff",
-              paddingVertical: 3,
-              paddingHorizontal: 12,
-            }}
-          >
-            <KV label="Total package price" value={money(total)} />
-            <KV label="Deposit paid" value={money(deposit)} />
-            <View style={{ flexDirection: "row", paddingVertical: 9, alignItems: "center" }}>
-              <Text style={[s.kvLabel, { color: BLUE_DEEP }]}>Remaining balance</Text>
-              <Text style={{ flex: 1, fontFamily: "Helvetica-Bold", fontSize: 12, color: BLUE_DEEP }}>
-                {money(Math.max(total - deposit, 0))}
-              </Text>
-            </View>
-          </View>
-          <Text style={{ fontSize: 8.5, marginTop: 6, color: MUTED }}>
-            Payment method: Cash / Bank Transfer / Card. Remaining balance is to be paid upon arrival
-            in Istanbul before the procedure.
-          </Text>
-        </View>
+        </TableSection>
+        <Text style={{ fontSize: 8.5, marginTop: -12, marginBottom: 20, color: MUTED }}>
+          Payment method: Cash / Bank Transfer / Card. Remaining balance is to be paid upon arrival
+          in Istanbul before the procedure.
+        </Text>
 
         {/* Instructions */}
         {(instructions ?? []).map((ins, idx) => (
@@ -476,7 +352,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
             </Text>
             {mdLines(ins.body_md).map((line, j) =>
               line.heading ? (
-                <Text key={j} style={[s.bold, { marginTop: 5, marginBottom: 2, fontSize: 9.5 }]}>
+                <Text key={j} style={[s.bold, { marginTop: 6, marginBottom: 2, fontSize: 10 }]}>
                   {line.text}
                 </Text>
               ) : (
@@ -500,27 +376,29 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         ))}
 
         {/* Company */}
-        <Section accent={GOLD} title={COMPANY.name} wrap={false}>
-          <KV label="Patient coordinator" value={coordinator} />
-          <KV label="WhatsApp" value={COMPANY.whatsapp} />
-          <KV label="Website" value={COMPANY.website} />
-          <KV label="Location" value={COMPANY.location} last />
-        </Section>
+        <View style={{ marginTop: 20 }}>
+          <TableSection number={7} title={COMPANY.name} wrap={false}>
+            <TRow label="Patient coordinator" value={coordinator} />
+            <TRow label="WhatsApp" value={COMPANY.whatsapp} />
+            <TRow label="Website" value={COMPANY.website} />
+            <TRow label="Location" value={COMPANY.location} last />
+          </TableSection>
+        </View>
 
         {/* Confirmation + two-column signature block */}
         <View wrap={false} style={{ marginTop: 4 }}>
           <Text style={s.instrHeading}>Confirmation</Text>
-          <Text style={{ marginBottom: 22, lineHeight: 1.5, color: TEXT }}>
+          <Text style={{ marginBottom: 26, lineHeight: 1.5, color: TEXT }}>
             By confirming this document, the patient acknowledges the reservation and treatment plan
             organized by Turkcure.
           </Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 34 }}>
             <View style={{ flex: 1 }}>
-              <View style={{ borderTopWidth: 1, borderTopColor: "#c3ccd8", marginBottom: 4 }} />
+              <View style={{ borderTopWidth: 1, borderTopColor: TABLE_LINE, marginBottom: 5 }} />
               <Text style={{ color: MUTED, fontSize: 8.5 }}>Patient Signature</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <View style={{ borderTopWidth: 1, borderTopColor: "#c3ccd8", marginBottom: 4 }} />
+              <View style={{ borderTopWidth: 1, borderTopColor: TABLE_LINE, marginBottom: 5 }} />
               <Text style={{ color: MUTED, fontSize: 8.5 }}>Date</Text>
             </View>
           </View>
