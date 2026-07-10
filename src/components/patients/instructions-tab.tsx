@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import { uploadInstructionImage } from "@/lib/upload-instruction-image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
@@ -221,7 +222,12 @@ function InstructionCard({
         />
       </CardHeader>
       <CardContent className="space-y-3">
-        <MarkdownEditor value={body} onChange={setBody} rows={12} />
+        <MarkdownEditor
+          value={body}
+          onChange={setBody}
+          rows={12}
+          uploadImage={(file) => uploadInstructionImage(file, `cases/${instruction.id}`)}
+        />
         <div className="flex flex-wrap items-center gap-3">
           {images.map((path) => (
             <div key={path} className="group relative">

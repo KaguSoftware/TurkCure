@@ -435,3 +435,105 @@ body {
   animation: reminder-out 260ms ease-in forwards;
   overflow: hidden;
 }
+
+/* ===== WYSIWYG instruction editor (TipTap) ===== */
+.md-prose {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--foreground);
+  min-height: inherit;
+}
+.md-prose > * + * {
+  margin-top: 0.6em;
+}
+.md-prose h1 {
+  font-size: 1.25rem;
+  font-weight: 650;
+  margin-top: 1em;
+}
+.md-prose h2 {
+  font-size: 1.05rem;
+  font-weight: 650;
+  margin-top: 1em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--border);
+}
+.md-prose h3 {
+  font-size: 0.925rem;
+  font-weight: 600;
+  margin-top: 0.8em;
+}
+.md-prose h1:first-child,
+.md-prose h2:first-child,
+.md-prose h3:first-child {
+  margin-top: 0;
+}
+.md-prose strong {
+  font-weight: 650;
+}
+.md-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-prose ul,
+.md-prose ol {
+  padding-left: 1.4em;
+}
+.md-prose ul {
+  list-style: disc;
+}
+.md-prose ol {
+  list-style: decimal;
+}
+.md-prose li + li {
+  margin-top: 0.2em;
+}
+.md-prose code {
+  background: var(--surface-hover);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+}
+.md-prose blockquote {
+  border-left: 2px solid var(--info);
+  background: var(--info-soft);
+  color: var(--info);
+  border-radius: 0 6px 6px 0;
+  padding: 0.5em 0.8em;
+}
+.md-prose img {
+  max-height: 14rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.md-prose img.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+}
+.md-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+.md-prose th,
+.md-prose td {
+  border: 1px solid var(--border);
+  padding: 0.3em 0.55em;
+  vertical-align: top;
+}
+.md-prose th {
+  background: var(--surface-hover);
+  font-weight: 600;
+  text-align: left;
+}
+.md-prose .selectedCell {
+  background: var(--primary-soft);
+}
+.md-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--muted-light);
+  pointer-events: none;
+}

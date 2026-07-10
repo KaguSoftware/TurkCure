@@ -5,6 +5,7 @@ import { Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import { uploadInstructionImage } from "@/lib/upload-instruction-image";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StarRating } from "@/components/ui/star-rating";
@@ -29,7 +30,15 @@ export interface FieldDef {
 
 function MarkdownField({ name, defaultValue }: { name: string; defaultValue: string }) {
   const [value, setValue] = React.useState(defaultValue);
-  return <MarkdownEditor name={name} value={value} onChange={setValue} rows={18} />;
+  return (
+    <MarkdownEditor
+      name={name}
+      value={value}
+      onChange={setValue}
+      rows={18}
+      uploadImage={(file) => uploadInstructionImage(file, "templates")}
+    />
+  );
 }
 
 function ListField({ name, defaultValue, label }: { name: string; defaultValue: string[]; label: string }) {
