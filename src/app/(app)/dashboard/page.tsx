@@ -77,7 +77,7 @@ export default async function DashboardPage() {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {PATIENT_STATUSES.map((s) => (
           <Link key={s} href="/patients">
-            <Card className="transition-[box-shadow,transform] duration-200 [transition-timing-function:var(--ease-spring)] hover:-translate-y-0.5 hover:shadow-pop">
+            <Card className="hover-lift">
               <CardContent className="pt-4">
                 <p className="text-2xl font-bold tabular-nums">{counts[s] ?? 0}</p>
                 <Badge tone={PATIENT_STATUS_TONE[s]} className="mt-1">

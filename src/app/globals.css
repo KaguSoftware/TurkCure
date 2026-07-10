@@ -208,18 +208,84 @@ body {
   transform-origin: top;
 }
 
-/* Press feedback: buttons squish slightly and spring back on release. */
+/* Exits: quicker and without bounce, like macOS dismissals. */
+@keyframes overlay-out {
+  to { opacity: 0; }
+}
+.animate-overlay-out {
+  animation: overlay-out 160ms ease-in both;
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+}
+.animate-pop-out {
+  animation: pop-out 180ms ease-in both;
+}
+
+@keyframes dropdown-out {
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+}
+.animate-dropdown-out {
+  animation: dropdown-out 150ms ease-in both;
+  transform-origin: top;
+}
+
+@keyframes expand-out {
+  to {
+    opacity: 0;
+    transform: scaleY(0.92) translateY(-6px);
+  }
+}
+.animate-expand-out {
+  animation: expand-out 160ms ease-in both;
+  transform-origin: top;
+}
+
+@keyframes drawer-out {
+  to { transform: translateX(-100%); }
+}
+.animate-drawer-out {
+  animation: drawer-out 240ms ease-in both;
+}
+
+/* Press feedback: buttons squish slightly and spring back on release.
+   Hover states glide in slowly (macOS-style), with a whisper of extra light. */
 .pressable {
   transition:
     transform 200ms var(--ease-spring),
-    background-color 150ms ease,
-    color 150ms ease,
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    opacity 150ms ease;
+    background-color 300ms var(--ease-out-soft),
+    color 300ms var(--ease-out-soft),
+    border-color 300ms var(--ease-out-soft),
+    box-shadow 300ms var(--ease-out-soft),
+    filter 300ms var(--ease-out-soft),
+    opacity 300ms var(--ease-out-soft);
+}
+.pressable:hover:not(:disabled) {
+  filter: brightness(1.04);
 }
 .pressable:active:not(:disabled) {
   transform: scale(0.96);
+  filter: brightness(0.97);
+}
+
+/* Cards and tiles: a slow lift with growing shadow and a touch of light. */
+.hover-lift {
+  transition:
+    transform 350ms var(--ease-out-soft),
+    box-shadow 350ms var(--ease-out-soft),
+    filter 350ms var(--ease-out-soft);
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-pop);
+  filter: brightness(1.02);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -227,8 +293,13 @@ body {
   .animate-pop,
   .animate-dropdown,
   .animate-drawer,
-  .animate-expand {
-    animation: none;
+  .animate-expand,
+  .animate-overlay-out,
+  .animate-pop-out,
+  .animate-dropdown-out,
+  .animate-expand-out,
+  .animate-drawer-out {
+    animation-duration: 1ms;
   }
   .pressable:active:not(:disabled) {
     transform: none;

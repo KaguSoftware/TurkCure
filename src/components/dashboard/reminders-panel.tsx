@@ -22,6 +22,7 @@ import { toast } from "@/components/ui/toast";
 import { upsertReminder, toggleReminderDone, deleteReminder } from "@/lib/actions/reminders";
 import type { Reminder, ReminderType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/use-presence";
 
 const TYPE_META: Record<ReminderType, { label: string; tone: Tone }> = {
   follow_up: { label: "Follow-up", tone: "blue" },
@@ -63,6 +64,7 @@ export function RemindersPanel({
   const [assigneeFilter, setAssigneeFilter] = React.useState("all");
   const [dueFrom, setDueFrom] = React.useState("");
   const [dueTo, setDueTo] = React.useState("");
+  const filtersPanel = usePresence(showFilters, 160);
   const [error, setError] = React.useState<string | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
   const [now] = React.useState(() => Date.now());
@@ -403,8 +405,13 @@ export function RemindersPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {showFilters && (
-          <div className="animate-expand flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-hover/40 p-2.5">
+        {filtersPanel.mounted && (
+          <div
+            className={cn(
+              "animate-expand flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-hover/40 p-2.5",
+              filtersPanel.closing && "animate-expand-out"
+            )}
+          >
             <Select
               className="w-36"
               value={typeFilter}

@@ -15,6 +15,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/use-presence";
 import { Select } from "./input";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -154,6 +155,7 @@ export function DatePicker({
   className?: string;
 }) {
   const { open, setOpen, ref } = usePopover();
+  const { mounted, closing } = usePresence(open, 150);
   const [internal, setInternal] = React.useState(defaultValue ?? "");
   const current = value !== undefined ? value : internal;
   const selected = current ? parseISO(current) : null;
@@ -193,8 +195,13 @@ export function DatePicker({
           </span>
         )}
       </button>
-      {open && (
-        <div className="animate-dropdown absolute z-50 mt-1 rounded-xl border border-border bg-surface shadow-pop">
+      {mounted && (
+        <div
+          className={cn(
+            "animate-dropdown absolute z-50 mt-1 rounded-xl border border-border bg-surface shadow-pop",
+            closing && "animate-dropdown-out"
+          )}
+        >
           <Calendar selected={selected} onSelect={(d) => set(format(d, "yyyy-MM-dd"))} />
         </div>
       )}

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/use-presence";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -93,6 +94,7 @@ export const Select = React.forwardRef<
   const listRef = React.useRef<HTMLDivElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
+  const { mounted: menuMounted, closing: menuClosing } = usePresence(open, 150);
   const showSearch = options.length > SEARCH_THRESHOLD;
   const filtered = query
     ? options.filter((o) => o.text.toLowerCase().includes(query.toLowerCase()))
@@ -153,8 +155,13 @@ export const Select = React.forwardRef<
           className={cn("size-4 shrink-0 text-muted-light transition-transform", open && "rotate-180")}
         />
       </button>
-      {open && (
-        <div className="animate-dropdown absolute z-50 mt-1 w-full min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop">
+      {menuMounted && (
+        <div
+          className={cn(
+            "animate-dropdown absolute z-50 mt-1 w-full min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop",
+            menuClosing && "animate-dropdown-out"
+          )}
+        >
           {showSearch && (
             <div className="relative mb-1 px-1 pt-1">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-light" />

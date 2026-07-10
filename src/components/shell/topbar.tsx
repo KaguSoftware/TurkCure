@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/use-presence";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { SidebarContent } from "./sidebar";
@@ -21,6 +23,7 @@ export function Topbar({
 }) {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const { mounted: drawerMounted, closing: drawerClosing } = usePresence(drawerOpen, 240);
 
   React.useEffect(() => {
     if (!drawerOpen) return;
@@ -62,13 +65,21 @@ export function Topbar({
         </Button>
       </div>
 
-      {drawerOpen && (
+      {drawerMounted && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]"
+            className={cn(
+              "animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]",
+              drawerClosing && "animate-overlay-out"
+            )}
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="animate-drawer fixed inset-y-0 left-0 z-10 flex w-64 flex-col border-r border-border bg-surface shadow-pop">
+          <aside
+            className={cn(
+              "animate-drawer fixed inset-y-0 left-0 z-10 flex w-64 flex-col border-r border-border bg-surface shadow-pop",
+              drawerClosing && "animate-drawer-out"
+            )}
+          >
             <div className="flex h-14 items-center justify-between border-b border-border px-5">
               <Link
                 href="/dashboard"

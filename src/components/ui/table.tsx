@@ -18,7 +18,15 @@ export function TBody({ className, ...props }: React.HTMLAttributes<HTMLTableSec
 }
 
 export function Tr({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("transition-colors hover:bg-surface-hover", className)} {...props} />;
+  return (
+    <tr
+      className={cn(
+        "transition-colors duration-300 [transition-timing-function:var(--ease-out-soft)] hover:bg-surface-hover",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {

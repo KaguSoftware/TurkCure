@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2, Car, Hotel, Loader2, Search, Stethoscope, User } from "lucide-react";
 import { globalSearch, type SearchResult } from "@/lib/actions/search";
 import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/use-presence";
 
 const KIND_META: Record<SearchResult["kind"], { label: string; icon: typeof User }> = {
   patient: { label: "Patient", icon: User },
@@ -23,6 +24,7 @@ export function CommandPalette() {
   const [pending, setPending] = React.useState(false);
   const seq = React.useRef(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const { mounted, closing } = usePresence(open, 180);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -36,12 +38,11 @@ export function CommandPalette() {
   }, []);
 
   React.useEffect(() => {
-    if (!open) {
-      setQuery("");
-      setResults([]);
-      setActive(0);
-      return;
-    }
+    if (!open) return;
+    // Reset on open (not close) so the content doesn't flash during the exit animation.
+    setQuery("");
+    setResults([]);
+    setActive(0);
     // Focus after the dialog paints.
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
@@ -83,15 +84,23 @@ export function CommandPalette() {
     }
   }
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[15vh]">
       <div
-        className="animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]"
+        className={cn(
+          "animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]",
+          closing && "animate-overlay-out"
+        )}
         onClick={() => setOpen(false)}
       />
-      <div className="animate-pop relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-pop">
+      <div
+        className={cn(
+          "animate-pop relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-pop",
+          closing && "animate-pop-out"
+        )}
+      >
         <div className="flex items-center gap-2 border-b border-border px-4">
           {pending ? (
             <Loader2 className="size-4 shrink-0 animate-spin text-muted-light" />

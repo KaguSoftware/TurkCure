@@ -31,6 +31,7 @@ import {
 } from "@/lib/actions/patients";
 import { toast } from "@/components/ui/toast";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePresence } from "@/lib/use-presence";
 import { PATIENT_STATUSES, type Patient, type PatientStatus } from "@/lib/types";
 import { cn, formatDate, waLink } from "@/lib/utils";
 
@@ -79,6 +80,8 @@ export function PatientsView({
   const [confirmBulkDelete, setConfirmBulkDelete] = React.useState(false);
   const [bulkPending, setBulkPending] = React.useState(false);
   const [exportPending, setExportPending] = React.useState(false);
+  const filtersPanel = usePresence(showFilters, 160);
+  const bulkBar = usePresence(selected.size > 0, 160);
 
   function setParams(updates: Record<string, string | null>, resetPage = true) {
     const params = new URLSearchParams(searchParams.toString());
@@ -243,8 +246,13 @@ export function PatientsView({
         </div>
       </div>
 
-      {showFilters && (
-        <div className="animate-expand flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card">
+      {filtersPanel.mounted && (
+        <div
+          className={cn(
+            "animate-expand flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card",
+            filtersPanel.closing && "animate-expand-out"
+          )}
+        >
           <Select
             className="w-40"
             value={statusFilter}
@@ -293,8 +301,13 @@ export function PatientsView({
         </div>
       )}
 
-      {selected.size > 0 && (
-        <div className="animate-expand flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft/40 p-3 shadow-card">
+      {bulkBar.mounted && (
+        <div
+          className={cn(
+            "animate-expand flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft/40 p-3 shadow-card",
+            bulkBar.closing && "animate-expand-out"
+          )}
+        >
           <span className="text-sm font-medium">
             {selected.size} selected
           </span>
@@ -376,7 +389,7 @@ export function PatientsView({
                   {col.map((p) => (
                     <div
                       key={p.id}
-                      className="rounded-lg border border-border bg-surface p-3 shadow-card transition-[box-shadow,transform] duration-200 [transition-timing-function:var(--ease-spring)] hover:-translate-y-0.5 hover:shadow-pop"
+                      className="hover-lift rounded-lg border border-border bg-surface p-3 shadow-card"
                     >
                       <Link
                         href={`/patients/${p.id}`}

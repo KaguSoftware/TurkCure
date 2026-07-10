@@ -3,6 +3,7 @@
 import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/use-presence";
 
 export function Dialog({
   open,
@@ -17,6 +18,8 @@ export function Dialog({
   children: React.ReactNode;
   wide?: boolean;
 }) {
+  const { mounted, closing } = usePresence(open, 180);
+
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -28,17 +31,21 @@ export function Dialog({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
       <div
-        className="animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]"
+        className={cn(
+          "animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]",
+          closing && "animate-overlay-out"
+        )}
         onClick={onClose}
       />
       <div
         className={cn(
           "animate-pop relative z-10 mt-8 w-full rounded-xl border border-border bg-surface shadow-pop",
+          closing && "animate-pop-out",
           wide ? "max-w-3xl" : "max-w-lg"
         )}
       >
