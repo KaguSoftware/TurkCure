@@ -29,7 +29,7 @@ export interface FieldDef {
 
 function MarkdownField({ name, defaultValue }: { name: string; defaultValue: string }) {
   const [value, setValue] = React.useState(defaultValue);
-  return <MarkdownEditor name={name} value={value} onChange={setValue} rows={12} />;
+  return <MarkdownEditor name={name} value={value} onChange={setValue} rows={18} />;
 }
 
 function ListField({ name, defaultValue, label }: { name: string; defaultValue: string[]; label: string }) {
@@ -231,6 +231,7 @@ export function DirectoryManager({
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? `Edit ${entityName}` : `Add ${entityName}`}
+        wide={fields.some((f) => f.type === "markdown")}
       >
         <form onSubmit={onSubmit} className="space-y-4">
           {fields.map((f) => (

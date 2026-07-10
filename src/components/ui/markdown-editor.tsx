@@ -10,6 +10,8 @@ import {
   Italic,
   Link as LinkIcon,
   List,
+  Maximize2,
+  Minimize2,
   Table as TableIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -161,6 +163,7 @@ export function MarkdownEditor({
   name?: string;
 }) {
   const [tab, setTab] = React.useState<"write" | "preview">("write");
+  const [expanded, setExpanded] = React.useState(false);
   const taRef = React.useRef<HTMLTextAreaElement>(null);
   const pendingSel = React.useRef<{ start: number; end: number } | null>(null);
 
@@ -182,20 +185,67 @@ export function MarkdownEditor({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (!(e.ctrlKey || e.metaKey)) return;
-    const key = e.key.toLowerCase();
-    if (key === "b" || key === "i" || key === "k") {
+    if (e.ctrlKey || e.metaKey) {
+      const key = e.key.toLowerCase();
+      if (key === "b" || key === "i" || key === "k") {
+        e.preventDefault();
+        runAction(key === "b" ? "bold" : key === "i" ? "italic" : "link");
+      }
+      return;
+    }
+
+    // Smart Enter: continue lists, numbered lists and quotes; an empty item exits the list.
+    if (e.key === "Enter" && !e.shiftKey) {
+      const ta = e.currentTarget;
+      const { value: v, selectionStart: s, selectionEnd } = ta;
+      if (s !== selectionEnd) return;
+      const lineStart = v.lastIndexOf("\n", s - 1) + 1;
+      const line = v.slice(lineStart, s);
+      const m = /^(>\s|(\d+)\.\s|[-*]\s)(.*)$/.exec(line);
+      if (!m) return;
       e.preventDefault();
-      runAction(key === "b" ? "bold" : key === "i" ? "italic" : "link");
+      if (m[3].trim() === "") {
+        // Empty item — remove the marker and end the list.
+        const next = v.slice(0, lineStart) + "\n" + v.slice(s);
+        pendingSel.current = { start: lineStart + 1, end: lineStart + 1 };
+        onChange(next);
+        return;
+      }
+      const marker = m[2] !== undefined ? `${Number(m[2]) + 1}. ` : m[1];
+      const next = v.slice(0, s) + "\n" + marker + v.slice(s);
+      const cursor = s + 1 + marker.length;
+      pendingSel.current = { start: cursor, end: cursor };
+      onChange(next);
     }
   }
+
+  React.useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setExpanded(false);
+      }
+    };
+    // Capture phase so a surrounding Dialog's own Escape handler doesn't close it too.
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [expanded]);
 
   const minHeight = rows * 20 + 16;
 
   return (
+    <>
+      {expanded && (
+        <div
+          className="animate-overlay fixed inset-0 z-60 bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setExpanded(false)}
+        />
+      )}
     <div
       className={cn(
         "rounded-lg border border-border bg-surface shadow-card transition-shadow focus-within:ring-2 focus-within:ring-[var(--ring)]",
+        expanded && "fixed inset-3 z-70 flex flex-col shadow-pop sm:inset-8",
         className
       )}
     >
@@ -218,27 +268,40 @@ export function MarkdownEditor({
             </button>
           ))}
         </div>
-        <div
-          className={cn(
-            "flex items-center gap-0.5 pb-1.5",
-            tab === "preview" && "pointer-events-none opacity-0"
-          )}
-        >
-          {TOOLBAR.map((b, i) => (
-            <React.Fragment key={b.label}>
-              {b.group && i > 0 && <span className="mx-1 h-4 w-px bg-border" />}
-              <button
-                type="button"
-                title={b.label}
-                aria-label={b.label}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runAction(b.id)}
-                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground cursor-pointer [&_svg]:size-4"
-              >
-                {b.icon}
-              </button>
-            </React.Fragment>
-          ))}
+        <div className="flex items-center gap-0.5 pb-1.5">
+          <div
+            className={cn(
+              "flex items-center gap-0.5",
+              tab === "preview" && "pointer-events-none opacity-0"
+            )}
+          >
+            {TOOLBAR.map((b, i) => (
+              <React.Fragment key={b.label}>
+                {b.group && i > 0 && <span className="mx-1 h-4 w-px bg-border" />}
+                <button
+                  type="button"
+                  title={b.label}
+                  aria-label={b.label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => runAction(b.id)}
+                  className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground cursor-pointer [&_svg]:size-4"
+                >
+                  {b.icon}
+                </button>
+              </React.Fragment>
+            ))}
+            <span className="mx-1 h-4 w-px bg-border" />
+          </div>
+          <button
+            type="button"
+            title={expanded ? "Exit full screen (Esc)" : "Full screen"}
+            aria-label={expanded ? "Exit full screen" : "Full screen"}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setExpanded((x) => !x)}
+            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground cursor-pointer [&_svg]:size-4"
+          >
+            {expanded ? <Minimize2 /> : <Maximize2 />}
+          </button>
         </div>
       </div>
       {tab === "write" ? (
@@ -249,13 +312,20 @@ export function MarkdownEditor({
           onKeyDown={onKeyDown}
           rows={rows}
           placeholder={placeholder}
-          className="block w-full resize-y rounded-b-lg bg-transparent px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-light focus-visible:outline-none"
+          className={cn(
+            "block w-full rounded-b-lg bg-transparent px-3 py-2 font-mono text-xs leading-relaxed text-foreground placeholder:text-muted-light focus-visible:outline-none",
+            expanded ? "flex-1 resize-none text-sm" : "resize-y"
+          )}
         />
       ) : (
-        <div className="overflow-y-auto px-3 py-2" style={{ minHeight, maxHeight: 480 }}>
+        <div
+          className={cn("overflow-y-auto px-3 py-2", expanded && "flex-1")}
+          style={expanded ? undefined : { minHeight, maxHeight: 480 }}
+        >
           <MarkdownPreview source={value} />
         </div>
       )}
     </div>
+    </>
   );
 }
