@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, View, Text, Svg, Defs, LinearGradient, Stop, Rect } from "@react-pdf/renderer";
+import { StyleSheet, View, Text, Svg, Defs, LinearGradient, Stop, Rect, Polygon, Line } from "@react-pdf/renderer";
 
 // Brand palette — "clean medical": airy white, brand blue, teal→green accent.
 export const BLUE = "#1d59d6";
@@ -14,6 +14,13 @@ export const FAINT = "#9aa7b6";
 export const HAIRLINE = "#e7ecf2";
 export const CARD_BG = "#fbfcfe";
 export const ACCENT_SOFT = "#eef4ff";
+
+// Premium cover palette — deep navy + antique gold.
+export const NAVY = "#0b1f3f";
+export const NAVY_DEEP = "#071531";
+export const GOLD = "#c9a24b";
+export const GOLD_LIGHT = "#e6c87d";
+export const GOLD_DARK = "#9a7a2e";
 
 export const COMPANY = {
   name: "Turkcure Health Tourism",
@@ -39,7 +46,7 @@ export const pdfStyles = StyleSheet.create({
 
   // A light "card" section — no heavy borders, just a hairline frame + soft head.
   section: {
-    marginBottom: 15,
+    marginBottom: 16,
   },
   sectionHead: {
     flexDirection: "row",
@@ -65,7 +72,7 @@ export const pdfStyles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: CARD_BG,
     paddingVertical: 3,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
   },
   kvRow: {
     flexDirection: "row",
@@ -159,8 +166,89 @@ export function Wordmark({ scale = 1 }: { scale?: number }) {
   );
 }
 
+/**
+ * The wordmark on dark backgrounds: "Turk" in warm white, "Cure" filled with
+ * an antique-gold gradient. Same geometry as `Wordmark`.
+ */
+export function WordmarkGold({ scale = 1 }: { scale?: number }) {
+  const w = 132 * scale;
+  const h = 28 * scale;
+  return (
+    <Svg width={w} height={h} viewBox="0 0 132 28">
+      <Defs>
+        <LinearGradient id="cureGoldGrad" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor={GOLD_DARK} />
+          <Stop offset="0.5" stopColor={GOLD} />
+          <Stop offset="1" stopColor={GOLD_LIGHT} />
+        </LinearGradient>
+      </Defs>
+      <Text
+        x={0}
+        y={21}
+        fill="#f5f1e6"
+        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+      >
+        Turk
+      </Text>
+      <Text
+        x={58}
+        y={21}
+        fill="url(#cureGoldGrad)"
+        style={{ fontFamily: "Helvetica-Bold", fontSize: 24, letterSpacing: -0.5 }}
+      >
+        Cure
+      </Text>
+    </Svg>
+  );
+}
+
+/** A diamond (rotated-square) shape drawn as a polygon around a center point. */
+export function Diamond({
+  cx,
+  cy,
+  r,
+  opacity = 1,
+}: {
+  cx: number;
+  cy: number;
+  r: number;
+  opacity?: number;
+}) {
+  return (
+    <Polygon
+      points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`}
+      fill={GOLD}
+      fillOpacity={opacity}
+    />
+  );
+}
+
+/** Centered gold divider: thin rules flanking a diamond. */
+export function CoverOrnament({ width = 180 }: { width?: number }) {
+  const h = 12;
+  const mid = h / 2;
+  const cx = width / 2;
+  return (
+    <Svg width={width} height={h}>
+      <Line x1={0} y1={mid} x2={cx - 14} y2={mid} stroke={GOLD} strokeWidth={0.8} />
+      <Line x1={cx + 14} y1={mid} x2={width} y2={mid} stroke={GOLD} strokeWidth={0.8} />
+      <Diamond cx={cx} cy={mid} r={4} />
+    </Svg>
+  );
+}
+
 /** Standard header: wordmark left, title + meta right, hairline divider. */
-export function PdfHeader({ title, meta }: { title: React.ReactNode; meta?: string }) {
+export function PdfHeader({
+  title,
+  meta,
+  accent = "brand",
+}: {
+  title: React.ReactNode;
+  meta?: string;
+  accent?: "gold" | "brand";
+}) {
+  const stops =
+    accent === "gold" ? [GOLD_DARK, GOLD, GOLD_LIGHT] : [BLUE, CYAN, GREEN];
   return (
     <View>
       <View
@@ -181,9 +269,9 @@ export function PdfHeader({ title, meta }: { title: React.ReactNode; meta?: stri
       <Svg width="100%" height={2.5} style={{ marginBottom: 20 }}>
         <Defs>
           <LinearGradient id="ruleGrad" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={BLUE} />
-            <Stop offset="0.5" stopColor={CYAN} />
-            <Stop offset="1" stopColor={GREEN} />
+            <Stop offset="0" stopColor={stops[0]} />
+            <Stop offset="0.5" stopColor={stops[1]} />
+            <Stop offset="1" stopColor={stops[2]} />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={0} width="100%" height={2.5} fill="url(#ruleGrad)" rx={1.25} />
@@ -197,15 +285,17 @@ export function Section({
   title,
   children,
   wrap,
+  accent,
 }: {
   title: string;
   children: React.ReactNode;
   wrap?: boolean;
+  accent?: string;
 }) {
   return (
     <View style={pdfStyles.section} wrap={wrap}>
       <View style={pdfStyles.sectionHead}>
-        <View style={pdfStyles.sectionTick} />
+        <View style={[pdfStyles.sectionTick, accent ? { backgroundColor: accent } : {}]} />
         <Text style={pdfStyles.sectionTitle}>{title}</Text>
       </View>
       <View style={pdfStyles.card}>{children}</View>
