@@ -8,7 +8,6 @@ import {
   Building2,
   Hotel,
   Car,
-  Globe,
   Wallet,
   Settings,
   ClipboardList,
@@ -22,7 +21,6 @@ const NAV = [
   { href: "/hospitals", label: "Hospitals", icon: Building2 },
   { href: "/hotels", label: "Hotels", icon: Hotel },
   { href: "/drivers", label: "Drivers", icon: Car },
-  { href: "/countries", label: "Countries", icon: Globe },
   { href: "/templates", label: "Instructions", icon: ClipboardList },
 ];
 

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, FileDown, Pencil } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileDown, Pencil, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -62,14 +62,24 @@ export function PatientDetail({
   const [editOpen, setEditOpen] = React.useState(false);
   const [confirmDone, setConfirmDone] = React.useState(false);
   const complete = useAction();
-  const activeCase = cases[0] ?? null;
+  // Which case is being viewed; "new" shows an empty create form for a repeat visit.
+  const [selectedCaseId, setSelectedCaseId] = React.useState<string | "new">(
+    cases[0]?.id ?? "new"
+  );
+  const activeCase =
+    selectedCaseId === "new" ? null : cases.find((c) => c.id === selectedCaseId) ?? cases[0] ?? null;
+  // Payments/instructions shown belong to the case being viewed.
+  const casePayments = activeCase ? payments.filter((p) => p.case_id === activeCase.id) : [];
+  const caseInstructions = activeCase
+    ? instructions.filter((i) => i.case_id === activeCase.id)
+    : [];
   const totalPrice = activeCase
     ? (quoteItemsByCase[activeCase.id] ?? []).reduce((s, i) => s + Number(i.price), 0)
     : 0;
   // Paid = incoming payments with a paid date, in the case currency (same basis
   // as the reconciliation in the Payments tab).
   const paidTotal = activeCase
-    ? payments
+    ? casePayments
         .filter(
           (p) =>
             p.direction === "in" && p.paid_at && p.currency === activeCase.currency
@@ -162,6 +172,46 @@ export function PatientDetail({
         )}
       </div>
 
+      {cases.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-light">
+            Cases
+          </span>
+          {cases.map((c) => {
+            const label = c.operation_types?.name ?? "Case";
+            const when = c.arrival_date ? formatDate(c.arrival_date) : null;
+            const active = activeCase?.id === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCaseId(c.id)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                  active
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border text-muted hover:border-border-strong hover:text-foreground"
+                )}
+              >
+                {label}
+                {when && <span className={active ? "opacity-70" : "text-muted-light"}>{when}</span>}
+                {c.status === "completed" && <CheckCircle2 className="size-3.5 text-success" />}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setSelectedCaseId("new")}
+            className={cn(
+              "flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+              selectedCaseId === "new"
+                ? "border-primary bg-primary-soft text-primary"
+                : "border-border-strong text-muted hover:text-foreground"
+            )}
+          >
+            <PlusCircle className="size-3.5" /> New case
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-1 border-b border-border">
         {TABS.map((t) => (
           <button
@@ -182,17 +232,18 @@ export function PatientDetail({
       {tab === "Case & Quote" && (
         <CaseTab
           patient={patient}
-          cases={cases}
+          activeCase={activeCase}
           quoteItemsByCase={quoteItemsByCase}
           isAdmin={isAdmin}
           directories={directories}
+          onCaseCreated={(id) => setSelectedCaseId(id)}
         />
       )}
       {tab === "Payments" && (
         <PaymentsTab
           patient={patient}
-          cases={cases}
-          payments={payments}
+          cases={activeCase ? [activeCase] : []}
+          payments={casePayments}
           quotedTotal={totalPrice}
           isAdmin={isAdmin}
           directories={directories}
@@ -201,8 +252,8 @@ export function PatientDetail({
       {tab === "Instructions" && (
         <InstructionsTab
           patient={patient}
-          cases={cases}
-          instructions={instructions}
+          cases={activeCase ? [activeCase] : []}
+          instructions={caseInstructions}
           templates={directories.templates}
         />
       )}

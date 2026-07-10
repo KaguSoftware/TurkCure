@@ -26,18 +26,19 @@ const KINDS: { value: QuoteItemKind; label: string }[] = [
 
 export function CaseTab({
   patient,
-  cases,
+  activeCase,
   quoteItemsByCase,
   isAdmin,
   directories,
+  onCaseCreated,
 }: {
   patient: Patient;
-  cases: Case[];
+  activeCase: Case | null;
   quoteItemsByCase: Record<string, QuoteItem[]>;
   isAdmin: boolean;
   directories: Directories;
+  onCaseCreated?: (id: string) => void;
 }) {
-  const activeCase = cases[0] ?? null;
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -90,6 +91,7 @@ export function CaseTab({
       toast.error(result.error);
     } else {
       toast.success(activeCase ? "Case saved. Reminders regenerated." : "Case created.");
+      if (!activeCase && result.id) onCaseCreated?.(result.id);
       router.refresh();
     }
   }
@@ -122,7 +124,12 @@ export function CaseTab({
           <CardTitle>{activeCase ? "Case details" : "Create case"}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSaveCase} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* key resets all defaultValue fields when switching between cases */}
+          <form
+            key={activeCase?.id ?? "new"}
+            onSubmit={onSaveCase}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+          >
             {selectFields.map((f) => (
               <Field key={f.key} label={f.label}>
                 <div className="flex gap-1.5">
@@ -201,7 +208,8 @@ export function CaseTab({
                 {activeCase ? "Save case" : "Create case"}
               </Button>
               <p className="mt-2 text-xs text-muted-light">
-                Saving regenerates arrival, operation and aftercare reminders from the dates above.
+                Saves the case details above and regenerates arrival, operation and aftercare
+                reminders. The quote is saved separately, item by item.
               </p>
             </div>
           </form>
@@ -334,7 +342,10 @@ function QuoteEditor({
           </THead>
           <TBody>
             {items.length === 0 && (
-              <EmptyRow colSpan={isAdmin ? 5 : 4} message="No quote items yet." />
+              <EmptyRow
+                colSpan={isAdmin ? 5 : 4}
+                message="No quote items yet — add the first one below."
+              />
             )}
             {items.map((item) => (
               <Tr key={item.id}>
@@ -361,37 +372,62 @@ function QuoteEditor({
                 </Td>
               </Tr>
             ))}
+            {items.length > 0 && (
+              <Tr className="bg-surface-hover/40">
+                <Td className="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Total
+                </Td>
+                <Td />
+                {isAdmin && (
+                  <Td className="text-right font-semibold text-muted">
+                    {formatMoney(totalCost, currency)}
+                  </Td>
+                )}
+                <Td className="text-right font-bold">{formatMoney(totalPrice, currency)}</Td>
+                <Td />
+              </Tr>
+            )}
           </TBody>
         </Table>
 
-        <form ref={formRef} onSubmit={onAdd} className="space-y-3 px-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Field label="Type">
-              <Select name="kind" defaultValue="surgery">
-                {KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>
-                    {k.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Description" className="col-span-2 sm:col-span-1">
-              <Input name="description" required placeholder="e.g. FUE 3500 grafts" />
-            </Field>
-            {isAdmin && (
-              <Field label={`Cost (${currency})`}>
-                <Input name="cost" type="number" step="0.01" min="0" placeholder="0.00" />
+        <div className="mx-5 rounded-xl border border-dashed border-border-strong p-4">
+          <p className="mb-3 text-sm font-semibold">Add quote item</p>
+          <form ref={formRef} onSubmit={onAdd} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Field label="Type">
+                <Select name="kind" defaultValue="surgery">
+                  {KINDS.map((k) => (
+                    <option key={k.value} value={k.value}>
+                      {k.label}
+                    </option>
+                  ))}
+                </Select>
               </Field>
+              <Field label="Description" className="col-span-2 sm:col-span-1">
+                <Input name="description" required placeholder="e.g. FUE 3500 grafts" />
+              </Field>
+              {isAdmin && (
+                <Field label={`Cost (${currency})`}>
+                  <Input name="cost" type="number" step="0.01" min="0" placeholder="0.00" />
+                </Field>
+              )}
+              <Field label={`Price (${currency})`}>
+                <Input name="price" type="number" step="0.01" min="0" required placeholder="0.00" />
+              </Field>
+            </div>
+            {error && (
+              <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
             )}
-            <Field label={`Price (${currency})`}>
-              <Input name="price" type="number" step="0.01" min="0" required placeholder="0.00" />
-            </Field>
-          </div>
-          {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
-          <Button type="submit" variant="soft" size="sm" pending={busy}>
-            <Plus /> Add item
-          </Button>
-        </form>
+            <div className="flex items-center gap-3">
+              <Button type="submit" variant="soft" size="sm" pending={busy}>
+                <Plus /> Add to quote
+              </Button>
+              <p className="text-xs text-muted-light">
+                Items are saved instantly — no need to press &ldquo;Save case&rdquo;.
+              </p>
+            </div>
+          </form>
+        </div>
       </CardContent>
       <ConfirmDialog
         open={confirmDelete !== null}

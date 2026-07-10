@@ -2,13 +2,22 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlarmClockPlus, Bell, Check, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  AlarmClockPlus,
+  Bell,
+  Check,
+  Pencil,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge, type Tone } from "@/components/ui/badge";
-import { DateTimePicker } from "@/components/ui/date-picker";
+import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
 import { toast } from "@/components/ui/toast";
 import { upsertReminder, toggleReminderDone, deleteReminder } from "@/lib/actions/reminders";
 import type { Reminder, ReminderType } from "@/lib/types";
@@ -48,6 +57,12 @@ export function RemindersPanel({
   const [showCompleted, setShowCompleted] = React.useState(false);
   const [snoozing, setSnoozing] = React.useState<ReadonlySet<string>>(new Set());
   const [reopening, setReopening] = React.useState<ReadonlySet<string>>(new Set());
+  const [showFilters, setShowFilters] = React.useState(false);
+  const [typeFilter, setTypeFilter] = React.useState("all");
+  const [patientFilter, setPatientFilter] = React.useState("all");
+  const [assigneeFilter, setAssigneeFilter] = React.useState("all");
+  const [dueFrom, setDueFrom] = React.useState("");
+  const [dueTo, setDueTo] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
   const [now] = React.useState(() => Date.now());
@@ -326,35 +341,136 @@ export function RemindersPanel({
     (c) => !items.some((r) => r.id === c.id)
   );
 
+  const withDone = items.map((r) =>
+    r.id in doneOverrides ? { ...r, done_at: doneOverrides[r.id] } : r
+  );
+  const patientOptions = [
+    ...new Map(
+      withDone
+        .filter((r) => r.patient_id)
+        .map((r) => [r.patient_id!, r.patients?.full_name ?? "Unknown patient"])
+    ).entries(),
+  ].sort((a, b) => a[1].localeCompare(b[1]));
+
+  const shown = withDone
+    .filter((r) => {
+      if (typeFilter !== "all" && r.type !== typeFilter) return false;
+      if (patientFilter !== "all" && r.patient_id !== patientFilter) return false;
+      if (assigneeFilter !== "all" && r.assigned_to !== assigneeFilter) return false;
+      const due = r.due_at.slice(0, 10);
+      if (dueFrom && due < dueFrom) return false;
+      if (dueTo && due > dueTo) return false;
+      return true;
+    })
+    // Unchecked always on top, each group ordered by due date.
+    .sort((a, b) => {
+      if (!!a.done_at !== !!b.done_at) return a.done_at ? 1 : -1;
+      return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+    });
+
+  const filtersActive =
+    typeFilter !== "all" ||
+    patientFilter !== "all" ||
+    assigneeFilter !== "all" ||
+    !!dueFrom ||
+    !!dueTo;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell className="size-4 text-primary" /> Reminders
         </CardTitle>
-        <Button
-          size="sm"
-          variant="soft"
-          onClick={() => {
-            setEditing(null);
-            setError(null);
-            setOpen(true);
-          }}
-        >
-          <Plus /> New reminder
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={showFilters || filtersActive ? "soft" : "secondary"}
+            onClick={() => setShowFilters((s) => !s)}
+          >
+            <SlidersHorizontal /> Filters
+          </Button>
+          <Button
+            size="sm"
+            variant="soft"
+            onClick={() => {
+              setEditing(null);
+              setError(null);
+              setOpen(true);
+            }}
+          >
+            <Plus /> New reminder
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
+        {showFilters && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-hover/40 p-2.5">
+            <Select
+              className="w-36"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="all">All types</option>
+              {Object.entries(TYPE_META).map(([value, m]) => (
+                <option key={value} value={value}>
+                  {m.label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              className="w-44"
+              value={patientFilter}
+              onChange={(e) => setPatientFilter(e.target.value)}
+            >
+              <option value="all">All patients</option>
+              {patientOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              className="w-40"
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+            >
+              <option value="all">All assignees</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+            <DatePicker value={dueFrom} onChange={setDueFrom} placeholder="Due from" className="w-36" />
+            <DatePicker value={dueTo} onChange={setDueTo} placeholder="Due to" className="w-36" />
+            {filtersActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setTypeFilter("all");
+                  setPatientFilter("all");
+                  setAssigneeFilter("all");
+                  setDueFrom("");
+                  setDueTo("");
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
         {listError && (
           <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{listError}</p>
         )}
-        {items.length === 0 && (
+        {shown.length === 0 && (
           <p className="py-8 text-center text-sm text-muted">
-            All clear — nothing due in the next 14 days.
+            {filtersActive
+              ? "No reminders match these filters."
+              : "All clear — nothing due in the next 14 days."}
           </p>
         )}
-        {items.map((raw) => {
-          const r = raw.id in doneOverrides ? { ...raw, done_at: doneOverrides[raw.id] } : raw;
+        {shown.map((r) => {
           const isDone = !!r.done_at;
           const overdue = !isDone && new Date(r.due_at).getTime() < now;
           const meta = TYPE_META[r.type];
@@ -542,21 +658,22 @@ export function RemindersPanel({
                 ))}
               </Select>
             </Field>
-            <Field label="Due">
-              <DateTimePicker
-                name="due_at"
-                defaultValue={editing ? toLocalInput(editing.due_at) : undefined}
-              />
+            <Field label="Assign to">
+              <Select name="assigned_to" defaultValue={editing?.assigned_to ?? currentUserId}>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
           </div>
-          <Field label="Assign to">
-            <Select name="assigned_to" defaultValue={editing?.assigned_to ?? currentUserId}>
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
+          {/* Full width: the date + time pair is too cramped in a half column. */}
+          <Field label="Due">
+            <DateTimePicker
+              name="due_at"
+              defaultValue={editing ? toLocalInput(editing.due_at) : undefined}
+            />
           </Field>
           <Field label="Note">
             <Input name="note" defaultValue={editing?.note ?? ""} />
