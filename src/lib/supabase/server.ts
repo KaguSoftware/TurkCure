@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createBareClient } from "@supabase/supabase-js";
+import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import type { Profile } from "@/lib/types";
@@ -35,16 +36,33 @@ export function createAdminClient() {
   );
 }
 
+/**
+ * Profiles row by user id, cached across requests. Uses the admin client
+ * because unstable_cache callbacks cannot read cookies; callers must pass an
+ * id taken from a verified JWT. Invalidated via the "profiles" tag by the
+ * user-management actions, with a 5-minute revalidate as a safety net.
+ */
+const getCachedProfileRow = unstable_cache(
+  async (id: string): Promise<Profile | null> => {
+    const admin = createAdminClient();
+    const { data } = await admin.from("profiles").select("*").eq("id", id).single();
+    return (data as Profile) ?? null;
+  },
+  ["profile-row"],
+  { tags: ["profiles"], revalidate: 300 }
+);
+
 /** Current user's profile, or null if unauthenticated. Cached per request. */
 export const getProfile = cache(async (): Promise<Profile | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-  if (!data) return null;
-  return { ...(data as Profile), email: user.email };
+  // getClaims verifies the JWT locally (via cached JWKS) when the project uses
+  // asymmetric signing keys, avoiding the network hop of getUser().
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) return null;
+  const profile = await getCachedProfileRow(claims.sub);
+  if (!profile) return null;
+  return { ...profile, email: (claims.email as string | undefined) ?? profile.email };
 });
 
 export async function requireProfile(): Promise<Profile> {

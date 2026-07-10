@@ -1,14 +1,14 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 import { formatMoney } from "@/lib/utils";
 
 /**
  * Create dashboard reminders for payments whose due date has passed without
  * being paid. Idempotent: each payment gets at most one reminder, tracked by a
- * `payment:<id>` marker in the reminder note. Runs on dashboard load (the app is
- * local-only, so there is no cron). Cheap — payments are indexed on status.
+ * `payment:<id>` marker in the reminder note. Runs from the daily cron
+ * (/api/cron/overdue-reminders), so it uses the admin client — no cookies.
  */
 export async function syncOverduePaymentReminders(): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: overdue } = await supabase

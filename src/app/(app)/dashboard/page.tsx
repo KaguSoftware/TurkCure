@@ -6,7 +6,6 @@ import { Badge, PATIENT_STATUS_LABEL, PATIENT_STATUS_TONE } from "@/components/u
 import { RemindersPanel } from "@/components/dashboard/reminders-panel";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { PATIENT_STATUSES, type Reminder } from "@/lib/types";
-import { syncOverduePaymentReminders } from "@/lib/data/overdue";
 import { addDays } from "date-fns";
 
 export const metadata = { title: "Dashboard" };
@@ -16,9 +15,6 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const now = new Date();
   const horizon = addDays(now, 14).toISOString();
-
-  // Surface any newly-overdue payments as reminders before we read the list.
-  await syncOverduePaymentReminders();
 
   const [
     { data: reminders },
@@ -46,7 +42,7 @@ export default async function DashboardPage() {
         .gte("done_at", addDays(now, -7).toISOString())
         .order("done_at", { ascending: false })
         .limit(15),
-      supabase.from("patients").select("status"),
+      supabase.rpc("patient_status_counts"),
       supabase
         .from("cases")
         .select("id, arrival_date, surgery_date, patients(id, full_name), operation_types(name)")
@@ -65,7 +61,8 @@ export default async function DashboardPage() {
     ]);
 
   const counts: Record<string, number> = {};
-  for (const p of statusCounts ?? []) counts[p.status] = (counts[p.status] ?? 0) + 1;
+  for (const row of (statusCounts ?? []) as { status: string; count: number }[])
+    counts[row.status] = Number(row.count);
 
   return (
     <>

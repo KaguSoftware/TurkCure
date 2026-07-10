@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 
 const TABLES = {
@@ -28,6 +28,7 @@ export async function upsertDirectoryRow(
     : supabase.from(table).insert(values);
   const { error } = await query;
   if (error) return { error: error.message };
+  revalidateTag("directories", "max");
   revalidatePath(TABLES[table]);
   return {};
 }
@@ -41,6 +42,7 @@ export async function deleteDirectoryRow(
   const supabase = await createClient();
   const { error } = await supabase.from(table).delete().eq("id", id);
   if (error) return { error: error.message };
+  revalidateTag("directories", "max");
   revalidatePath(TABLES[table]);
   return {};
 }

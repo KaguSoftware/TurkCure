@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createAdminClient, requireAdmin } from "@/lib/supabase/server";
 import type { Role } from "@/lib/types";
 
@@ -19,6 +19,7 @@ export async function inviteUser(
     user_metadata: { name, role },
   });
   if (error) return { error: error.message };
+  revalidateTag("directories", "max"); // new user may appear as an agent
   revalidatePath("/settings");
   return {};
 }
@@ -28,6 +29,8 @@ export async function setUserActive(id: string, active: boolean): Promise<{ erro
   const admin = createAdminClient();
   const { error } = await admin.from("profiles").update({ active }).eq("id", id);
   if (error) return { error: error.message };
+  revalidateTag("profiles", "max");
+  revalidateTag("directories", "max"); // agent lists come from profiles
   revalidatePath("/settings");
   return {};
 }
@@ -37,6 +40,7 @@ export async function setUserRole(id: string, role: Role): Promise<{ error?: str
   const admin = createAdminClient();
   const { error } = await admin.from("profiles").update({ role }).eq("id", id);
   if (error) return { error: error.message };
+  revalidateTag("profiles", "max");
   revalidatePath("/settings");
   return {};
 }

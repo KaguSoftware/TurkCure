@@ -276,21 +276,16 @@ export function Wordmark({ scale = 1 }: { scale?: number }) {
 }
 
 /**
- * The wordmark on dark backgrounds: "Turk" in warm white, "Cure" filled with
- * an antique-gold gradient. Same geometry as `Wordmark`.
+ * The wordmark on dark backgrounds: "Turk" in warm white, "Cure" in antique
+ * gold. Same geometry as `Wordmark`. Gradient fills don't render on SVG text
+ * in react-pdf (the text comes out invisible on the dark cover), so "Cure"
+ * uses a solid gold fill instead.
  */
 export function WordmarkGold({ scale = 1 }: { scale?: number }) {
   const w = 132 * scale;
   const h = 28 * scale;
   return (
     <Svg width={w} height={h} viewBox="0 0 132 28">
-      <Defs>
-        <LinearGradient id="cureGoldGrad" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={GOLD_DARK} />
-          <Stop offset="0.5" stopColor={GOLD} />
-          <Stop offset="1" stopColor={GOLD_LIGHT} />
-        </LinearGradient>
-      </Defs>
       <Text
         x={0}
         y={21}
@@ -302,7 +297,7 @@ export function WordmarkGold({ scale = 1 }: { scale?: number }) {
       <Text
         x={49}
         y={21}
-        fill="url(#cureGoldGrad)"
+        fill={GOLD}
         style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Cure

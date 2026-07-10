@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient, requireProfile } from "@/lib/supabase/server";
-import { getQuoteItemsForCases } from "@/lib/actions/cases";
+import { getQuoteItemsForPatient } from "@/lib/actions/cases";
 import { getDirectories } from "@/lib/data/directory";
 import { PatientDetail } from "@/components/patients/patient-detail";
 import type { Case, Patient, QuoteItem } from "@/lib/types";
@@ -10,40 +10,44 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const { data: patient } = await supabase
-    .from("patients")
-    .select("*, countries(name), profiles(name)")
-    .eq("id", id)
-    .single();
-  if (!patient) notFound();
-
+  // Everything in one parallel round trip: payments and instructions ride
+  // along nested in the cases query (flattened + sorted below), and quote
+  // items are fetched by patient so nothing has to wait for case ids.
   const [
-    { data: cases },
+    { data: patient },
+    { data: casesRaw },
     directories,
     { data: templates },
     { data: files },
+    quoteItemsRaw,
   ] = await Promise.all([
     supabase
+      .from("patients")
+      .select("*, countries(name), profiles(name)")
+      .eq("id", id)
+      .single(),
+    supabase
       .from("cases")
-      .select("*, operation_types(name), doctors(name), hospitals(name), hotels(name), drivers(name)")
+      .select(
+        "*, operation_types(name), doctors(name), hospitals(name), hotels(name), drivers(name), payments(*), case_instructions(*)"
+      )
       .eq("patient_id", id)
       .order("created_at", { ascending: false }),
     getDirectories(),
     supabase.from("instruction_templates").select("id, title").order("title"),
     supabase.from("patient_files").select("*").eq("patient_id", id).order("created_at", { ascending: false }),
+    getQuoteItemsForPatient(id),
   ]);
+  if (!patient) notFound();
   const { countries, agents, doctors, hospitals, hotels, drivers, operationTypes } = directories;
 
-  const caseIds = (cases ?? []).map((c) => c.id);
-  const [{ data: payments }, { data: instructions }, quoteItemsRaw] = await Promise.all([
-    caseIds.length
-      ? supabase.from("payments").select("*").in("case_id", caseIds).order("created_at", { ascending: false })
-      : Promise.resolve({ data: [] }),
-    caseIds.length
-      ? supabase.from("case_instructions").select("*").in("case_id", caseIds).order("created_at")
-      : Promise.resolve({ data: [] }),
-    getQuoteItemsForCases(caseIds),
-  ]);
+  const cases = (casesRaw ?? []).map(({ payments, case_instructions, ...c }) => c);
+  const payments = (casesRaw ?? [])
+    .flatMap((c) => c.payments ?? [])
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const instructions = (casesRaw ?? [])
+    .flatMap((c) => c.case_instructions ?? [])
+    .sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
 
   const quoteItemsByCase = quoteItemsRaw as unknown as Record<string, QuoteItem[]>;
 

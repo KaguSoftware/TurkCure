@@ -228,6 +228,33 @@ export async function getQuoteItemsForCases(
   return byCase;
 }
 
+/**
+ * Same as getQuoteItemsForCases but keyed by patient, so the patient detail
+ * page can fetch quote items in parallel with the cases query instead of
+ * waiting for case ids. Cost included only for admins.
+ */
+export async function getQuoteItemsForPatient(
+  patientId: string
+): Promise<Record<string, Record<string, unknown>[]>> {
+  const profile = await requireProfile();
+  const admin = createAdminClient();
+  const columns = profile.role === "admin" ? QUOTE_COLUMNS_ADMIN : QUOTE_COLUMNS_AGENT;
+  const { data } = await admin
+    .from("quote_items")
+    .select(`${columns}, cases!inner(patient_id)`)
+    .eq("cases.patient_id", patientId)
+    .order("sort_order")
+    .order("created_at");
+
+  const byCase: Record<string, Record<string, unknown>[]> = {};
+  for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+    delete row.cases;
+    const cid = row.case_id as string;
+    (byCase[cid] ??= []).push(row);
+  }
+  return byCase;
+}
+
 export async function attachInstruction(
   patientId: string,
   caseId: string,
