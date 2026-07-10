@@ -33,12 +33,12 @@ export function Dialog({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
       <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-[2px]"
+        className="animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
         className={cn(
-          "relative z-10 mt-8 w-full rounded-xl border border-border bg-surface shadow-pop",
+          "animate-pop relative z-10 mt-8 w-full rounded-xl border border-border bg-surface shadow-pop",
           wide ? "max-w-3xl" : "max-w-lg"
         )}
       >

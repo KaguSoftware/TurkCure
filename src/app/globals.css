@@ -136,6 +136,105 @@ body {
   background: linear-gradient(135deg, var(--brand-blue), var(--brand-green));
 }
 
+/* ---- macOS-style motion system ------------------------------------ */
+/* Springy overshoot for things that appear; soft ease for larger moves. */
+:root {
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-overlay {
+  animation: overlay-in 180ms ease-out both;
+}
+
+/* Dialogs, palettes: scale up from slightly below with a bounce. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-pop {
+  animation: pop-in 300ms var(--ease-spring) both;
+}
+
+/* Dropdowns, popovers: unfold downward from the trigger. */
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-dropdown {
+  animation: dropdown-in 240ms var(--ease-spring) both;
+  transform-origin: top;
+}
+
+/* Mobile drawer: slide in with a tiny overshoot. */
+@keyframes drawer-in {
+  0% { transform: translateX(-100%); }
+  70% { transform: translateX(6px); }
+  100% { transform: translateX(0); }
+}
+.animate-drawer {
+  animation: drawer-in 360ms var(--ease-out-soft) both;
+}
+
+/* Inline panels (filter bars, bulk bars): expand from the top edge. */
+@keyframes expand-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.92) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+.animate-expand {
+  animation: expand-in 260ms var(--ease-spring) both;
+  transform-origin: top;
+}
+
+/* Press feedback: buttons squish slightly and spring back on release. */
+.pressable {
+  transition:
+    transform 200ms var(--ease-spring),
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-overlay,
+  .animate-pop,
+  .animate-dropdown,
+  .animate-drawer,
+  .animate-expand {
+    animation: none;
+  }
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+}
+
 /* Toasts */
 @keyframes toast-in {
   from {

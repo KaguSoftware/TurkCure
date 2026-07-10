@@ -221,7 +221,7 @@ export function PatientsView({
             <button
               onClick={() => setMode("board")}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium cursor-pointer",
+                "pressable flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium cursor-pointer",
                 mode === "board" ? "bg-primary-soft text-primary" : "text-muted"
               )}
             >
@@ -230,7 +230,7 @@ export function PatientsView({
             <button
               onClick={() => setMode("table")}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium cursor-pointer",
+                "pressable flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium cursor-pointer",
                 mode === "table" ? "bg-primary-soft text-primary" : "text-muted"
               )}
             >
@@ -244,7 +244,7 @@ export function PatientsView({
       </div>
 
       {showFilters && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card">
+        <div className="animate-expand flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card">
           <Select
             className="w-40"
             value={statusFilter}
@@ -294,7 +294,7 @@ export function PatientsView({
       )}
 
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft/40 p-3 shadow-card">
+        <div className="animate-expand flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft/40 p-3 shadow-card">
           <span className="text-sm font-medium">
             {selected.size} selected
           </span>
@@ -376,7 +376,7 @@ export function PatientsView({
                   {col.map((p) => (
                     <div
                       key={p.id}
-                      className="rounded-lg border border-border bg-surface p-3 shadow-card transition-shadow hover:shadow-pop"
+                      className="rounded-lg border border-border bg-surface p-3 shadow-card transition-[box-shadow,transform] duration-200 [transition-timing-function:var(--ease-spring)] hover:-translate-y-0.5 hover:shadow-pop"
                     >
                       <Link
                         href={`/patients/${p.id}`}

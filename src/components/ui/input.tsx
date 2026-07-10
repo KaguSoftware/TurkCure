@@ -154,7 +154,7 @@ export const Select = React.forwardRef<
         />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop">
+        <div className="animate-dropdown absolute z-50 mt-1 w-full min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop">
           {showSearch && (
             <div className="relative mb-1 px-1 pt-1">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-light" />

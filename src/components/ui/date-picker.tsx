@@ -194,7 +194,7 @@ export function DatePicker({
         )}
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 rounded-xl border border-border bg-surface shadow-pop">
+        <div className="animate-dropdown absolute z-50 mt-1 rounded-xl border border-border bg-surface shadow-pop">
           <Calendar selected={selected} onSelect={(d) => set(format(d, "yyyy-MM-dd"))} />
         </div>
       )}

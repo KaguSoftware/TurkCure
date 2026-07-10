@@ -186,7 +186,7 @@ export function PatientDetail({
                 key={c.id}
                 onClick={() => setSelectedCaseId(c.id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                  "pressable flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium cursor-pointer",
                   active
                     ? "border-primary bg-primary-soft text-primary"
                     : "border-border text-muted hover:border-border-strong hover:text-foreground"
@@ -201,7 +201,7 @@ export function PatientDetail({
           <button
             onClick={() => setSelectedCaseId("new")}
             className={cn(
-              "flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+              "pressable flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium cursor-pointer",
               selectedCaseId === "new"
                 ? "border-primary bg-primary-soft text-primary"
                 : "border-border-strong text-muted hover:text-foreground"
@@ -218,7 +218,7 @@ export function PatientDetail({
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer",
+              "pressable -mb-px border-b-2 px-4 py-2.5 text-sm font-medium cursor-pointer",
               tab === t
                 ? "border-primary text-primary"
                 : "border-transparent text-muted hover:text-foreground"

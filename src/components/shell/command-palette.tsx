@@ -88,10 +88,10 @@ export function CommandPalette() {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[15vh]">
       <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-[2px]"
+        className="animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={() => setOpen(false)}
       />
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-pop">
+      <div className="animate-pop relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-pop">
         <div className="flex items-center gap-2 border-b border-border px-4">
           {pending ? (
             <Loader2 className="size-4 shrink-0 animate-spin text-muted-light" />
@@ -158,7 +158,7 @@ export function SearchTrigger() {
           new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })
         )
       }
-      className="hidden h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-muted-light hover:border-border-strong sm:flex cursor-pointer"
+      className="pressable hidden h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-muted-light hover:border-border-strong sm:flex cursor-pointer"
     >
       <Search className="size-3.5" />
       <span className="text-xs">Search…</span>

@@ -65,10 +65,10 @@ export function Topbar({
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-[2px]"
+            className="animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]"
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="fixed inset-y-0 left-0 z-10 flex w-64 flex-col border-r border-border bg-surface shadow-pop">
+          <aside className="animate-drawer fixed inset-y-0 left-0 z-10 flex w-64 flex-col border-r border-border bg-surface shadow-pop">
             <div className="flex h-14 items-center justify-between border-b border-border px-5">
               <Link
                 href="/dashboard"

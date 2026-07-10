@@ -404,7 +404,7 @@ export function RemindersPanel({
       </CardHeader>
       <CardContent className="space-y-2">
         {showFilters && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-hover/40 p-2.5">
+          <div className="animate-expand flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-hover/40 p-2.5">
             <Select
               className="w-36"
               value={typeFilter}
