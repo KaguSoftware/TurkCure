@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Bell, Check, Plus, Trash2 } from "lucide-react";
+import { AlarmClockPlus, Bell, Check, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,19 +22,32 @@ const TYPE_META: Record<ReminderType, { label: string; tone: Tone }> = {
   aftercare: { label: "Aftercare", tone: "green" },
 };
 
+/** ISO UTC → local "YYYY-MM-DDTHH:mm" for the DateTimePicker. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const STRIKE_MS = 750; // check pop + line draw before the row starts leaving
 const EXIT_MS = 260; // matches reminder-out in globals.css
 
 export function RemindersPanel({
   reminders,
+  completedReminders = [],
   agents,
   currentUserId,
 }: {
   reminders: Reminder[];
+  completedReminders?: Reminder[];
   agents: { id: string; name: string }[];
   currentUserId: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<Reminder | null>(null);
+  const [showCompleted, setShowCompleted] = React.useState(false);
+  const [snoozing, setSnoozing] = React.useState<ReadonlySet<string>>(new Set());
+  const [reopening, setReopening] = React.useState<ReadonlySet<string>>(new Set());
   const [error, setError] = React.useState<string | null>(null);
   const [listError, setListError] = React.useState<string | null>(null);
   const [now] = React.useState(() => Date.now());
@@ -60,6 +73,9 @@ export function RemindersPanel({
     for (const id of removedIds.current)
       if (!reminders.some((r) => r.id === id) && !animatingIds.current.has(id))
         removedIds.current.delete(id);
+    // Once the server list contains a pending id, the server has caught up.
+    for (const id of pendingIds.current)
+      if (reminders.some((r) => r.id === id)) pendingIds.current.delete(id);
     setItems((prev) => {
       const inFlight = prev.filter((p) => pendingIds.current.has(p.id));
       // Preserve any row currently animating exactly as it is on screen.
@@ -122,6 +138,27 @@ export function RemindersPanel({
       assigned_to: fd.get("assigned_to") || null,
     };
 
+    if (editing) {
+      // Edit path: simple await + in-place update (no optimistic insert needed).
+      const result = await upsertReminder(values, editing.id);
+      if (result.error) {
+        setError(`Couldn't save: ${result.error}`);
+        return;
+      }
+      const saved = result.reminder;
+      if (saved) {
+        setItems((prev) =>
+          prev
+            .map((r) => (r.id === saved.id ? { ...r, ...saved } : r))
+            .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+        );
+      }
+      setOpen(false);
+      setEditing(null);
+      toast.success("Reminder updated.");
+      return;
+    }
+
     // Optimistic: show the reminder and close the dialog immediately.
     const tempId = crypto.randomUUID();
     const optimistic: Reminder = {
@@ -160,32 +197,102 @@ export function RemindersPanel({
     }
   }
 
-  function onMarkDone(r: Reminder) {
-    if (completing.has(r.id) || exiting.has(r.id)) return;
+  // Optimistic done/undone overrides. A checked reminder stays in the list,
+  // struck through, until 24h have passed (server stops returning it) or it's
+  // deleted. Overrides win over stale server reads until the server catches up.
+  const [doneOverrides, setDoneOverrides] = React.useState<Record<string, string | null>>({});
+
+  React.useEffect(() => {
+    setDoneOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        const server = reminders.find((r) => r.id === id);
+        if (server && (server.done_at ?? null) === next[id]) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [reminders]);
+
+  function onToggleDone(r: Reminder) {
+    if (exiting.has(r.id)) return;
+    const marking = !r.done_at;
     setListError(null);
-    // Protect the row from server sync for the whole animation, and mark it
-    // removed immediately so a revalidation arriving mid-strike can't re-add it.
-    animatingIds.current.add(r.id);
-    removedIds.current.add(r.id);
-    setInSet(setCompleting, r.id, true);
-    timers.current.set(r.id, [
-      setTimeout(() => setInSet(setExiting, r.id, true), STRIKE_MS),
-      setTimeout(() => removeRow(r.id), STRIKE_MS + EXIT_MS),
-    ]);
-    toggleReminderDone(r.id, true).then((result) => {
+    if (marking) {
+      // Check pop + strike-through animation; the row stays put.
+      setInSet(setCompleting, r.id, true);
+      cancelTimers(r.id);
+      timers.current.set(r.id, [
+        setTimeout(() => setInSet(setCompleting, r.id, false), STRIKE_MS),
+      ]);
+    }
+    setDoneOverrides((prev) => ({ ...prev, [r.id]: marking ? new Date().toISOString() : null }));
+    toggleReminderDone(r.id, marking).then((result) => {
       if (result.error) {
         cancelTimers(r.id);
-        animatingIds.current.delete(r.id);
-        removedIds.current.delete(r.id);
         setInSet(setCompleting, r.id, false);
-        setInSet(setExiting, r.id, false);
+        setDoneOverrides((prev) => {
+          const next = { ...prev };
+          delete next[r.id];
+          return next;
+        });
+        setListError(`Couldn't update: ${result.error}`);
+        toast.error(`Couldn't update: ${result.error}`);
+      }
+    });
+  }
+
+  function onSnooze(r: Reminder) {
+    if (snoozing.has(r.id) || completing.has(r.id) || exiting.has(r.id)) return;
+    setListError(null);
+    // Tomorrow relative to now if overdue, otherwise +1 day from the due time.
+    const base = Math.max(Date.now(), new Date(r.due_at).getTime());
+    const newDue = new Date(base + 24 * 60 * 60 * 1000).toISOString();
+    const prevDue = r.due_at;
+    setInSet(setSnoozing, r.id, true);
+    setItems((prev) =>
+      prev
+        .map((x) => (x.id === r.id ? { ...x, due_at: newDue } : x))
+        .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+    );
+    upsertReminder({ due_at: newDue }, r.id).then((result) => {
+      setInSet(setSnoozing, r.id, false);
+      if (result.error) {
+        setItems((prev) =>
+          prev
+            .map((x) => (x.id === r.id ? { ...x, due_at: prevDue } : x))
+            .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+        );
+        setListError(`Couldn't snooze: ${result.error}`);
+        toast.error(`Couldn't snooze: ${result.error}`);
+      } else {
+        toast.success("Snoozed until tomorrow.");
+      }
+    });
+  }
+
+  function onReopen(r: Reminder) {
+    if (reopening.has(r.id)) return;
+    setInSet(setReopening, r.id, true);
+    toggleReminderDone(r.id, false).then((result) => {
+      setInSet(setReopening, r.id, false);
+      if (result.error) {
+        toast.error(`Couldn't reopen: ${result.error}`);
+      } else {
+        // Let it show in the active list again even if server sync lags.
+        removedIds.current.delete(r.id);
+        pendingIds.current.add(r.id);
         setItems((prev) =>
           prev.some((x) => x.id === r.id)
             ? prev
-            : [...prev, r].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+            : [...prev, { ...r, done_at: null }].sort(
+                (a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
+              )
         );
-        setListError(`Couldn't mark done: ${result.error}`);
-        toast.error(`Couldn't mark done: ${result.error}`);
+        toast.success("Reminder reopened.");
       }
     });
   }
@@ -214,13 +321,26 @@ export function RemindersPanel({
     });
   }
 
+  // A completed row disappears from this list the moment it's reopened.
+  const visibleCompleted = completedReminders.filter(
+    (c) => !items.some((r) => r.id === c.id)
+  );
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell className="size-4 text-primary" /> Reminders
         </CardTitle>
-        <Button size="sm" variant="soft" onClick={() => setOpen(true)}>
+        <Button
+          size="sm"
+          variant="soft"
+          onClick={() => {
+            setEditing(null);
+            setError(null);
+            setOpen(true);
+          }}
+        >
           <Plus /> New reminder
         </Button>
       </CardHeader>
@@ -233,8 +353,10 @@ export function RemindersPanel({
             All clear — nothing due in the next 14 days.
           </p>
         )}
-        {items.map((r) => {
-          const overdue = new Date(r.due_at).getTime() < now;
+        {items.map((raw) => {
+          const r = raw.id in doneOverrides ? { ...raw, done_at: doneOverrides[raw.id] } : raw;
+          const isDone = !!r.done_at;
+          const overdue = !isDone && new Date(r.due_at).getTime() < now;
           const meta = TYPE_META[r.type];
           const isCompleting = completing.has(r.id);
           const isExiting = exiting.has(r.id);
@@ -243,17 +365,18 @@ export function RemindersPanel({
               key={r.id}
               className={cn(
                 "flex items-center gap-3 rounded-lg border border-border p-3",
-                overdue && !isCompleting && "border-danger/40 bg-danger-soft/40",
+                overdue && "border-danger/40 bg-danger-soft/40",
+                isDone && !isCompleting && "opacity-70",
                 pendingIds.current.has(r.id) && "reminder-enter",
                 isExiting && "reminder-exit"
               )}
             >
               <button
-                aria-label="Mark done"
-                onClick={() => onMarkDone(r)}
+                aria-label={isDone ? "Mark not done" : "Mark done"}
+                onClick={() => onToggleDone(r)}
                 className={cn(
                   "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors cursor-pointer",
-                  isCompleting
+                  isDone || isCompleting
                     ? "border-success bg-success text-white"
                     : "border-border-strong text-transparent hover:border-success hover:bg-success hover:text-white"
                 )}
@@ -265,7 +388,7 @@ export function RemindersPanel({
                   <span
                     className={cn(
                       "reminder-strike inline-block max-w-full truncate align-bottom",
-                      isCompleting && "struck"
+                      (isDone || isCompleting) && "struck"
                     )}
                   >
                     {r.patient_id ? (
@@ -284,35 +407,134 @@ export function RemindersPanel({
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                  {overdue && !isCompleting && (
+                  {overdue && (
                     <span className="ml-1.5 font-medium text-danger">Overdue</span>
                   )}
                   {r.note && <span className="ml-1.5">· {r.note}</span>}
                 </p>
               </div>
               <Badge tone={meta.tone}>{meta.label}</Badge>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Delete"
-                className="hover:text-danger"
-                onClick={() => onDelete(r)}
-              >
-                <Trash2 />
-              </Button>
+              <div className="flex shrink-0 gap-0.5">
+                {!isDone && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Snooze 1 day"
+                    disabled={snoozing.has(r.id)}
+                    onClick={() => onSnooze(r)}
+                  >
+                    <AlarmClockPlus />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit"
+                  onClick={() => {
+                    setEditing(r);
+                    setError(null);
+                    setOpen(true);
+                  }}
+                >
+                  <Pencil />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Delete"
+                  className="hover:text-danger"
+                  onClick={() => onDelete(r)}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
             </div>
           );
         })}
+
+        {completedReminders.length > 0 && (
+          <div className="pt-2">
+            <button
+              onClick={() => setShowCompleted((v) => !v)}
+              className="text-xs font-medium text-muted hover:text-foreground cursor-pointer"
+            >
+              {showCompleted ? "Hide" : "Show"} completed ({visibleCompleted.length})
+            </button>
+            {showCompleted && (
+              <div className="mt-2 space-y-2">
+                {visibleCompleted.length === 0 && (
+                  <p className="py-2 text-center text-xs text-muted">Nothing completed recently.</p>
+                )}
+                {visibleCompleted.map((r) => {
+                  const meta = TYPE_META[r.type];
+                  return (
+                    <div
+                      key={r.id}
+                      className="flex items-center gap-3 rounded-lg border border-border p-3 opacity-70"
+                    >
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-success bg-success text-white">
+                        <Check className="size-3" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium line-through">
+                          {r.patient_id ? (
+                            <Link href={`/patients/${r.patient_id}`} className="hover:text-primary">
+                              {r.title}
+                            </Link>
+                          ) : (
+                            r.title
+                          )}
+                        </p>
+                        <p className="text-xs text-muted">
+                          Done{" "}
+                          {r.done_at &&
+                            new Date(r.done_at).toLocaleString("en-GB", {
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                        </p>
+                      </div>
+                      <Badge tone={meta.tone}>{meta.label}</Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Reopen"
+                        disabled={reopening.has(r.id)}
+                        onClick={() => onReopen(r)}
+                      >
+                        <RotateCcw />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="New reminder">
-        <form onSubmit={onSubmit} className="space-y-4">
+      <Dialog
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        title={editing ? "Edit reminder" : "New reminder"}
+      >
+        <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
           <Field label="Title">
-            <Input name="title" required placeholder="Call Ahmed about quote" />
+            <Input
+              name="title"
+              required
+              placeholder="Call Ahmed about quote"
+              defaultValue={editing?.title ?? ""}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Type">
-              <Select name="type" defaultValue="follow_up">
+              <Select name="type" defaultValue={editing?.type ?? "follow_up"}>
                 {Object.entries(TYPE_META).map(([value, m]) => (
                   <option key={value} value={value}>
                     {m.label}
@@ -321,11 +543,14 @@ export function RemindersPanel({
               </Select>
             </Field>
             <Field label="Due">
-              <DateTimePicker name="due_at" />
+              <DateTimePicker
+                name="due_at"
+                defaultValue={editing ? toLocalInput(editing.due_at) : undefined}
+              />
             </Field>
           </div>
           <Field label="Assign to">
-            <Select name="assigned_to" defaultValue={currentUserId}>
+            <Select name="assigned_to" defaultValue={editing?.assigned_to ?? currentUserId}>
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -334,14 +559,21 @@ export function RemindersPanel({
             </Select>
           </Field>
           <Field label="Note">
-            <Input name="note" />
+            <Input name="note" defaultValue={editing?.note ?? ""} />
           </Field>
           {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setOpen(false);
+                setEditing(null);
+              }}
+            >
               Cancel
             </Button>
-            <Button type="submit">Create</Button>
+            <Button type="submit">{editing ? "Save" : "Create"}</Button>
           </div>
         </form>
       </Dialog>

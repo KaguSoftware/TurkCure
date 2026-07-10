@@ -8,6 +8,7 @@ import {
   Building2,
   Hotel,
   Car,
+  Globe,
   Wallet,
   Settings,
   ClipboardList,
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/hospitals", label: "Hospitals", icon: Building2 },
   { href: "/hotels", label: "Hotels", icon: Hotel },
   { href: "/drivers", label: "Drivers", icon: Car },
+  { href: "/countries", label: "Countries", icon: Globe },
   { href: "/templates", label: "Instructions", icon: ClipboardList },
 ];
 
@@ -36,7 +38,16 @@ function NavIcon({ Icon }: { Icon: (typeof NAV)[number]["icon"] }) {
   );
 }
 
-export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: string }) {
+/** Nav links + user footer, shared by the fixed sidebar and the mobile drawer. */
+export function SidebarContent({
+  isAdmin,
+  userName,
+  onNavigate,
+}: {
+  isAdmin: boolean;
+  userName: string;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
 
   const link = (item: (typeof NAV)[number]) => {
@@ -45,6 +56,7 @@ export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: str
       <Link
         key={item.href}
         href={item.href}
+        onClick={onNavigate}
         className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
           active
@@ -59,12 +71,7 @@ export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: str
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface md:flex">
-      <div className="flex h-14 items-center border-b border-border px-5">
-        <Link href="/dashboard" className="text-lg font-bold tracking-tight">
-          <span className="brand-gradient-text">TurkCure</span>
-        </Link>
-      </div>
+    <>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {NAV.map(link)}
         {isAdmin && (
@@ -88,6 +95,19 @@ export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: str
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: string }) {
+  return (
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface md:flex">
+      <div className="flex h-14 items-center border-b border-border px-5">
+        <Link href="/dashboard" className="text-lg font-bold tracking-tight">
+          <span className="brand-gradient-text">TurkCure</span>
+        </Link>
+      </div>
+      <SidebarContent isAdmin={isAdmin} userName={userName} />
     </aside>
   );
 }

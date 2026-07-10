@@ -2,20 +2,43 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Kanban, List, MessageCircle, Plus, Search, SlidersHorizontal } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Kanban,
+  List,
+  Loader2,
+  MessageCircle,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { StatusBadge, PATIENT_STATUS_LABEL, PATIENT_STATUS_TONE, Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PatientFormDialog } from "./patient-form";
-import { setPatientStatus } from "@/lib/actions/patients";
+import {
+  setPatientStatus,
+  bulkUpdatePatients,
+  bulkDeletePatients,
+  exportPatients,
+} from "@/lib/actions/patients";
 import { toast } from "@/components/ui/toast";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { PATIENT_STATUSES, type Patient, type PatientStatus } from "@/lib/types";
 import { cn, formatDate, waLink } from "@/lib/utils";
 
 export function PatientsView({
   patients,
+  total,
+  page,
+  pageSize,
   countries,
   agents,
   currentUserId,
@@ -23,6 +46,9 @@ export function PatientsView({
   isAdmin = false,
 }: {
   patients: Patient[];
+  total: number;
+  page: number;
+  pageSize: number;
   countries: { id: string; name: string }[];
   agents: { id: string; name: string }[];
   currentUserId: string;
@@ -30,18 +56,55 @@ export function PatientsView({
   isAdmin?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const statusFilter = searchParams.get("status") ?? "all";
+  const agentFilter = searchParams.get("agent") ?? "all";
+  const countryFilter = searchParams.get("country") ?? "all";
+  const urlQuery = searchParams.get("q") ?? "";
+
   // Optimistic status overrides so the board moves cards instantly.
   const [statusOverrides, setStatusOverrides] = React.useState<Record<string, PatientStatus>>({});
   const [mode, setMode] = React.useState<"board" | "table">("board");
-  const [query, setQuery] = React.useState("");
+  const [query, setQuery] = React.useState(urlQuery);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Patient | null>(null);
   const [showFilters, setShowFilters] = React.useState(false);
-  const [statusFilter, setStatusFilter] = React.useState("all");
-  const [agentFilter, setAgentFilter] = React.useState("all");
-  const [countryFilter, setCountryFilter] = React.useState("all");
   // Manual column collapse state; empty columns auto-collapse unless toggled open
   const [colToggles, setColToggles] = React.useState<Record<string, boolean>>({});
+
+  // Bulk selection (table mode)
+  const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = React.useState(false);
+  const [bulkPending, setBulkPending] = React.useState(false);
+  const [exportPending, setExportPending] = React.useState(false);
+
+  function setParams(updates: Record<string, string | null>, resetPage = true) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === "" || v === "all") params.delete(k);
+      else params.set(k, v);
+    }
+    if (resetPage) params.delete("page");
+    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+  }
+
+  // Debounced server-side search via the URL.
+  React.useEffect(() => {
+    if (query === urlQuery) return;
+    const t = setTimeout(() => setParams({ q: query || null }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  // Clear stale selection when the visible set changes (page/filter change).
+  React.useEffect(() => {
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => patients.some((p) => p.id === id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [patients]);
 
   const effective = patients.map((p) =>
     statusOverrides[p.id] ? { ...p, status: statusOverrides[p.id] } : p
@@ -60,22 +123,75 @@ export function PatientsView({
     }
   }
 
-  const filtered = effective.filter((p) => {
-    if (statusFilter !== "all" && p.status !== statusFilter) return false;
-    if (agentFilter !== "all" && p.assigned_agent_id !== agentFilter) return false;
-    if (countryFilter !== "all" && p.country_id !== countryFilter) return false;
-    if (!query) return true;
-    return [p.full_name, p.email, p.phone, p.countries?.name]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(query.toLowerCase()));
-  });
-
   const filtersActive =
     statusFilter !== "all" || agentFilter !== "all" || countryFilter !== "all";
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, total);
 
   function openNew() {
     setEditing(null);
     setFormOpen(true);
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected = effective.length > 0 && effective.every((p) => selected.has(p.id));
+
+  async function onBulkUpdate(values: { status?: PatientStatus; assigned_agent_id?: string }) {
+    setBulkPending(true);
+    const result = await bulkUpdatePatients([...selected], values);
+    setBulkPending(false);
+    if (result.error) toast.error(`Bulk update failed: ${result.error}`);
+    else {
+      toast.success(`Updated ${result.updated} patient${result.updated === 1 ? "" : "s"}.`);
+      setSelected(new Set());
+      router.refresh();
+    }
+  }
+
+  async function onBulkDelete() {
+    setBulkPending(true);
+    const result = await bulkDeletePatients([...selected]);
+    setBulkPending(false);
+    setConfirmBulkDelete(false);
+    if (result.error) toast.error(`Delete failed: ${result.error}`);
+    else {
+      toast.success(`Deleted ${result.deleted} patient${result.deleted === 1 ? "" : "s"}.`);
+      setSelected(new Set());
+      router.refresh();
+    }
+  }
+
+  async function onExport() {
+    setExportPending(true);
+    const result = await exportPatients({
+      q: urlQuery || undefined,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      agent: agentFilter === "all" ? undefined : agentFilter,
+      country: countryFilter === "all" ? undefined : countryFilter,
+    });
+    setExportPending(false);
+    if (result.error || !result.csv) {
+      toast.error(`Export failed: ${result.error ?? "unknown error"}`);
+      return;
+    }
+    const blob = new Blob([`﻿${result.csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `patients-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Patients exported.");
   }
 
   return (
@@ -97,6 +213,9 @@ export function PatientsView({
             onClick={() => setShowFilters((s) => !s)}
           >
             <SlidersHorizontal /> Filters
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onExport} pending={exportPending}>
+            <Download /> Export
           </Button>
           <div className="flex rounded-lg border border-border bg-surface p-0.5 shadow-card">
             <button
@@ -129,7 +248,7 @@ export function PatientsView({
           <Select
             className="w-40"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => setParams({ status: e.target.value })}
           >
             <option value="all">All statuses</option>
             {PATIENT_STATUSES.map((s) => (
@@ -141,7 +260,7 @@ export function PatientsView({
           <Select
             className="w-44"
             value={agentFilter}
-            onChange={(e) => setAgentFilter(e.target.value)}
+            onChange={(e) => setParams({ agent: e.target.value })}
           >
             <option value="all">All agents</option>
             {agents.map((a) => (
@@ -153,7 +272,7 @@ export function PatientsView({
           <Select
             className="w-44"
             value={countryFilter}
-            onChange={(e) => setCountryFilter(e.target.value)}
+            onChange={(e) => setParams({ country: e.target.value })}
           >
             <option value="all">All countries</option>
             {countries.map((c) => (
@@ -166,11 +285,7 @@ export function PatientsView({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setStatusFilter("all");
-                setAgentFilter("all");
-                setCountryFilter("all");
-              }}
+              onClick={() => setParams({ status: null, agent: null, country: null })}
             >
               Clear
             </Button>
@@ -178,10 +293,63 @@ export function PatientsView({
         </div>
       )}
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft/40 p-3 shadow-card">
+          <span className="text-sm font-medium">
+            {selected.size} selected
+          </span>
+          {bulkPending && <Loader2 className="size-4 animate-spin text-muted" />}
+          <Select
+            className="w-44"
+            value=""
+            disabled={bulkPending}
+            onChange={(e) => {
+              if (e.target.value) onBulkUpdate({ status: e.target.value as PatientStatus });
+            }}
+          >
+            <option value="">Set status…</option>
+            {PATIENT_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {PATIENT_STATUS_LABEL[s]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="w-44"
+            value=""
+            disabled={bulkPending}
+            onChange={(e) => {
+              if (e.target.value) onBulkUpdate({ assigned_agent_id: e.target.value });
+            }}
+          >
+            <option value="">Assign to…</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-danger hover:bg-danger-soft"
+              disabled={bulkPending}
+              onClick={() => setConfirmBulkDelete(true)}
+            >
+              <Trash2 /> Delete
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            <X /> Clear
+          </Button>
+        </div>
+      )}
+
       {mode === "board" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {PATIENT_STATUSES.map((status) => {
-            const col = filtered.filter((p) => p.status === status);
+            const col = effective.filter((p) => p.status === status);
             const collapsed = colToggles[status] ?? col.length === 0;
             return (
               <div key={status} className="flex flex-col gap-2">
@@ -244,6 +412,17 @@ export function PatientsView({
         <Table>
           <THead>
             <tr>
+              <Th className="w-8">
+                <input
+                  type="checkbox"
+                  aria-label="Select all on page"
+                  checked={allSelected}
+                  onChange={() =>
+                    setSelected(allSelected ? new Set() : new Set(effective.map((p) => p.id)))
+                  }
+                  className="size-3.5 cursor-pointer accent-[var(--color-primary)]"
+                />
+              </Th>
               <Th>Name</Th>
               <Th>Status</Th>
               <Th>Country</Th>
@@ -254,9 +433,18 @@ export function PatientsView({
             </tr>
           </THead>
           <TBody>
-            {filtered.length === 0 && <EmptyRow colSpan={7} message="No patients found." />}
-            {filtered.map((p) => (
+            {effective.length === 0 && <EmptyRow colSpan={8} message="No patients found." />}
+            {effective.map((p) => (
               <Tr key={p.id}>
+                <Td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${p.full_name}`}
+                    checked={selected.has(p.id)}
+                    onChange={() => toggleSelect(p.id)}
+                    className="size-3.5 cursor-pointer accent-[var(--color-primary)]"
+                  />
+                </Td>
                 <Td className="font-medium">
                   <Link href={`/patients/${p.id}`} className="hover:text-primary">
                     {p.full_name}
@@ -292,6 +480,35 @@ export function PatientsView({
         </Table>
       )}
 
+      {total > pageSize && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted">
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setParams({ page: String(page - 1) }, false)}
+            >
+              <ChevronLeft /> Previous
+            </Button>
+            <span className="text-xs font-medium text-muted">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setParams({ page: String(page + 1) }, false)}
+            >
+              Next <ChevronRight />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <PatientFormDialog
         open={formOpen}
         onClose={() => setFormOpen(false)}
@@ -301,6 +518,20 @@ export function PatientsView({
         currentUserId={currentUserId}
         caseDirectories={caseDirectories}
         isAdmin={isAdmin}
+      />
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={onBulkDelete}
+        pending={bulkPending}
+        title={`Delete ${selected.size} patient${selected.size === 1 ? "" : "s"}`}
+        description={
+          <>
+            This permanently deletes the selected patients along with their cases, payments and
+            files. This cannot be undone.
+          </>
+        }
       />
     </div>
   );

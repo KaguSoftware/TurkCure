@@ -60,16 +60,19 @@ function ListField({ name, defaultValue, label }: { name: string; defaultValue: 
 export function DirectoryManager({
   table,
   entityName,
+  entityNamePlural,
   fields,
   rows,
   isAdmin,
 }: {
   table: DirectoryTable;
   entityName: string;
+  entityNamePlural?: string;
   fields: FieldDef[];
   rows: Record<string, unknown>[];
   isAdmin: boolean;
 }) {
+  const plural = entityNamePlural ?? `${entityName.toLowerCase()}s`;
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
@@ -186,7 +189,7 @@ export function DirectoryManager({
         </THead>
         <TBody>
           {filtered.length === 0 && (
-            <EmptyRow colSpan={visible.length + 1} message={`No ${entityName.toLowerCase()}s yet.`} />
+            <EmptyRow colSpan={visible.length + 1} message={`No ${plural} yet.`} />
           )}
           {filtered.map((row) => (
             <Tr key={row.id as string}>

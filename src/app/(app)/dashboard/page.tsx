@@ -20,15 +20,32 @@ export default async function DashboardPage() {
   // Surface any newly-overdue payments as reminders before we read the list.
   await syncOverduePaymentReminders();
 
-  const [{ data: reminders }, { data: statusCounts }, { data: arrivals }, { data: paymentsDue }, { data: agents }] =
+  const [
+    { data: reminders },
+    { data: completedReminders },
+    { data: statusCounts },
+    { data: arrivals },
+    { data: paymentsDue },
+    { data: agents },
+  ] =
     await Promise.all([
+      // Open reminders plus ones checked off within the last 24h (they stay
+      // visible, struck through, until a day has passed or they're deleted).
       supabase
         .from("reminders")
         .select("*, patients(full_name)")
-        .is("done_at", null)
+        .or(`done_at.is.null,done_at.gte.${addDays(now, -1).toISOString()}`)
         .lte("due_at", horizon)
         .order("due_at")
         .limit(30),
+      // Older completions (1–7 days ago) live behind the "Show completed" toggle.
+      supabase
+        .from("reminders")
+        .select("*, patients(full_name)")
+        .not("done_at", "is", null)
+        .gte("done_at", addDays(now, -7).toISOString())
+        .order("done_at", { ascending: false })
+        .limit(15),
       supabase.from("patients").select("status"),
       supabase
         .from("cases")
@@ -76,6 +93,7 @@ export default async function DashboardPage() {
         <div className="xl:col-span-2">
           <RemindersPanel
             reminders={(reminders ?? []) as Reminder[]}
+            completedReminders={(completedReminders ?? []) as Reminder[]}
             agents={agents ?? []}
             currentUserId={profile.id}
           />

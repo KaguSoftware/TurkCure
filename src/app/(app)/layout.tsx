@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className={cn("flex min-h-screen w-full", themeClass)}>
       <Sidebar isAdmin={profile.role === "admin"} userName={profile.name} />
       <div className="flex min-w-0 flex-1 flex-col md:pl-60">
-        <Topbar />
+        <Topbar isAdmin={profile.role === "admin"} userName={profile.name} />
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
       <Toaster />
