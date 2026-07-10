@@ -31,6 +31,7 @@ Font.register({
     { src: path.join(FONT_DIR, "SourceSans3-Regular.ttf"), fontWeight: 400 },
     { src: path.join(FONT_DIR, "SourceSans3-SemiBold.ttf"), fontWeight: 600 },
     { src: path.join(FONT_DIR, "SourceSans3-Bold.ttf"), fontWeight: 700 },
+    { src: path.join(FONT_DIR, "SourceSans3-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
   ],
 });
 
@@ -468,20 +469,6 @@ export function PdfFooter() {
       />
     </>
   );
-}
-
-export function mdLines(md: string): { text: string; heading: boolean; bullet: boolean }[] {
-  return md
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      if (line.startsWith("#"))
-        return { text: line.replace(/^#+\s*/, ""), heading: true, bullet: false };
-      if (line.startsWith("-") || line.startsWith("*"))
-        return { text: line.replace(/^[-*]\s*/, ""), heading: false, bullet: true };
-      return { text: line, heading: false, bullet: false };
-    });
 }
 
 export function fmtDate(d: string | null | undefined): string {

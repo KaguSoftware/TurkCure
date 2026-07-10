@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import React from "react";
 import { renderToBuffer, Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
-import { pdfStyles as s, mdLines, PdfHeader, PdfFooter } from "@/lib/pdf/common";
+import { pdfStyles as s, PdfHeader, PdfFooter } from "@/lib/pdf/common";
+import { PdfMarkdown } from "@/lib/pdf/markdown";
 
 export const runtime = "nodejs";
 
@@ -43,18 +44,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           meta={patientName ? `Prepared for ${patientName}` : undefined}
         />
 
-        {mdLines(ins.body_md).map((line, j) =>
-          line.heading ? (
-            <Text key={j} style={[s.instrHeading, { fontSize: 12 }]}>
-              {line.text}
-            </Text>
-          ) : (
-            <Text key={j} style={[s.instrLine, { fontSize: 10, marginLeft: line.bullet ? 10 : 0 }]}>
-              {line.bullet ? "•  " : ""}
-              {line.text}
-            </Text>
-          )
-        )}
+        <PdfMarkdown md={ins.body_md} />
 
         {imageUrls.length > 0 && (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12 }}>

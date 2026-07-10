@@ -32,7 +32,7 @@ export default async function TemplatesPage() {
             options: (operationTypes ?? []).map((o) => ({ value: o.id, label: o.name })),
             displayKey: "operation_types",
           },
-          { key: "body_md", label: "Instructions (Markdown)", type: "textarea", hideInTable: true },
+          { key: "body_md", label: "Instructions (Markdown)", type: "markdown", hideInTable: true },
         ]}
       />
     </>

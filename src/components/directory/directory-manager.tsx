@@ -4,6 +4,7 @@ import * as React from "react";
 import { Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StarRating } from "@/components/ui/star-rating";
@@ -18,12 +19,17 @@ import {
 export interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "textarea" | "select" | "tel" | "email" | "list" | "stars";
+  type?: "text" | "number" | "textarea" | "markdown" | "select" | "tel" | "email" | "list" | "stars";
   options?: { value: string; label: string }[];
   required?: boolean;
   hideInTable?: boolean;
   /** For select fields: joined relation key whose .name is shown in the table (serializable — no render functions across the server/client boundary). */
   displayKey?: string;
+}
+
+function MarkdownField({ name, defaultValue }: { name: string; defaultValue: string }) {
+  const [value, setValue] = React.useState(defaultValue);
+  return <MarkdownEditor name={name} value={value} onChange={setValue} rows={12} />;
 }
 
 function ListField({ name, defaultValue, label }: { name: string; defaultValue: string[]; label: string }) {
@@ -229,7 +235,13 @@ export function DirectoryManager({
         <form onSubmit={onSubmit} className="space-y-4">
           {fields.map((f) => (
             <Field key={f.key} label={f.label}>
-              {f.type === "textarea" ? (
+              {f.type === "markdown" ? (
+                <MarkdownField
+                  key={(editing?.id as string) ?? "new"}
+                  name={f.key}
+                  defaultValue={(editing?.[f.key] as string) ?? ""}
+                />
+              ) : f.type === "textarea" ? (
                 <Textarea
                   name={f.key}
                   defaultValue={(editing?.[f.key] as string) ?? ""}

@@ -1,9 +1,78 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
+
+/**
+ * Renders popover content in a body portal, fixed-positioned against the
+ * anchor. This keeps dropdowns as true overlays: they can't be clipped by
+ * overflow containers (tables) or painted under sibling stacking contexts
+ * (animated/faded rows). Flips above the anchor when there's no room below.
+ */
+export function PopoverLayer({
+  anchorRef,
+  className,
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [style, setStyle] = React.useState<React.CSSProperties>({
+    position: "fixed",
+    visibility: "hidden",
+  });
+
+  const position = React.useCallback(() => {
+    const anchor = anchorRef.current;
+    const menu = ref.current;
+    if (!anchor || !menu) return;
+    const r = anchor.getBoundingClientRect();
+    const menuH = menu.offsetHeight;
+    const menuW = Math.max(menu.offsetWidth, r.width);
+    const openUp = r.bottom + 4 + menuH > window.innerHeight && r.top - 4 - menuH > 0;
+    const top = openUp ? r.top - 4 - menuH : r.bottom + 4;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - menuW - 8));
+    setStyle({
+      position: "fixed",
+      top,
+      left,
+      minWidth: r.width,
+      transformOrigin: openUp ? "bottom" : "top",
+    });
+  }, [anchorRef]);
+
+  React.useLayoutEffect(() => {
+    position();
+    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", position);
+    return () => {
+      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", position);
+    };
+  }, [position]);
+
+  return createPortal(
+    <div ref={ref} data-popover-layer style={style} className={cn("z-50", className)}>
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+/**
+ * True when a pointer event landed inside the given root or inside any
+ * portaled popover layer (which lives outside the root in the DOM).
+ */
+export function isInsidePopover(target: EventTarget | null, root: HTMLElement | null): boolean {
+  if (!(target instanceof Node)) return false;
+  if (root?.contains(target)) return true;
+  return target instanceof Element && !!target.closest("[data-popover-layer]");
+}
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -91,6 +160,7 @@ export const Select = React.forwardRef<
   const [internal, setInternal] = React.useState(String(defaultValue ?? options[0]?.value ?? ""));
   const current = value !== undefined ? String(value) : internal;
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
@@ -103,7 +173,7 @@ export const Select = React.forwardRef<
   React.useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      if (!isInsidePopover(e.target, rootRef.current)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -140,6 +210,7 @@ export const Select = React.forwardRef<
     <div ref={rootRef} className={cn("relative", className)}>
       {name && <input type="hidden" name={name} value={current} />}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
@@ -156,9 +227,10 @@ export const Select = React.forwardRef<
         />
       </button>
       {menuMounted && (
-        <div
+        <PopoverLayer
+          anchorRef={triggerRef}
           className={cn(
-            "animate-dropdown absolute z-50 mt-1 w-full min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop",
+            "animate-dropdown min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop",
             menuClosing && "animate-dropdown-out"
           )}
         >
@@ -205,7 +277,7 @@ export const Select = React.forwardRef<
               </button>
             ))}
           </div>
-        </div>
+        </PopoverLayer>
       )}
     </div>
   );

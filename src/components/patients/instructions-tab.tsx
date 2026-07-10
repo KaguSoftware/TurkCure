@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { FileDown, ImagePlus, Plus, Save, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Select, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/input";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
@@ -220,12 +221,7 @@ function InstructionCard({
         />
       </CardHeader>
       <CardContent className="space-y-3">
-        <Textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={12}
-          className="font-mono text-xs"
-        />
+        <MarkdownEditor value={body} onChange={setBody} rows={12} />
         <div className="flex flex-wrap items-center gap-3">
           {images.map((path) => (
             <div key={path} className="group relative">

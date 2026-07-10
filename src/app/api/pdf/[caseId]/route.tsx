@@ -14,7 +14,6 @@ import {
   GOLD_SOFT_BG,
   TABLE_LINE,
   pdfStyles as s,
-  mdLines,
   fmtDate,
   fmtGender,
   nightsBetween,
@@ -25,6 +24,7 @@ import {
   WordmarkGold,
   CoverOrnament,
 } from "@/lib/pdf/common";
+import { PdfMarkdown } from "@/lib/pdf/markdown";
 
 export const runtime = "nodejs";
 
@@ -350,18 +350,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
             <Text style={s.instrHeading} minPresenceAhead={40}>
               {ins.title}
             </Text>
-            {mdLines(ins.body_md).map((line, j) =>
-              line.heading ? (
-                <Text key={j} style={[s.bold, { marginTop: 6, marginBottom: 2, fontSize: 10 }]}>
-                  {line.text}
-                </Text>
-              ) : (
-                <Text key={j} style={[s.instrLine, { marginLeft: line.bullet ? 8 : 0 }]}>
-                  {line.bullet ? "•  " : ""}
-                  {line.text}
-                </Text>
-              )
-            )}
+            <PdfMarkdown md={ins.body_md} scale={0.95} />
             {(ins.image_paths ?? []).filter((p: string) => imageUrls[p]).length > 0 && (
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }} wrap={false}>
                 {(ins.image_paths ?? [])

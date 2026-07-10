@@ -16,7 +16,7 @@ import {
 } from "date-fns";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
-import { Select } from "./input";
+import { Select, PopoverLayer, isInsidePopover } from "./input";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
@@ -122,7 +122,7 @@ function usePopover() {
   React.useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (!isInsidePopover(e.target, ref.current)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -196,14 +196,15 @@ export function DatePicker({
         )}
       </button>
       {mounted && (
-        <div
+        <PopoverLayer
+          anchorRef={ref}
           className={cn(
-            "animate-dropdown absolute z-50 mt-1 rounded-xl border border-border bg-surface shadow-pop",
+            "animate-dropdown rounded-xl border border-border bg-surface shadow-pop",
             closing && "animate-dropdown-out"
           )}
         >
           <Calendar selected={selected} onSelect={(d) => set(format(d, "yyyy-MM-dd"))} />
-        </div>
+        </PopoverLayer>
       )}
     </div>
   );
