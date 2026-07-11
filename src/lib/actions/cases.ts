@@ -153,7 +153,7 @@ export async function upsertQuoteItem(
   caseId: string,
   values: { kind: string; description: string; price: number; cost?: number; sort_order?: number },
   id?: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; item?: Record<string, unknown> }> {
   const profile = await requireProfile();
   const admin = createAdminClient();
 
@@ -165,12 +165,13 @@ export async function upsertQuoteItem(
   };
   if (profile.role === "admin" && values.cost !== undefined) row.cost = values.cost;
 
-  const { error } = id
-    ? await admin.from("quote_items").update(row).eq("id", id)
-    : await admin.from("quote_items").insert({ ...row, case_id: caseId });
+  const columns = profile.role === "admin" ? QUOTE_COLUMNS_ADMIN : QUOTE_COLUMNS_AGENT;
+  const { data, error } = id
+    ? await admin.from("quote_items").update(row).eq("id", id).select(columns).single()
+    : await admin.from("quote_items").insert({ ...row, case_id: caseId }).select(columns).single();
   if (error) return { error: error.message };
   revalidateCase(patientId);
-  return {};
+  return { item: data as unknown as Record<string, unknown> };
 }
 
 export async function deleteQuoteItem(patientId: string, id: string): Promise<{ error?: string }> {
@@ -259,7 +260,7 @@ export async function attachInstruction(
   patientId: string,
   caseId: string,
   templateId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; instruction?: Record<string, unknown> }> {
   await requireProfile();
   const supabase = await createClient();
   const { data: template, error: tErr } = await supabase
@@ -268,15 +269,19 @@ export async function attachInstruction(
     .eq("id", templateId)
     .single();
   if (tErr || !template) return { error: "Template not found" };
-  const { error } = await supabase.from("case_instructions").insert({
-    case_id: caseId,
-    template_id: templateId,
-    title: template.title,
-    body_md: template.body_md,
-  });
+  const { data, error } = await supabase
+    .from("case_instructions")
+    .insert({
+      case_id: caseId,
+      template_id: templateId,
+      title: template.title,
+      body_md: template.body_md,
+    })
+    .select("*")
+    .single();
   if (error) return { error: error.message };
   revalidateCase(patientId);
-  return {};
+  return { instruction: data as unknown as Record<string, unknown> };
 }
 
 export async function updateInstruction(

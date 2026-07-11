@@ -94,7 +94,7 @@ function ProfileTab({ profile }: { profile: Profile }) {
     if (r.error) toast.error(r.error);
     else {
       toast.success("Profile updated.");
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
@@ -118,33 +118,47 @@ function ProfileTab({ profile }: { profile: Profile }) {
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [avatarBusy, setAvatarBusy] = React.useState(false);
+  // Optimistic preview: string = object URL, null = removed, undefined = server value.
+  const [avatarOverride, setAvatarOverride] = React.useState<string | null | undefined>(undefined);
 
   async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    const previous = avatarOverride;
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarOverride(previewUrl);
     setAvatarBusy(true);
     const fd = new FormData();
     fd.set("avatar", file);
     const r = await updateOwnAvatar(fd);
     setAvatarBusy(false);
-    if (r.error) toast.error(r.error);
-    else {
+    if (r.error) {
+      setAvatarOverride(previous);
+      URL.revokeObjectURL(previewUrl);
+      toast.error(r.error);
+    } else {
       toast.success("Profile picture updated.");
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
   async function onRemoveAvatar() {
+    const previous = avatarOverride;
+    setAvatarOverride(null);
     setAvatarBusy(true);
     const r = await removeOwnAvatar();
     setAvatarBusy(false);
-    if (r.error) toast.error(r.error);
-    else {
+    if (r.error) {
+      setAvatarOverride(previous);
+      toast.error(r.error);
+    } else {
       toast.success("Profile picture removed.");
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
+
+  const avatarUrl = avatarOverride === undefined ? profile.avatar_url : avatarOverride;
 
   return (
     <div className="grid max-w-3xl gap-4 md:grid-cols-2">
@@ -154,10 +168,10 @@ function ProfileTab({ profile }: { profile: Profile }) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
-            {profile.avatar_url ? (
+            {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- Supabase public URL
               <img
-                src={profile.avatar_url}
+                src={avatarUrl}
                 alt="Profile picture"
                 className="size-16 shrink-0 rounded-full border border-border object-cover"
               />
@@ -177,7 +191,7 @@ function ProfileTab({ profile }: { profile: Profile }) {
                 >
                   <Upload /> Upload photo
                 </Button>
-                {profile.avatar_url && (
+                {avatarUrl && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -295,7 +309,7 @@ function AppearanceTab({ profile }: { profile: Profile }) {
       setAccent(previous);
       toast.error(r.error);
     } else {
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 

@@ -11,8 +11,8 @@ import { Badge, PAYMENT_STATUS_TONE } from "@/components/ui/badge";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { upsertPayment, deletePayment } from "@/lib/actions/payments";
 import { CURRENCIES, formatMoney, formatDate } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
@@ -42,7 +42,7 @@ export function PaymentsTab({
   directories: Directories;
 }) {
   const activeCase = cases[0] ?? null;
-  const router = useRouter();
+  const { items: allPayments, mutate } = useOptimisticList<Payment>(payments);
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Payment | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -56,7 +56,6 @@ export function PaymentsTab({
   const [receiptPath, setReceiptPath] = React.useState<string>("");
   const [uploadingReceipt, setUploadingReceipt] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<Payment | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
 
   if (!activeCase) {
     return (
@@ -72,8 +71,8 @@ export function PaymentsTab({
 
   // Doctor payouts are boss-only: agents never see them
   const visiblePayments = isAdmin
-    ? payments
-    : payments.filter((p) => p.counterparty_type !== "doctor");
+    ? allPayments
+    : allPayments.filter((p) => p.counterparty_type !== "doctor");
   const incoming = visiblePayments.filter((p) => p.direction === "in");
   const outgoing = visiblePayments.filter((p) => p.direction === "out");
 
@@ -173,29 +172,40 @@ export function PaymentsTab({
       receipt_path: receiptPath,
       notes: fd.get("notes") ?? "",
     };
-    const result = await upsertPayment(patient.id, values, editing?.id);
+    // Mirror the server's derived status so the optimistic row matches.
+    const optimisticRow = {
+      ...(editing ?? {}),
+      ...values,
+      id: editing?.id ?? tempId(),
+      counterparty_type: values.counterparty_type,
+      status: values.paid_at ? "paid" : "pending",
+    } as Payment;
     setSaving(false);
-    if (result.error) {
-      setError(result.error);
-      toast.error(result.error);
-    } else {
-      toast.success(editing ? "Payment updated." : "Payment recorded.");
-      setOpen(false);
-      router.refresh();
-    }
+    setOpen(false);
+    const editingId = editing?.id;
+    const { ok, result } = await mutate({
+      optimistic: (prev) =>
+        editingId
+          ? prev.map((p) => (p.id === editingId ? optimisticRow : p))
+          : [...prev, optimisticRow],
+      action: () => upsertPayment(patient.id, values, editingId),
+      success: editingId ? "Payment updated." : "Payment recorded.",
+      reconcile: (r, prev) =>
+        r?.payment
+          ? prev.map((p) => (p.id === optimisticRow.id ? (r.payment as unknown as Payment) : p))
+          : prev,
+    });
+    if (!ok && result?.error) setError(result.error);
   }
 
   async function onDelete(p: Payment) {
-    setDeleting(true);
-    const r = await deletePayment(patient.id, p.id);
-    setDeleting(false);
-    if (r.error) toast.error(r.error);
-    else {
-      toast.success("Payment deleted.");
-      setConfirmDelete(null);
-      setOpen(false);
-      router.refresh();
-    }
+    setConfirmDelete(null);
+    setOpen(false);
+    await mutate({
+      optimistic: (prev) => prev.filter((x) => x.id !== p.id),
+      action: () => deletePayment(patient.id, p.id),
+      success: "Payment deleted.",
+    });
   }
 
   const section = (title: string, list: Payment[], icon: React.ReactNode) => (
@@ -499,7 +509,7 @@ export function PaymentsTab({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={deleting}
+        pending={false}
         title="Delete payment"
         description={
           <>

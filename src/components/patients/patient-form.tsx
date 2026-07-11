@@ -12,6 +12,7 @@ import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { upsertPatient, deletePatient } from "@/lib/actions/patients";
 import { upsertCase } from "@/lib/actions/cases";
+import { tempId } from "@/lib/use-optimistic-list";
 import { PATIENT_STATUSES, type Patient } from "@/lib/types";
 import { PATIENT_STATUS_LABEL } from "@/components/ui/badge";
 import { CURRENCIES } from "@/lib/utils";
@@ -63,6 +64,7 @@ export function PatientFormDialog({
   currentUserId,
   caseDirectories,
   isAdmin = false,
+  optimistic,
 }: {
   open: boolean;
   onClose: () => void;
@@ -73,6 +75,12 @@ export function PatientFormDialog({
   /** When present (and creating a new patient), shows the full treatment & travel section. */
   caseDirectories?: CaseDirectories;
   isAdmin?: boolean;
+  /** Optimistic list handlers: create appears instantly in the caller's list. */
+  optimistic?: {
+    insert: (row: Patient) => void;
+    replace: (tempId: string, row: Patient) => void;
+    remove: (id: string) => void;
+  };
 }) {
   const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
@@ -114,11 +122,46 @@ export function PatientFormDialog({
       assigned_agent_id: fd.get("assigned_agent_id") || null,
       notes: fd.get("notes") ?? "",
     };
+    // Optimistic create: show the patient in the list immediately, save behind it.
+    const optimisticRow: Patient | null =
+      !patient && optimistic
+        ? ({
+            id: tempId(),
+            full_name: String(values.full_name ?? ""),
+            email: String(values.email ?? ""),
+            phone: String(values.phone ?? ""),
+            date_of_birth: (values.date_of_birth as string | null) ?? null,
+            gender: String(values.gender ?? ""),
+            passport_number: String(values.passport_number ?? ""),
+            country_id: (values.country_id as string | null) ?? null,
+            source: String(values.source ?? ""),
+            status: String(values.status ?? "lead"),
+            assigned_agent_id: (values.assigned_agent_id as string | null) ?? null,
+            notes: String(values.notes ?? ""),
+            created_at: new Date().toISOString(),
+            countries: countries.find((c) => c.id === values.country_id) ?? null,
+            profiles: agents.find((a) => a.id === values.assigned_agent_id) ?? null,
+          } as unknown as Patient)
+        : null;
+    if (optimisticRow) {
+      optimistic!.insert(optimisticRow);
+      setSaving(false);
+      onClose();
+    }
+
     const result = await upsertPatient(values, patient?.id);
     if (result.error) {
+      if (optimisticRow) {
+        optimistic!.remove(optimisticRow.id);
+        toast.error(result.error);
+        return;
+      }
       setError(result.error);
       setSaving(false);
       return;
+    }
+    if (optimisticRow && result.id) {
+      optimistic!.replace(optimisticRow.id, { ...optimisticRow, id: result.id });
     }
 
     // New patient with any treatment/travel details filled → create the case too
@@ -148,6 +191,11 @@ export function PatientFormDialog({
         caseValues.currency = fd.get("currency") ?? "EUR";
         const caseResult = await upsertCase(result.id, caseValues);
         if (caseResult.error) {
+          if (optimisticRow) {
+            toast.error(`Patient saved, but case failed: ${caseResult.error}`);
+            React.startTransition(() => router.refresh());
+            return;
+          }
           setError(`Patient saved, but case failed: ${caseResult.error}`);
           setSaving(false);
           return;
@@ -155,9 +203,14 @@ export function PatientFormDialog({
       }
     }
 
-    setSaving(false);
     toast.success(patient ? "Patient updated." : "Patient created.");
-    onClose();
+    if (optimisticRow) {
+      React.startTransition(() => router.refresh());
+    } else {
+      setSaving(false);
+      onClose();
+      React.startTransition(() => router.refresh());
+    }
   }
 
   async function onDelete() {
@@ -170,7 +223,7 @@ export function PatientFormDialog({
       setConfirmDelete(false);
       onClose();
       router.push("/patients");
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 

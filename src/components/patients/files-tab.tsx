@@ -1,59 +1,69 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { Download, FileText, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
+import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { formatDate } from "@/lib/utils";
 import type { Patient, PatientFile } from "@/lib/types";
 
 export function FilesTab({
   patient,
-  files,
+  files: serverFiles,
   currentUserId,
 }: {
   patient: Patient;
   files: PatientFile[];
   currentUserId: string;
 }) {
-  const router = useRouter();
+  const { items: files, mutate } = useOptimisticList<PatientFile>(serverFiles);
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<PatientFile | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     setError(null);
-    const supabase = createClient();
-    const path = `${patient.id}/${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("patient-files").upload(path, file);
-    if (upErr) {
-      setError(upErr.message);
-      toast.error(`Upload failed: ${upErr.message}`);
-      setUploading(false);
-      return;
-    }
-    const { error: dbErr } = await supabase.from("patient_files").insert({
+    const temp = {
+      id: tempId(),
       patient_id: patient.id,
-      storage_path: path,
+      storage_path: "",
       label: file.name,
       uploaded_by: currentUserId,
+      created_at: new Date().toISOString(),
+    } as unknown as PatientFile;
+    const { ok, result } = await mutate({
+      optimistic: (prev) => [temp, ...prev],
+      action: async () => {
+        const supabase = createClient();
+        const path = `${patient.id}/${Date.now()}-${file.name}`;
+        const { error: upErr } = await supabase.storage.from("patient-files").upload(path, file);
+        if (upErr) return { error: `Upload failed: ${upErr.message}` };
+        const { data, error: dbErr } = await supabase
+          .from("patient_files")
+          .insert({
+            patient_id: patient.id,
+            storage_path: path,
+            label: file.name,
+            uploaded_by: currentUserId,
+          })
+          .select("*")
+          .single();
+        if (dbErr) return { error: dbErr.message };
+        return { row: data as PatientFile };
+      },
+      success: `${file.name} uploaded.`,
+      reconcile: (r, prev) =>
+        r && "row" in r && r.row ? prev.map((f) => (f.id === temp.id ? r.row! : f)) : prev,
     });
     setUploading(false);
-    if (dbErr) {
-      setError(dbErr.message);
-      toast.error(dbErr.message);
-    } else {
-      toast.success(`${file.name} uploaded.`);
-      router.refresh();
-    }
+    if (!ok && result?.error) setError(result.error);
   }
 
   async function onDownload(f: PatientFile) {
@@ -69,17 +79,17 @@ export function FilesTab({
   }
 
   async function onDelete(f: PatientFile) {
-    setDeleting(true);
-    const supabase = createClient();
-    await supabase.storage.from("patient-files").remove([f.storage_path]);
-    const { error } = await supabase.from("patient_files").delete().eq("id", f.id);
-    setDeleting(false);
-    if (error) toast.error(error.message);
-    else {
-      toast.success(`${f.label} deleted.`);
-      setConfirmDelete(null);
-      router.refresh();
-    }
+    setConfirmDelete(null);
+    await mutate({
+      optimistic: (prev) => prev.filter((x) => x.id !== f.id),
+      action: async () => {
+        const supabase = createClient();
+        await supabase.storage.from("patient-files").remove([f.storage_path]);
+        const { error } = await supabase.from("patient_files").delete().eq("id", f.id);
+        return error ? { error: error.message } : {};
+      },
+      success: `${f.label} deleted.`,
+    });
   }
 
   return (
@@ -130,7 +140,7 @@ export function FilesTab({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={deleting}
+        pending={false}
         title="Delete file"
         description={
           <>

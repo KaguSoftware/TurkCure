@@ -15,7 +15,7 @@ export async function updateOwnProfile(name: string): Promise<{ error?: string }
   if (error) return { error: error.message };
   revalidateTag("profiles", "max");
   revalidateTag("directories", "max"); // agent lists come from profiles
-  revalidatePath("/", "layout"); // sidebar/topbar user name
+  revalidatePath("/settings"); // sidebar/topbar re-read via the "profiles" tag
   return {};
 }
 
@@ -29,7 +29,7 @@ export async function updateOwnAccentTheme(theme: AccentTheme): Promise<{ error?
     .eq("id", profile.id);
   if (error) return { error: error.message };
   revalidateTag("profiles", "max");
-  revalidatePath("/", "layout");
+  revalidatePath("/settings");
   return {};
 }
 
@@ -66,7 +66,7 @@ export async function updateOwnAvatar(formData: FormData): Promise<{ error?: str
 
   await removeAvatarFiles(profile, path);
   revalidateTag("profiles", "max");
-  revalidatePath("/", "layout");
+  revalidatePath("/settings");
   return {};
 }
 
@@ -80,7 +80,7 @@ export async function removeOwnAvatar(): Promise<{ error?: string }> {
   if (error) return { error: error.message };
   await removeAvatarFiles(profile);
   revalidateTag("profiles", "max");
-  revalidatePath("/", "layout");
+  revalidatePath("/settings");
   return {};
 }
 

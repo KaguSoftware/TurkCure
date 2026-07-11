@@ -30,6 +30,7 @@ import {
   exportPatients,
 } from "@/lib/actions/patients";
 import { toast } from "@/components/ui/toast";
+import { useOptimisticList } from "@/lib/use-optimistic-list";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { usePresence } from "@/lib/use-presence";
 import { PATIENT_STATUSES, type Patient, type PatientStatus } from "@/lib/types";
@@ -59,6 +60,8 @@ export function PatientsView({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  // Local copy of the server list so creates/edits show instantly.
+  const { items: livePatients, setItems: setLivePatients } = useOptimisticList<Patient>(patients);
 
   const statusFilter = searchParams.get("status") ?? "all";
   const agentFilter = searchParams.get("agent") ?? "all";
@@ -104,12 +107,12 @@ export function PatientsView({
   // Clear stale selection when the visible set changes (page/filter change).
   React.useEffect(() => {
     setSelected((prev) => {
-      const next = new Set([...prev].filter((id) => patients.some((p) => p.id === id)));
+      const next = new Set([...prev].filter((id) => livePatients.some((p) => p.id === id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [patients]);
+  }, [livePatients]);
 
-  const effective = patients.map((p) =>
+  const effective = livePatients.map((p) =>
     statusOverrides[p.id] ? { ...p, status: statusOverrides[p.id] } : p
   );
 
@@ -122,7 +125,7 @@ export function PatientsView({
       toast.error(`Could not update status: ${result.error}`);
     } else {
       toast.success(`${p.full_name} moved to ${PATIENT_STATUS_LABEL[status]}.`);
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
@@ -157,7 +160,7 @@ export function PatientsView({
     else {
       toast.success(`Updated ${result.updated} patient${result.updated === 1 ? "" : "s"}.`);
       setSelected(new Set());
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
@@ -170,7 +173,7 @@ export function PatientsView({
     else {
       toast.success(`Deleted ${result.deleted} patient${result.deleted === 1 ? "" : "s"}.`);
       setSelected(new Set());
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
@@ -531,6 +534,11 @@ export function PatientsView({
         currentUserId={currentUserId}
         caseDirectories={caseDirectories}
         isAdmin={isAdmin}
+        optimistic={{
+          insert: (row) => setLivePatients((prev) => [row, ...prev]),
+          replace: (id, row) => setLivePatients((prev) => prev.map((p) => (p.id === id ? row : p))),
+          remove: (id) => setLivePatients((prev) => prev.filter((p) => p.id !== id)),
+        }}
       />
 
       <ConfirmDialog

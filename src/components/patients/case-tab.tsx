@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
 import { upsertDirectoryRow } from "@/lib/actions/directory";
 import { upsertCase, upsertQuoteItem, deleteQuoteItem } from "@/lib/actions/cases";
+import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
 import type { Case, Patient, QuoteItem, QuoteItemKind } from "@/lib/types";
 import type { Directories } from "./patient-detail";
@@ -58,7 +59,7 @@ export function CaseTab({
     else {
       toast.success("Doctor added.");
       setDoctorOpen(false);
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
@@ -92,7 +93,7 @@ export function CaseTab({
     } else {
       toast.success(activeCase ? "Case saved. Reminders regenerated." : "Case created.");
       if (!activeCase && result.id) onCaseCreated?.(result.id);
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 
@@ -258,7 +259,7 @@ function QuoteEditor({
   patientId,
   caseId,
   currency,
-  items,
+  items: serverItems,
   isAdmin,
 }: {
   patientId: string;
@@ -267,23 +268,18 @@ function QuoteEditor({
   items: QuoteItem[];
   isAdmin: boolean;
 }) {
-  const router = useRouter();
-  const [busy, setBusy] = React.useState(false);
+  const { items, mutate, pending } = useOptimisticList<QuoteItem>(serverItems);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<QuoteItem | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
 
   async function onDelete(item: QuoteItem) {
-    setDeleting(true);
-    const r = await deleteQuoteItem(patientId, item.id);
-    setDeleting(false);
-    if (r.error) toast.error(r.error);
-    else {
-      toast.success("Quote item deleted.");
-      setConfirmDelete(null);
-      router.refresh();
-    }
+    setConfirmDelete(null);
+    await mutate({
+      optimistic: (prev) => prev.filter((i) => i.id !== item.id),
+      action: () => deleteQuoteItem(patientId, item.id),
+      success: "Quote item deleted.",
+    });
   }
 
   const totalPrice = items.reduce((s, i) => s + Number(i.price), 0);
@@ -291,25 +287,35 @@ function QuoteEditor({
 
   async function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const result = await upsertQuoteItem(patientId, caseId, {
+    const values = {
       kind: String(fd.get("kind")),
       description: String(fd.get("description")),
       price: Number(fd.get("price") || 0),
       cost: isAdmin ? Number(fd.get("cost") || 0) : undefined,
       sort_order: items.length,
+    };
+    const optimisticRow = {
+      id: tempId(),
+      case_id: caseId,
+      kind: values.kind,
+      description: values.description,
+      price: values.price,
+      cost: values.cost ?? null,
+      sort_order: values.sort_order,
+    } as QuoteItem;
+    formRef.current?.reset();
+    const { ok, result } = await mutate({
+      optimistic: (prev) => [...prev, optimisticRow],
+      action: () => upsertQuoteItem(patientId, caseId, values),
+      success: "Quote item added.",
+      reconcile: (r, prev) =>
+        r?.item
+          ? prev.map((i) => (i.id === optimisticRow.id ? (r.item as unknown as QuoteItem) : i))
+          : prev,
     });
-    setBusy(false);
-    if (result.error) {
-      setError(result.error);
-      toast.error(result.error);
-    } else {
-      toast.success("Quote item added.");
-      formRef.current?.reset();
-      router.refresh();
-    }
+    if (!ok && result?.error) setError(result.error);
   }
 
   return (
@@ -419,7 +425,7 @@ function QuoteEditor({
               <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
             )}
             <div className="flex items-center gap-3">
-              <Button type="submit" variant="soft" size="sm" pending={busy}>
+              <Button type="submit" variant="soft" size="sm" pending={pending}>
                 <Plus /> Add to quote
               </Button>
               <p className="text-xs text-muted-light">
@@ -433,7 +439,7 @@ function QuoteEditor({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={deleting}
+        pending={false}
         title="Delete quote item"
         description={
           <>

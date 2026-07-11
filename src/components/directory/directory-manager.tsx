@@ -10,7 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StarRating } from "@/components/ui/star-rating";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
-import { useAction } from "@/lib/use-action";
+import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import {
   upsertDirectoryRow,
   deleteDirectoryRow,
@@ -92,15 +92,16 @@ export function DirectoryManager({
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
-  const save = useAction();
-  const del = useAction();
+  const { items, mutate, pending } = useOptimisticList<Record<string, unknown> & { id: string }>(
+    rows as (Record<string, unknown> & { id: string })[]
+  );
 
   const visible = fields.filter((f) => !f.hideInTable);
   const filtered = query
-    ? rows.filter((r) =>
+    ? items.filter((r) =>
         fields.some((f) => String(r[f.key] ?? "").toLowerCase().includes(query.toLowerCase()))
       )
-    : rows;
+    : items;
 
   function openNew() {
     setEditing(null);
@@ -131,20 +132,35 @@ export function DirectoryManager({
       else if (f.type === "select" && s === "") values[f.key] = null;
       else values[f.key] = s;
     }
-    const { ok } = await save.run(upsertDirectoryRow(table, values, editing?.id as string | undefined), {
+    const editingId = editing?.id as string | undefined;
+    const optimisticRow = editingId
+      ? { ...(editing as Record<string, unknown>), ...values, id: editingId }
+      : { ...values, id: tempId() };
+    setOpen(false);
+    await mutate({
+      optimistic: (prev) =>
+        editingId
+          ? prev.map((r) => (r.id === editingId ? (optimisticRow as typeof r) : r))
+          : [...prev, optimisticRow as (typeof prev)[number]],
+      action: () => upsertDirectoryRow(table, values, editingId),
       success: editing ? `${entityName} updated.` : `${entityName} created.`,
+      reconcile: (r, prev) =>
+        r?.row
+          ? prev.map((x) =>
+              x.id === optimisticRow.id ? (r.row as (typeof prev)[number]) : x
+            )
+          : prev,
     });
-    if (ok) setOpen(false);
   }
 
   async function onDelete(id: string) {
-    const { ok } = await del.run(deleteDirectoryRow(table, id), {
+    setConfirmDelete(null);
+    setOpen(false);
+    await mutate({
+      optimistic: (prev) => prev.filter((r) => r.id !== id),
+      action: () => deleteDirectoryRow(table, id),
       success: `${entityName} deleted.`,
     });
-    if (ok) {
-      setConfirmDelete(null);
-      setOpen(false);
-    }
   }
 
   function cellValue(row: Record<string, unknown>, f: FieldDef): string {
@@ -307,7 +323,7 @@ export function DirectoryManager({
               <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" pending={save.pending}>
+              <Button type="submit" pending={pending}>
                 Save
               </Button>
             </div>
@@ -319,7 +335,7 @@ export function DirectoryManager({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={del.pending}
+        pending={false}
         title={`Delete ${entityName.toLowerCase()}`}
         description={
           <>

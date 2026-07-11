@@ -19,18 +19,18 @@ export async function upsertDirectoryRow(
   table: DirectoryTable,
   values: Record<string, unknown>,
   id?: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; row?: Record<string, unknown> }> {
   await requireProfile();
   if (!(table in TABLES)) return { error: "Invalid table" };
   const supabase = await createClient();
   const query = id
-    ? supabase.from(table).update(values).eq("id", id)
-    : supabase.from(table).insert(values);
-  const { error } = await query;
+    ? supabase.from(table).update(values).eq("id", id).select("*").single()
+    : supabase.from(table).insert(values).select("*").single();
+  const { data, error } = await query;
   if (error) return { error: error.message };
   revalidateTag("directories", "max");
   revalidatePath(TABLES[table]);
-  return {};
+  return { row: data as unknown as Record<string, unknown> };
 }
 
 export async function deleteDirectoryRow(

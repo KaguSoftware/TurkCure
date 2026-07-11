@@ -18,7 +18,7 @@ export async function upsertPayment(
   patientId: string,
   values: Record<string, unknown>,
   id?: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; payment?: Record<string, unknown> }> {
   const profile = await requireProfile();
   const supabase = await createClient();
 
@@ -73,15 +73,15 @@ export async function upsertPayment(
     notes: values.notes ? String(values.notes) : "",
   };
 
-  const { error } = id
-    ? await supabase.from("payments").update(row).eq("id", id)
-    : await supabase.from("payments").insert(row);
+  const { data, error } = id
+    ? await supabase.from("payments").update(row).eq("id", id).select("*").single()
+    : await supabase.from("payments").insert(row).select("*").single();
   if (error) return { error: error.message };
 
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
   revalidatePath("/finance");
-  return {};
+  return { payment: data as unknown as Record<string, unknown> };
 }
 
 export async function deletePayment(patientId: string, id: string): Promise<{ error?: string }> {

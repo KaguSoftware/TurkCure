@@ -80,7 +80,7 @@ export function CsvImporter() {
     } else {
       setResult({ inserted: res.inserted ?? 0, skipped: res.skipped ?? 0 });
       toast.success(`${res.inserted ?? 0} patients imported, ${res.skipped ?? 0} duplicates skipped.`);
-      router.refresh();
+      React.startTransition(() => router.refresh());
     }
   }
 

@@ -7,19 +7,18 @@ import { Input, Select, Field } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "@/components/ui/toast";
-import { useRouter } from "next/navigation";
+import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { inviteUser, setUserActive, setUserRole } from "@/lib/actions/users";
 import type { Profile, Role } from "@/lib/types";
 
 export function UsersManager({
-  users,
+  users: serverUsers,
   currentUserId,
 }: {
   users: Profile[];
   currentUserId: string;
 }) {
-  const router = useRouter();
+  const { items: users, mutate } = useOptimisticList<Profile>(serverUsers);
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -30,21 +29,25 @@ export function UsersManager({
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const result = await inviteUser(
-      String(fd.get("email")),
-      String(fd.get("name")),
-      String(fd.get("role")) as Role,
-      String(fd.get("password"))
-    );
+    const email = String(fd.get("email"));
+    const name = String(fd.get("name"));
+    const role = String(fd.get("role")) as Role;
+    const password = String(fd.get("password"));
+    const temp = {
+      id: tempId(),
+      name,
+      email,
+      role,
+      active: true,
+    } as unknown as Profile;
     setSaving(false);
-    if (result.error) {
-      setError(result.error);
-      toast.error(result.error);
-    } else {
-      toast.success("Team member created.");
-      setOpen(false);
-      router.refresh();
-    }
+    setOpen(false);
+    const { ok, result } = await mutate({
+      optimistic: (prev) => [...prev, temp],
+      action: () => inviteUser(email, name, role, password),
+      success: "Team member created.",
+    });
+    if (!ok && result?.error) setError(result.error);
   }
 
   return (
@@ -78,14 +81,14 @@ export function UsersManager({
                   className="h-8 w-32 text-xs"
                   value={u.role}
                   disabled={u.id === currentUserId}
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const role = e.target.value as Role;
-                    const r = await setUserRole(u.id, role);
-                    if (r.error) toast.error(r.error);
-                    else {
-                      toast.success(`${u.name} is now ${role === "admin" ? "an admin" : "an agent"}.`);
-                      router.refresh();
-                    }
+                    mutate({
+                      optimistic: (prev) =>
+                        prev.map((p) => (p.id === u.id ? { ...p, role } : p)),
+                      action: () => setUserRole(u.id, role),
+                      success: `${u.name} is now ${role === "admin" ? "an admin" : "an agent"}.`,
+                    });
                   }}
                 >
                   <option value="admin">Admin</option>
@@ -103,13 +106,13 @@ export function UsersManager({
                     pending={togglingId === u.id}
                     onClick={async () => {
                       setTogglingId(u.id);
-                      const r = await setUserActive(u.id, !u.active);
+                      await mutate({
+                        optimistic: (prev) =>
+                          prev.map((p) => (p.id === u.id ? { ...p, active: !u.active } : p)),
+                        action: () => setUserActive(u.id, !u.active),
+                        success: `${u.name} ${u.active ? "disabled" : "enabled"}.`,
+                      });
                       setTogglingId(null);
-                      if (r.error) toast.error(r.error);
-                      else {
-                        toast.success(`${u.name} ${u.active ? "disabled" : "enabled"}.`);
-                        router.refresh();
-                      }
                     }}
                   >
                     {u.active ? "Disable" : "Enable"}

@@ -12,12 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
 import { attachInstruction, updateInstruction, removeInstruction } from "@/lib/actions/cases";
+import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import type { Case, CaseInstruction, Patient } from "@/lib/types";
 
 export function InstructionsTab({
   patient,
   cases,
-  instructions,
+  instructions: serverInstructions,
   templates,
 }: {
   patient: Patient;
@@ -26,8 +27,9 @@ export function InstructionsTab({
   templates: { id: string; title: string }[];
 }) {
   const activeCase = cases[0] ?? null;
+  const { items: instructions, mutate, pending: busy } =
+    useOptimisticList<CaseInstruction>(serverInstructions);
   const [templateId, setTemplateId] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
 
   if (!activeCase) {
     return (
@@ -41,14 +43,33 @@ export function InstructionsTab({
 
   async function onAttach() {
     if (!templateId) return;
-    setBusy(true);
-    const r = await attachInstruction(patient.id, activeCase!.id, templateId);
-    setBusy(false);
-    if (r.error) toast.error(r.error);
-    else {
-      toast.success("Instructions attached.");
-      setTemplateId("");
-    }
+    const template = templates.find((t) => t.id === templateId);
+    const temp = {
+      id: tempId(),
+      case_id: activeCase!.id,
+      template_id: templateId,
+      title: template?.title ?? "",
+      body_md: "",
+      image_paths: [],
+    } as unknown as CaseInstruction;
+    setTemplateId("");
+    await mutate({
+      optimistic: (prev) => [...prev, temp],
+      action: () => attachInstruction(patient.id, activeCase!.id, templateId),
+      success: "Instructions attached.",
+      reconcile: (r, prev) =>
+        r?.instruction
+          ? prev.map((i) => (i.id === temp.id ? (r.instruction as unknown as CaseInstruction) : i))
+          : prev,
+    });
+  }
+
+  async function onRemove(instruction: CaseInstruction) {
+    await mutate({
+      optimistic: (prev) => prev.filter((i) => i.id !== instruction.id),
+      action: () => removeInstruction(patient.id, instruction.id),
+      success: "Instructions removed.",
+    });
   }
 
   return (
@@ -79,7 +100,12 @@ export function InstructionsTab({
       )}
 
       {instructions.map((ins) => (
-        <InstructionCard key={ins.id} patientId={patient.id} instruction={ins} />
+        <InstructionCard
+          key={ins.id}
+          patientId={patient.id}
+          instruction={ins}
+          onRemove={() => onRemove(ins)}
+        />
       ))}
     </div>
   );
@@ -88,9 +114,11 @@ export function InstructionsTab({
 function InstructionCard({
   patientId,
   instruction,
+  onRemove,
 }: {
   patientId: string;
   instruction: CaseInstruction;
+  onRemove: () => void;
 }) {
   const router = useRouter();
   const [body, setBody] = React.useState(instruction.body_md);
@@ -98,7 +126,6 @@ function InstructionCard({
   const [uploading, setUploading] = React.useState(false);
   const [thumbs, setThumbs] = React.useState<Record<string, string>>({});
   const [confirmRemove, setConfirmRemove] = React.useState(false);
-  const [removing, setRemoving] = React.useState(false);
   const dirty = body !== instruction.body_md;
   const images = instruction.image_paths ?? [];
 
@@ -132,7 +159,7 @@ function InstructionCard({
       .update({ image_paths: paths })
       .eq("id", instruction.id);
     if (error) toast.error(error.message);
-    else router.refresh();
+    else React.startTransition(() => router.refresh());
   }
 
   async function onAddImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -174,7 +201,7 @@ function InstructionCard({
                 if (r.error) toast.error(r.error);
                 else {
                   toast.success("Instructions saved.");
-                  router.refresh();
+                  React.startTransition(() => router.refresh());
                 }
               }}
             >
@@ -199,18 +226,11 @@ function InstructionCard({
         <ConfirmDialog
           open={confirmRemove}
           onClose={() => setConfirmRemove(false)}
-          onConfirm={async () => {
-            setRemoving(true);
-            const r = await removeInstruction(patientId, instruction.id);
-            setRemoving(false);
-            if (r.error) toast.error(r.error);
-            else {
-              toast.success("Instructions removed.");
-              setConfirmRemove(false);
-              router.refresh();
-            }
+          onConfirm={() => {
+            setConfirmRemove(false);
+            onRemove();
           }}
-          pending={removing}
+          pending={false}
           title="Remove instructions"
           confirmLabel="Remove"
           description={
