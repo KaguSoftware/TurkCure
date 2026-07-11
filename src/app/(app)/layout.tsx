@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getProfile } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { Toaster } from "@/components/ui/toast";
-import { IntroOverlay } from "@/components/shell/intro-overlay";
+import { IntroOverlay, INTRO_COOKIE } from "@/components/shell/intro-overlay";
 import { cn } from "@/lib/utils";
 import type { AccentTheme } from "@/lib/types";
 
@@ -22,16 +23,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!profile || !profile.active) redirect("/auth/signout");
 
   const themeClass = ACCENT_CLASS[profile.accent_theme];
+  // Cookie-gated so the splash is part of the first server-rendered paint
+  // (no flash of the app before it appears). The client sets the cookie to
+  // expire at local midnight, so it plays once per day.
+  const introSeen = (await cookies()).has(INTRO_COOKIE);
 
   return (
-    <div className={cn("flex min-h-screen w-full", themeClass)}>
-      <Sidebar isAdmin={profile.role === "admin"} userName={profile.name} />
+    <div data-accent-root className={cn("flex min-h-screen w-full", themeClass)}>
+      <Sidebar
+        isAdmin={profile.role === "admin"}
+        userName={profile.name}
+        avatarUrl={profile.avatar_url}
+      />
       <div className="flex min-w-0 flex-1 flex-col md:pl-60">
-        <Topbar isAdmin={profile.role === "admin"} userName={profile.name} />
+        <Topbar
+          isAdmin={profile.role === "admin"}
+          userName={profile.name}
+          avatarUrl={profile.avatar_url}
+        />
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
       <Toaster />
-      <IntroOverlay userName={profile.name} />
+      {!introSeen && <IntroOverlay userName={profile.name} />}
     </div>
   );
 }

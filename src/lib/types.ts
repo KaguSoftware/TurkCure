@@ -31,6 +31,7 @@ export interface Profile {
   role: Role;
   active: boolean;
   accent_theme: AccentTheme;
+  avatar_url: string | null;
   /** Auth email; attached by getProfile(), not a profiles column. */
   email?: string;
 }

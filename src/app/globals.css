@@ -343,17 +343,18 @@ body {
     transform: none;
   }
 }
-.intro-overlay {
-  animation: overlay-in 400ms var(--ease-out-soft) both;
-}
+/* No enter animation on the container: it ships opaque in the first
+   server-rendered frame so the app never peeks through. */
 .intro-overlay.closing {
-  animation: overlay-out 350ms ease-in both;
+  animation: overlay-out 450ms ease-in both;
 }
 .intro-content {
-  animation: intro-rise 600ms var(--ease-spring) 150ms both;
+  animation: intro-rise 800ms var(--ease-out-soft) 200ms both;
+  will-change: transform, opacity;
 }
 .intro-greeting {
-  animation: intro-rise 600ms var(--ease-spring) 350ms both;
+  animation: intro-rise 800ms var(--ease-out-soft) 550ms both;
+  will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -3,13 +3,19 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Check, Moon, Sun } from "lucide-react";
+import { Check, Moon, Sun, Upload, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { UsersManager } from "@/components/settings/users-manager";
-import { updateOwnProfile, updateOwnAccentTheme, changeOwnPassword } from "@/lib/actions/account";
+import {
+  updateOwnProfile,
+  updateOwnAccentTheme,
+  changeOwnPassword,
+  updateOwnAvatar,
+  removeOwnAvatar,
+} from "@/lib/actions/account";
 import { ACCENT_THEMES, type AccentTheme, type Profile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +26,22 @@ const SWATCH: Record<AccentTheme, string> = {
   emerald: "linear-gradient(135deg, #059669, #34d399)",
   amber: "linear-gradient(135deg, #d97706, #fbbf24)",
 };
+
+// Mirrors ACCENT_CLASS in the (app) layout, which owns the server-rendered class.
+const ACCENT_CLASS: Record<AccentTheme, string | null> = {
+  default: null,
+  violet: "theme-violet",
+  emerald: "theme-emerald",
+  amber: "theme-amber",
+};
+
+function applyAccentClass(value: AccentTheme) {
+  const root = document.querySelector("[data-accent-root]");
+  if (!root) return;
+  for (const cls of Object.values(ACCENT_CLASS)) if (cls) root.classList.remove(cls);
+  const next = ACCENT_CLASS[value];
+  if (next) root.classList.add(next);
+}
 
 export function SettingsView({ profile, users }: { profile: Profile; users: Profile[] | null }) {
   const isAdmin = profile.role === "admin";
@@ -94,13 +116,90 @@ function ProfileTab({ profile }: { profile: Profile }) {
     }
   }
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+
+  async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAvatarBusy(true);
+    const fd = new FormData();
+    fd.set("avatar", file);
+    const r = await updateOwnAvatar(fd);
+    setAvatarBusy(false);
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Profile picture updated.");
+      router.refresh();
+    }
+  }
+
+  async function onRemoveAvatar() {
+    setAvatarBusy(true);
+    const r = await removeOwnAvatar();
+    setAvatarBusy(false);
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Profile picture removed.");
+      router.refresh();
+    }
+  }
+
   return (
     <div className="grid max-w-3xl gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Profile</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5">
+          <div className="flex items-center gap-4">
+            {profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Supabase public URL
+              <img
+                src={profile.avatar_url}
+                alt="Profile picture"
+                className="size-16 shrink-0 rounded-full border border-border object-cover"
+              />
+            ) : (
+              <div className="brand-gradient-bg flex size-16 shrink-0 items-center justify-center rounded-full text-xl font-semibold text-white">
+                {profile.name.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  pending={avatarBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload /> Upload photo
+                </Button>
+                {profile.avatar_url && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={avatarBusy}
+                    onClick={onRemoveAvatar}
+                  >
+                    <Trash2 /> Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted">JPG, PNG, WebP or GIF, up to 2 MB.</p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={onPickAvatar}
+            />
+          </div>
+
           <form onSubmit={onSaveName} className="space-y-4">
             <Field label="Display name">
               <Input value={name} onChange={(e) => setName(e.target.value)} required />
@@ -176,12 +275,19 @@ function AppearanceTab({ profile }: { profile: Profile }) {
 
   async function pickAccent(value: AccentTheme) {
     if (value === accent || savingAccent) return;
+    const previous = accent;
+    // Swap the accent class on the layout root immediately; the server action
+    // persists it and router.refresh() re-renders with the same class.
+    applyAccentClass(value);
+    setAccent(value);
     setSavingAccent(value);
     const r = await updateOwnAccentTheme(value);
     setSavingAccent(null);
-    if (r.error) toast.error(r.error);
-    else {
-      setAccent(value);
+    if (r.error) {
+      applyAccentClass(previous);
+      setAccent(previous);
+      toast.error(r.error);
+    } else {
       router.refresh();
     }
   }

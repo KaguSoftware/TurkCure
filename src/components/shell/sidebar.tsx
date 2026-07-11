@@ -41,10 +41,12 @@ function NavIcon({ Icon }: { Icon: (typeof NAV)[number]["icon"] }) {
 export function SidebarContent({
   isAdmin,
   userName,
+  avatarUrl,
   onNavigate,
 }: {
   isAdmin: boolean;
   userName: string;
+  avatarUrl?: string | null;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -84,9 +86,18 @@ export function SidebarContent({
       </nav>
       <div className="border-t border-border p-4">
         <div className="flex items-center gap-3">
-          <div className="brand-gradient-bg flex size-8 items-center justify-center rounded-full text-xs font-semibold text-white">
-            {userName.slice(0, 1).toUpperCase()}
-          </div>
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- Supabase public URL, tiny avatar
+            <img
+              src={avatarUrl}
+              alt=""
+              className="size-8 shrink-0 rounded-full border border-border object-cover"
+            />
+          ) : (
+            <div className="brand-gradient-bg flex size-8 items-center justify-center rounded-full text-xs font-semibold text-white">
+              {userName.slice(0, 1).toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{userName}</p>
             <p className="text-xs text-muted">{isAdmin ? "Administrator" : "Agent"}</p>
@@ -97,7 +108,15 @@ export function SidebarContent({
   );
 }
 
-export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: string }) {
+export function Sidebar({
+  isAdmin,
+  userName,
+  avatarUrl,
+}: {
+  isAdmin: boolean;
+  userName: string;
+  avatarUrl?: string | null;
+}) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface md:flex">
       <div className="flex h-14 items-center border-b border-border px-5">
@@ -105,7 +124,7 @@ export function Sidebar({ isAdmin, userName }: { isAdmin: boolean; userName: str
           <span className="brand-gradient-text">TurkCure</span>
         </Link>
       </div>
-      <SidebarContent isAdmin={isAdmin} userName={userName} />
+      <SidebarContent isAdmin={isAdmin} userName={userName} avatarUrl={avatarUrl} />
     </aside>
   );
 }

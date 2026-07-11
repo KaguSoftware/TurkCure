@@ -16,10 +16,12 @@ export function Topbar({
   title,
   isAdmin,
   userName,
+  avatarUrl,
 }: {
   title?: string;
   isAdmin: boolean;
   userName: string;
+  avatarUrl?: string | null;
 }) {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -99,6 +101,7 @@ export function Topbar({
             <SidebarContent
               isAdmin={isAdmin}
               userName={userName}
+              avatarUrl={avatarUrl}
               onNavigate={() => setDrawerOpen(false)}
             />
           </aside>

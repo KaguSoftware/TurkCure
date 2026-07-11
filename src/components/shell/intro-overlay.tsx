@@ -2,13 +2,7 @@
 
 import * as React from "react";
 
-const KEY_PREFIX = "turkcure:intro:";
-
-function localDateKey() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${KEY_PREFIX}${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+export const INTRO_COOKIE = "turkcure_intro";
 
 function greeting() {
   const h = new Date().getHours();
@@ -18,29 +12,27 @@ function greeting() {
   return "Good evening";
 }
 
-/** Full-screen brand splash, shown once per local day per browser. */
+/**
+ * Full-screen brand splash, shown once per local day. The layout only renders
+ * this when the daily cookie is absent, so the splash is in the initial
+ * server-rendered HTML and covers the very first paint — no flash of the app.
+ */
 export function IntroOverlay({ userName }: { userName: string }) {
-  const [show, setShow] = React.useState(false);
+  const [show, setShow] = React.useState(true);
   const [closing, setClosing] = React.useState(false);
 
   React.useEffect(() => {
-    const key = localDateKey();
-    try {
-      if (localStorage.getItem(key)) return;
-      // Prune yesterday's keys so only today's marker sticks around.
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k?.startsWith(KEY_PREFIX) && k !== key) localStorage.removeItem(k);
-      }
-      localStorage.setItem(key, "1");
-    } catch {
-      return; // storage unavailable: never show, to avoid replaying every load
-    }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Mark as seen until local midnight.
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    document.cookie = `${INTRO_COOKIE}=1; path=/; expires=${midnight.toUTCString()}; samesite=lax`;
 
-    setShow(true);
-    const closeTimer = setTimeout(() => setClosing(true), 1400);
-    const doneTimer = setTimeout(() => setShow(false), 1750);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShow(false);
+      return;
+    }
+    const closeTimer = setTimeout(() => setClosing(true), 2550);
+    const doneTimer = setTimeout(() => setShow(false), 3000);
     return () => {
       clearTimeout(closeTimer);
       clearTimeout(doneTimer);
@@ -53,7 +45,7 @@ export function IntroOverlay({ userName }: { userName: string }) {
     <div
       aria-hidden
       className={
-        "intro-overlay pointer-events-none fixed inset-0 z-[100] flex items-center justify-center bg-background" +
+        "intro-overlay pointer-events-none fixed inset-0 z-100 flex items-center justify-center bg-background" +
         (closing ? " closing" : "")
       }
     >
