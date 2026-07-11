@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { INTRO_COOKIE } from "@/components/shell/intro-overlay";
 
 export function LoginForm() {
   const router = useRouter();
@@ -25,6 +26,10 @@ export function LoginForm() {
       setLoading(false);
       return;
     }
+    // Clear the intro marker so the splash also plays on every fresh login,
+    // and restart the 24h session clock enforced by the proxy.
+    document.cookie = `${INTRO_COOKIE}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    document.cookie = `turkcure_session_start=${Date.now()}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
     router.push("/dashboard");
     router.refresh();
   }

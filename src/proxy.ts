@@ -45,8 +45,36 @@ function readTokenExp(request: NextRequest): number | null {
   }
 }
 
+// Sessions are capped at 24h: after that, users must sign in again.
+const SESSION_START_COOKIE = "turkcure_session_start";
+const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Enforce the 24h session cap. Returns a redirect to the signout route when
+ * the session is too old; otherwise stamps a start-time cookie if missing
+ * (covers sessions created before this feature) and returns null.
+ */
+function enforceSessionAge(request: NextRequest, response: NextResponse): NextResponse | null {
+  const started = Number(request.cookies.get(SESSION_START_COOKIE)?.value);
+  if (Number.isFinite(started) && started > 0) {
+    if (Date.now() - started > MAX_SESSION_MS) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/signout";
+      return NextResponse.redirect(url);
+    }
+    return null;
+  }
+  response.cookies.set(SESSION_START_COOKIE, String(Date.now()), {
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60,
+    sameSite: "lax",
+  });
+  return null;
+}
+
 export async function proxy(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const isSignoutRoute = request.nextUrl.pathname.startsWith("/auth/signout");
   const exp = readTokenExp(request);
   const now = Math.floor(Date.now() / 1000);
   // Treat a token with more than 5 minutes of life left as a valid session
@@ -61,7 +89,12 @@ export async function proxy(request: NextRequest) {
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);
     }
-    return NextResponse.next({ request });
+    const next = NextResponse.next({ request });
+    if (!isSignoutRoute) {
+      const expired = enforceSessionAge(request, next);
+      if (expired) return expired;
+    }
+    return next;
   }
 
   // No cookie at all and not on the login page → straight to login, still no
@@ -101,6 +134,10 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
+  }
+  if (user && !isSignoutRoute) {
+    const expired = enforceSessionAge(request, response);
+    if (expired) return expired;
   }
 
   return response;

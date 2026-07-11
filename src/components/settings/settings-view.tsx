@@ -148,11 +148,11 @@ function ProfileTab({ profile }: { profile: Profile }) {
 
   return (
     <div className="grid max-w-3xl gap-4 md:grid-cols-2">
-      <Card>
+      <Card className="md:col-span-2">
         <CardHeader>
-          <CardTitle>Profile</CardTitle>
+          <CardTitle>Profile picture</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent>
           <div className="flex items-center gap-4">
             {profile.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element -- Supabase public URL
@@ -199,7 +199,14 @@ function ProfileTab({ profile }: { profile: Profile }) {
               onChange={onPickAvatar}
             />
           </div>
+        </CardContent>
+      </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={onSaveName} className="space-y-4">
             <Field label="Display name">
               <Input value={name} onChange={(e) => setName(e.target.value)} required />

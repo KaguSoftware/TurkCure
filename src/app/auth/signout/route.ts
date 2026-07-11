@@ -6,5 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/login", request.url));
+  const response = NextResponse.redirect(new URL("/login", request.url));
+  // Reset the 24h session clock so the next login starts fresh.
+  response.cookies.delete("turkcure_session_start");
+  return response;
 }
