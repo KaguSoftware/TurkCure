@@ -16,11 +16,21 @@ export const PATIENT_STATUSES: PatientStatus[] = [
   "lost",
 ];
 
+export type AccentTheme = "default" | "violet" | "emerald" | "amber";
+
+export const ACCENT_THEMES: { value: AccentTheme; label: string }[] = [
+  { value: "default", label: "TurkCure Blue" },
+  { value: "violet", label: "Violet" },
+  { value: "emerald", label: "Emerald" },
+  { value: "amber", label: "Amber" },
+];
+
 export interface Profile {
   id: string;
   name: string;
   role: Role;
   active: boolean;
+  accent_theme: AccentTheme;
   /** Auth email; attached by getProfile(), not a profiles column. */
   email?: string;
 }

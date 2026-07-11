@@ -3,11 +3,16 @@ import { getProfile } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { Toaster } from "@/components/ui/toast";
+import { IntroOverlay } from "@/components/shell/intro-overlay";
 import { cn } from "@/lib/utils";
+import type { AccentTheme } from "@/lib/types";
 
-// Per-user accent themes, keyed by auth email.
-const THEME_OVERRIDES: Record<string, string> = {
-  "yacjamili@gmail.com": "theme-violet",
+// Literal class map keeps Tailwind-safe class names and rejects unknown values.
+const ACCENT_CLASS: Record<AccentTheme, string | undefined> = {
+  default: undefined,
+  violet: "theme-violet",
+  emerald: "theme-emerald",
+  amber: "theme-amber",
 };
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -16,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // redirecting to /login, which would loop (proxy bounces sessions off /login).
   if (!profile || !profile.active) redirect("/auth/signout");
 
-  const themeClass = profile.email ? THEME_OVERRIDES[profile.email.toLowerCase()] : undefined;
+  const themeClass = ACCENT_CLASS[profile.accent_theme];
 
   return (
     <div className={cn("flex min-h-screen w-full", themeClass)}>
@@ -26,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
       <Toaster />
+      <IntroOverlay userName={profile.name} />
     </div>
   );
 }

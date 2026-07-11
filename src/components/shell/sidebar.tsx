@@ -22,6 +22,7 @@ const NAV = [
   { href: "/hotels", label: "Hotels", icon: Hotel },
   { href: "/drivers", label: "Drivers", icon: Car },
   { href: "/templates", label: "Instructions", icon: ClipboardList },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const ADMIN_NAV = [{ href: "/finance", label: "Finance", icon: Wallet }];
@@ -78,7 +79,6 @@ export function SidebarContent({
               Admin
             </div>
             {ADMIN_NAV.map(link)}
-            {link({ href: "/settings", label: "Settings", icon: Settings })}
           </>
         )}
       </nav>

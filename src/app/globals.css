@@ -86,6 +86,50 @@
   --ring: rgba(167, 139, 250, 0.4);
 }
 
+.theme-emerald {
+  --brand-blue: #059669;
+  --brand-teal: #10b981;
+  --brand-green: #34d399;
+  --primary: #059669;
+  --primary-hover: #047857;
+  --primary-soft: #e7f8f1;
+  --ring: rgba(5, 150, 105, 0.35);
+}
+
+.dark .theme-emerald,
+.theme-emerald .dark,
+.dark.theme-emerald {
+  --brand-blue: #34d399;
+  --brand-teal: #2dd4a8;
+  --brand-green: #6ee7b7;
+  --primary: #34d399;
+  --primary-hover: #6ee7b7;
+  --primary-soft: #0d2b22;
+  --ring: rgba(52, 211, 153, 0.4);
+}
+
+.theme-amber {
+  --brand-blue: #d97706;
+  --brand-teal: #ea920b;
+  --brand-green: #f59e0b;
+  --primary: #d97706;
+  --primary-hover: #b45309;
+  --primary-soft: #fdf3e3;
+  --ring: rgba(217, 119, 6, 0.35);
+}
+
+.dark .theme-amber,
+.theme-amber .dark,
+.dark.theme-amber {
+  --brand-blue: #fbbf24;
+  --brand-teal: #fcc945;
+  --brand-green: #fcd34d;
+  --primary: #fbbf24;
+  --primary-hover: #fcd34d;
+  --primary-soft: #2d2412;
+  --ring: rgba(251, 191, 36, 0.4);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -288,7 +332,35 @@ body {
   filter: brightness(1.02);
 }
 
+/* Daily intro splash: full-screen brand greeting, shown once per day. */
+@keyframes intro-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.intro-overlay {
+  animation: overlay-in 400ms var(--ease-out-soft) both;
+}
+.intro-overlay.closing {
+  animation: overlay-out 350ms ease-in both;
+}
+.intro-content {
+  animation: intro-rise 600ms var(--ease-spring) 150ms both;
+}
+.intro-greeting {
+  animation: intro-rise 600ms var(--ease-spring) 350ms both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .intro-overlay,
+  .intro-overlay.closing,
+  .intro-content,
+  .intro-greeting,
   .animate-overlay,
   .animate-pop,
   .animate-dropdown,
