@@ -73,8 +73,18 @@ function enforceSessionAge(request: NextRequest, response: NextResponse): NextRe
 }
 
 export async function proxy(request: NextRequest) {
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
-  const isSignoutRoute = request.nextUrl.pathname.startsWith("/auth/signout");
+  const path = request.nextUrl.pathname;
+  const isSignoutRoute = path.startsWith("/auth/signout");
+  // Pages an unauthenticated visitor is allowed to reach.
+  const isAuthPage =
+    path.startsWith("/login") ||
+    path.startsWith("/signup") ||
+    path.startsWith("/reset-password");
+  // The password-update page is reached via an email recovery link that
+  // deliberately creates a session — so authenticated users must NOT be bounced
+  // away from it. Every other auth page redirects signed-in users to the app.
+  const isUpdatePasswordPage = path.startsWith("/reset-password/update");
+  const redirectAuthedAway = isAuthPage && !isUpdatePasswordPage;
   const exp = readTokenExp(request);
   const now = Math.floor(Date.now() / 1000);
   // Treat a token with more than 5 minutes of life left as a valid session
@@ -84,7 +94,7 @@ export async function proxy(request: NextRequest) {
 
   // Fast path: no auth-server round trip on the vast majority of requests.
   if (hasFreshSession) {
-    if (isLoginPage) {
+    if (redirectAuthedAway) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);
@@ -97,9 +107,9 @@ export async function proxy(request: NextRequest) {
     return next;
   }
 
-  // No cookie at all and not on the login page → straight to login, still no
+  // No cookie at all and not on a public auth page → straight to login, still no
   // network call.
-  if (exp === null && !isLoginPage) {
+  if (exp === null && !isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -125,12 +135,12 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && !isLoginPage) {
+  if (!user && !isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
-  if (user && isLoginPage) {
+  if (user && redirectAuthedAway) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

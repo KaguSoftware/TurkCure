@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LoginForm } from "./login-form";
 
 export const metadata = { title: "Sign in" };
@@ -13,9 +14,14 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-muted">Internal operations system</p>
         </div>
         <LoginForm />
-        <p className="mt-6 text-center text-xs text-muted-light">
-          Access is invite-only. Contact an administrator for an account.
-        </p>
+        <div className="mt-4 flex items-center justify-between text-xs">
+          <Link href="/reset-password" className="text-muted hover:text-foreground">
+            Forgot password?
+          </Link>
+          <Link href="/signup" className="font-medium text-primary hover:underline">
+            Create account
+          </Link>
+        </div>
       </div>
     </div>
   );
