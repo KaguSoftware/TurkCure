@@ -77,9 +77,9 @@ export function PatientsView({
   const [statusOverrides, setStatusOverrides] = React.useState<Record<string, PatientStatus>>({});
   // Patient ids with an in-flight status change, so the card select shows it's saving.
   const [statusPending, setStatusPending] = React.useState<ReadonlySet<string>>(new Set());
-  // View mode lives in the URL so it's shareable and survives back/forward.
-  const mode: "board" | "table" = searchParams.get("view") === "table" ? "table" : "board";
-  const setMode = (m: "board" | "table") => setParams({ view: m === "board" ? null : m }, false);
+  // View mode is a UI preference, not content — keep it as local state so the
+  // toggle is instant (no URL change, no server round-trip).
+  const [mode, setMode] = React.useState<"board" | "table">("board");
   // "Maximize" a board column is local state (no URL) that plays a screen-takeover
   // animation growing from the clicked column, then fetches that status's full set.
   const [maximized, setMaximized] = React.useState<PatientStatus | null>(null);
