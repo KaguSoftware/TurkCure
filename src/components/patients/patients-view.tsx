@@ -112,22 +112,40 @@ export function PatientsView({
     });
   }, [livePatients]);
 
-  const effective = livePatients.map((p) =>
-    statusOverrides[p.id] ? { ...p, status: statusOverrides[p.id] } : p
+  const effective = React.useMemo(
+    () =>
+      livePatients.map((p) =>
+        statusOverrides[p.id] ? { ...p, status: statusOverrides[p.id] } : p
+      ),
+    [livePatients, statusOverrides]
   );
 
-  async function onStatusChange(p: Patient, status: PatientStatus) {
-    const prev = p.status;
-    setStatusOverrides((o) => ({ ...o, [p.id]: status }));
-    const result = await setPatientStatus(p.id, status);
-    if (result.error) {
-      setStatusOverrides((o) => ({ ...o, [p.id]: prev }));
-      toast.error(`Could not update status: ${result.error}`);
-    } else {
-      toast.success(`${p.full_name} moved to ${PATIENT_STATUS_LABEL[status]}.`);
-      React.startTransition(() => router.refresh());
+  // Group once per render instead of filtering the whole list per board column.
+  const byStatus = React.useMemo(() => {
+    const map = new Map<PatientStatus, Patient[]>();
+    for (const p of effective) {
+      const arr = map.get(p.status);
+      if (arr) arr.push(p);
+      else map.set(p.status, [p]);
     }
-  }
+    return map;
+  }, [effective]);
+
+  const onStatusChange = React.useCallback(
+    async (p: Patient, status: PatientStatus) => {
+      const prev = p.status;
+      setStatusOverrides((o) => ({ ...o, [p.id]: status }));
+      const result = await setPatientStatus(p.id, status);
+      if (result.error) {
+        setStatusOverrides((o) => ({ ...o, [p.id]: prev }));
+        toast.error(`Could not update status: ${result.error}`);
+      } else {
+        toast.success(`${p.full_name} moved to ${PATIENT_STATUS_LABEL[status]}.`);
+        React.startTransition(() => router.refresh());
+      }
+    },
+    [router]
+  );
 
   const filtersActive =
     statusFilter !== "all" || agentFilter !== "all" || countryFilter !== "all";
@@ -141,28 +159,31 @@ export function PatientsView({
     setFormOpen(true);
   }
 
-  function toggleSelect(id: string) {
+  const toggleSelect = React.useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   const allSelected = effective.length > 0 && effective.every((p) => selected.has(p.id));
 
-  async function onBulkUpdate(values: { status?: PatientStatus; assigned_agent_id?: string }) {
-    setBulkPending(true);
-    const result = await bulkUpdatePatients([...selected], values);
-    setBulkPending(false);
-    if (result.error) toast.error(`Bulk update failed: ${result.error}`);
-    else {
-      toast.success(`Updated ${result.updated} patient${result.updated === 1 ? "" : "s"}.`);
-      setSelected(new Set());
-      React.startTransition(() => router.refresh());
-    }
-  }
+  const onBulkUpdate = React.useCallback(
+    async (values: { status?: PatientStatus; assigned_agent_id?: string }) => {
+      setBulkPending(true);
+      const result = await bulkUpdatePatients([...selected], values);
+      setBulkPending(false);
+      if (result.error) toast.error(`Bulk update failed: ${result.error}`);
+      else {
+        toast.success(`Updated ${result.updated} patient${result.updated === 1 ? "" : "s"}.`);
+        setSelected(new Set());
+        React.startTransition(() => router.refresh());
+      }
+    },
+    [selected, router]
+  );
 
   async function onBulkDelete() {
     setBulkPending(true);
@@ -365,7 +386,7 @@ export function PatientsView({
       {mode === "board" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {PATIENT_STATUSES.map((status) => {
-            const col = effective.filter((p) => p.status === status);
+            const col = byStatus.get(status) ?? [];
             const collapsed = colToggles[status] ?? col.length === 0;
             return (
               <div key={status} className="flex flex-col gap-2">

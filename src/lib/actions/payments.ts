@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 import { CURRENCIES } from "@/lib/utils";
 
@@ -81,6 +81,7 @@ export async function upsertPayment(
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
   revalidatePath("/finance");
+  revalidateTag("finance", "max");
   return { payment: data as unknown as Record<string, unknown> };
 }
 
@@ -92,5 +93,6 @@ export async function deletePayment(patientId: string, id: string): Promise<{ er
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
   revalidatePath("/finance");
+  revalidateTag("finance", "max");
   return {};
 }

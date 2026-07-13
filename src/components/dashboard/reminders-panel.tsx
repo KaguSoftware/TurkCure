@@ -343,32 +343,42 @@ export function RemindersPanel({
     (c) => !items.some((r) => r.id === c.id)
   );
 
-  const withDone = items.map((r) =>
-    r.id in doneOverrides ? { ...r, done_at: doneOverrides[r.id] } : r
+  const withDone = React.useMemo(
+    () =>
+      items.map((r) => (r.id in doneOverrides ? { ...r, done_at: doneOverrides[r.id] } : r)),
+    [items, doneOverrides]
   );
-  const patientOptions = [
-    ...new Map(
-      withDone
-        .filter((r) => r.patient_id)
-        .map((r) => [r.patient_id!, r.patients?.full_name ?? "Unknown patient"])
-    ).entries(),
-  ].sort((a, b) => a[1].localeCompare(b[1]));
+  const patientOptions = React.useMemo(
+    () =>
+      [
+        ...new Map(
+          withDone
+            .filter((r) => r.patient_id)
+            .map((r) => [r.patient_id!, r.patients?.full_name ?? "Unknown patient"])
+        ).entries(),
+      ].sort((a, b) => a[1].localeCompare(b[1])),
+    [withDone]
+  );
 
-  const shown = withDone
-    .filter((r) => {
-      if (typeFilter !== "all" && r.type !== typeFilter) return false;
-      if (patientFilter !== "all" && r.patient_id !== patientFilter) return false;
-      if (assigneeFilter !== "all" && r.assigned_to !== assigneeFilter) return false;
-      const due = r.due_at.slice(0, 10);
-      if (dueFrom && due < dueFrom) return false;
-      if (dueTo && due > dueTo) return false;
-      return true;
-    })
-    // Unchecked always on top, each group ordered by due date.
-    .sort((a, b) => {
-      if (!!a.done_at !== !!b.done_at) return a.done_at ? 1 : -1;
-      return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
-    });
+  const shown = React.useMemo(
+    () =>
+      withDone
+        .filter((r) => {
+          if (typeFilter !== "all" && r.type !== typeFilter) return false;
+          if (patientFilter !== "all" && r.patient_id !== patientFilter) return false;
+          if (assigneeFilter !== "all" && r.assigned_to !== assigneeFilter) return false;
+          const due = r.due_at.slice(0, 10);
+          if (dueFrom && due < dueFrom) return false;
+          if (dueTo && due > dueTo) return false;
+          return true;
+        })
+        // Unchecked always on top, each group ordered by due date.
+        .sort((a, b) => {
+          if (!!a.done_at !== !!b.done_at) return a.done_at ? 1 : -1;
+          return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+        }),
+    [withDone, typeFilter, patientFilter, assigneeFilter, dueFrom, dueTo]
+  );
 
   const filtersActive =
     typeFilter !== "all" ||
@@ -484,14 +494,13 @@ export function RemindersPanel({
           const isCompleting = completing.has(r.id);
           const isExiting = exiting.has(r.id);
           return (
+            <div key={r.id} className={cn(isExiting && "reminder-exit")}>
             <div
-              key={r.id}
               className={cn(
                 "flex items-center gap-3 rounded-lg border border-border p-3",
                 overdue && "border-danger/40 bg-danger-soft/40",
                 isDone && !isCompleting && "opacity-70",
-                pendingIds.current.has(r.id) && "reminder-enter",
-                isExiting && "reminder-exit"
+                pendingIds.current.has(r.id) && "reminder-enter"
               )}
             >
               <button
@@ -571,6 +580,7 @@ export function RemindersPanel({
                   <Trash2 />
                 </Button>
               </div>
+            </div>
             </div>
           );
         })}

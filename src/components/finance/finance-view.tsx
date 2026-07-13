@@ -2,17 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
 import { Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
@@ -20,6 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { CURRENCIES, formatMoney, cn } from "@/lib/utils";
 import { toUsd, FX_RATES_AS_OF } from "@/lib/fx";
+
+// recharts loads only when the chart actually renders (client-only).
+const FinanceChart = dynamic(() => import("./finance-chart"), {
+  ssr: false,
+  loading: () => <div className="h-72" />,
+});
+
+const TABLE_PAGE_SIZE = 50;
 
 export interface CaseFinance {
   id: string;
@@ -43,29 +42,40 @@ const SERIES = {
 
 export function FinanceView({ rows }: { rows: CaseFinance[] }) {
   const { resolvedTheme } = useTheme();
-  const mounted = React.useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
   const [currency, setCurrency] = React.useState("ALL");
+  const [page, setPage] = React.useState(0);
 
   const colors = SERIES[resolvedTheme === "dark" ? "dark" : "light"];
   const isAll = currency === "ALL";
   const displayCurrency = isAll ? "USD" : currency;
   // In "All" mode every case is converted to USD; otherwise filter to one currency
-  const filtered = isAll
-    ? rows.map((r) => ({
-        ...r,
-        revenue: toUsd(r.revenue, r.currency),
-        cost: toUsd(r.cost, r.currency),
-        collected: toUsd(r.collected, r.currency),
-      }))
-    : rows.filter((r) => r.currency === currency);
+  const filtered = React.useMemo(
+    () =>
+      isAll
+        ? rows.map((r) => ({
+            ...r,
+            revenue: toUsd(r.revenue, r.currency),
+            cost: toUsd(r.cost, r.currency),
+            collected: toUsd(r.collected, r.currency),
+          }))
+        : rows.filter((r) => r.currency === currency),
+    [rows, isAll, currency]
+  );
 
-  const totalRevenue = filtered.reduce((s, r) => s + r.revenue, 0);
-  const totalCost = filtered.reduce((s, r) => s + r.cost, 0);
-  const totalCollected = filtered.reduce((s, r) => s + r.collected, 0);
+  // Reset to the first page whenever the filter set changes.
+  React.useEffect(() => setPage(0), [currency]);
+
+  const { totalRevenue, totalCost, totalCollected } = React.useMemo(() => {
+    let rev = 0,
+      cost = 0,
+      coll = 0;
+    for (const r of filtered) {
+      rev += r.revenue;
+      cost += r.cost;
+      coll += r.collected;
+    }
+    return { totalRevenue: rev, totalCost: cost, totalCollected: coll };
+  }, [filtered]);
   const margin = totalRevenue - totalCost;
   const outstanding = totalRevenue - totalCollected;
 
@@ -110,24 +120,32 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
     URL.revokeObjectURL(url);
   }
 
-  const byMonth = new Map<string, { revenue: number; cost: number }>();
-  for (const r of filtered) {
-    const entry = byMonth.get(r.month) ?? { revenue: 0, cost: 0 };
-    entry.revenue += r.revenue;
-    entry.cost += r.cost;
-    byMonth.set(r.month, entry);
-  }
-  const chartData = [...byMonth.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-12)
-    .map(([month, v]) => ({
-      month: new Date(month + "-01").toLocaleDateString("en-GB", {
-        month: "short",
-        year: "2-digit",
-      }),
-      Revenue: v.revenue,
-      Cost: v.cost,
-    }));
+  const chartData = React.useMemo(() => {
+    const byMonth = new Map<string, { revenue: number; cost: number }>();
+    for (const r of filtered) {
+      const entry = byMonth.get(r.month) ?? { revenue: 0, cost: 0 };
+      entry.revenue += r.revenue;
+      entry.cost += r.cost;
+      byMonth.set(r.month, entry);
+    }
+    return [...byMonth.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([month, v]) => ({
+        month: new Date(month + "-01").toLocaleDateString("en-GB", {
+          month: "short",
+          year: "2-digit",
+        }),
+        Revenue: v.revenue,
+        Cost: v.cost,
+      }));
+  }, [filtered]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / TABLE_PAGE_SIZE));
+  const pageRows = React.useMemo(
+    () => filtered.slice(page * TABLE_PAGE_SIZE, page * TABLE_PAGE_SIZE + TABLE_PAGE_SIZE),
+    [filtered, page]
+  );
 
   const stat = (label: string, value: number, accent?: string, sub?: string) => (
     <Card>
@@ -186,48 +204,12 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!mounted || chartData.length === 0 ? (
+          {chartData.length === 0 ? (
             <p className="py-16 text-center text-sm text-muted">
               No quoted cases {isAll ? "" : `in ${currency} `}yet.
             </p>
           ) : (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fill: "var(--muted)", fontSize: 12 }}
-                    axisLine={{ stroke: "var(--border)" }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "var(--muted)", fontSize: 12 }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={70}
-                  />
-                  <Tooltip
-                    formatter={(value) => formatMoney(Number(value), displayCurrency)}
-                    contentStyle={{
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      color: "var(--foreground)",
-                      fontSize: 12,
-                    }}
-                    cursor={{ fill: "var(--surface-hover)" }}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 12, color: "var(--muted)" }}
-                    iconType="circle"
-                    iconSize={8}
-                  />
-                  <Bar dataKey="Revenue" fill={colors.revenue} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                  <Bar dataKey="Cost" fill={colors.cost} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <FinanceChart data={chartData} colors={colors} displayCurrency={displayCurrency} />
           )}
         </CardContent>
       </Card>
@@ -251,7 +233,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
             </THead>
             <TBody>
               {filtered.length === 0 && <EmptyRow colSpan={7} message="No cases in this currency." />}
-              {filtered.map((r) => {
+              {pageRows.map((r) => {
                 const m = r.revenue - r.cost;
                 const fullyPaid = r.collected >= r.revenue && r.revenue > 0;
                 return (
@@ -293,6 +275,35 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
               })}
             </TBody>
           </Table>
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted">
+              <span>
+                Showing {page * TABLE_PAGE_SIZE + 1}–
+                {Math.min((page + 1) * TABLE_PAGE_SIZE, filtered.length)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  Previous
+                </Button>
+                <span className="tabular-nums">
+                  {page + 1} / {pageCount}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  disabled={page >= pageCount - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

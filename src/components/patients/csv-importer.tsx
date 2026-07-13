@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Papa from "papaparse";
 import { useRouter } from "next/navigation";
 import { Upload, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,11 +29,13 @@ export function CsvImporter() {
   const [error, setError] = React.useState<string | null>(null);
   const [importing, setImporting] = React.useState(false);
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setResult(null);
     setError(null);
+    // papaparse is only needed once a file is picked — load it on demand.
+    const { default: Papa } = await import("papaparse");
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,

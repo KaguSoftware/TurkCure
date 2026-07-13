@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 import type { PatientStatus } from "@/lib/types";
 
@@ -32,6 +32,7 @@ export async function deletePatient(id: string): Promise<{ error?: string }> {
   const { error } = await supabase.from("patients").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/patients");
+  revalidateTag("finance", "max"); // cascades to cases → finance rows
   return {};
 }
 
@@ -75,6 +76,7 @@ export async function bulkDeletePatients(ids: string[]): Promise<{ error?: strin
   const { data, error } = await supabase.from("patients").delete().in("id", ids).select("id");
   if (error) return { error: error.message };
   revalidatePath("/patients");
+  revalidateTag("finance", "max"); // cascades to cases → finance rows
   return { deleted: data?.length ?? 0 };
 }
 

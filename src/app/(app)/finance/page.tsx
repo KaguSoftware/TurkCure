@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { createAdminClient, getProfile } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/supabase/server";
+import { getFinanceRows } from "@/lib/data/finance";
 import { PageHeader } from "@/components/page-header";
 import { FinanceView, type CaseFinance } from "@/components/finance/finance-view";
 
@@ -9,24 +10,13 @@ export default async function FinancePage() {
   const profile = await getProfile();
   if (!profile || profile.role !== "admin") redirect("/dashboard");
 
-  const admin = createAdminClient();
   // Aggregated in Postgres (finance_case_rows): excludes cancelled cases,
   // revenue/cost from quote items, collected = incoming paid payments in the
   // case currency, month = surgery month falling back to creation month.
-  const { data } = await admin.rpc("finance_case_rows");
+  // Cached across requests, invalidated by the "finance" tag.
+  const data = await getFinanceRows();
 
-  const rows: CaseFinance[] = ((data ?? []) as {
-    id: string;
-    patient_id: string | null;
-    patient_name: string;
-    operation: string;
-    currency: string;
-    status: string;
-    month: string;
-    revenue: number;
-    cost: number;
-    collected: number;
-  }[]).map((r) => ({
+  const rows: CaseFinance[] = data.map((r) => ({
     id: r.id,
     patientId: r.patient_id ?? "",
     patientName: r.patient_name,

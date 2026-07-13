@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, createAdminClient, requireProfile } from "@/lib/supabase/server";
 import { addDays, formatISO } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -8,6 +8,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 function revalidateCase(patientId: string) {
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
+  // Case/quote-item edits change revenue/cost; bust the cached finance rows.
+  revalidateTag("finance", "max");
 }
 
 /**
