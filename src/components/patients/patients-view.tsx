@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -30,11 +31,13 @@ import {
   bulkUpdatePatients,
   bulkDeletePatients,
   exportPatients,
+  getPatientsByStatus,
 } from "@/lib/actions/patients";
 import { toast } from "@/components/ui/toast";
 import { useOptimisticList } from "@/lib/use-optimistic-list";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { usePresence } from "@/lib/use-presence";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { PATIENT_STATUSES, type Patient, type PatientStatus } from "@/lib/types";
 import { cn, formatDate, waLink } from "@/lib/utils";
 
@@ -77,8 +80,14 @@ export function PatientsView({
   // View mode lives in the URL so it's shareable and survives back/forward.
   const mode: "board" | "table" = searchParams.get("view") === "table" ? "table" : "board";
   const setMode = (m: "board" | "table") => setParams({ view: m === "board" ? null : m }, false);
-  // A single status filter "maximizes" that column: show only it, full-width.
-  const focused = mode === "board" && statusFilter !== "all";
+  // "Maximize" a board column is local state (no URL) that plays a screen-takeover
+  // animation growing from the clicked column, then fetches that status's full set.
+  const [maximized, setMaximized] = React.useState<PatientStatus | null>(null);
+  const [origin, setOrigin] = React.useState("50% 50%");
+  const [takeoverData, setTakeoverData] = React.useState<Patient[] | null>(null);
+  const [takeoverLoading, setTakeoverLoading] = React.useState(false);
+  const takeover = usePresence(maximized !== null, 320);
+  const takeoverRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState(urlQuery);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Patient | null>(null);
@@ -160,6 +169,72 @@ export function PatientsView({
     },
     [router]
   );
+
+  // Open the maximize takeover for a status, growing from `originStr` (the clicked
+  // column's centre; defaults to screen centre when opened from the dashboard).
+  const openMaximized = React.useCallback((status: PatientStatus, originStr?: string) => {
+    setOrigin(originStr ?? "50% 50%");
+    setMaximized(status);
+  }, []);
+
+  // Fetch the full (up-to-50) set for the focused status once the takeover opens.
+  React.useEffect(() => {
+    if (!maximized) return;
+    let cancelled = false;
+    setTakeoverLoading(true);
+    getPatientsByStatus(maximized).then((res) => {
+      if (cancelled) return;
+      setTakeoverLoading(false);
+      if (res.error) toast.error(`Couldn't load ${PATIENT_STATUS_LABEL[maximized]}: ${res.error}`);
+      else if (res.patients) setTakeoverData(res.patients);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [maximized]);
+
+  // Esc-to-close + body scroll lock while the takeover is open.
+  React.useEffect(() => {
+    if (!maximized) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMaximized(null);
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [maximized]);
+
+  // Reset the fetched set after the exit animation so the next open re-seeds/fetches.
+  React.useEffect(() => {
+    if (!takeover.mounted) setTakeoverData(null);
+  }, [takeover.mounted]);
+
+  useFocusTrap(takeoverRef, maximized !== null && takeover.mounted);
+
+  // Dashboard status cards deep-link via a throwaway ?focus=<status>: open the
+  // takeover from centre on landing, then strip the param so the URL is clean.
+  const focusHandled = React.useRef(false);
+  React.useEffect(() => {
+    if (focusHandled.current) return;
+    const focus = searchParams.get("focus");
+    if (focus && PATIENT_STATUSES.includes(focus as PatientStatus)) {
+      focusHandled.current = true;
+      openMaximized(focus as PatientStatus);
+      setParams({ focus: null }, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cards shown in the takeover: fetched set (accurate) or the board seed until it
+  // lands, with optimistic status overrides applied and non-matching cards dropped.
+  const takeoverCards = React.useMemo(() => {
+    if (!maximized) return [];
+    const seed = takeoverData ?? byStatus.get(maximized) ?? [];
+    return seed
+      .map((p) => (statusOverrides[p.id] ? { ...p, status: statusOverrides[p.id] } : p))
+      .filter((p) => p.status === maximized);
+  }, [maximized, takeoverData, byStatus, statusOverrides]);
 
   const filtersActive =
     statusFilter !== "all" || agentFilter !== "all" || countryFilter !== "all";
@@ -402,71 +477,12 @@ export function PatientsView({
       )}
 
       {mode === "board" ? (
-        focused ? (
-          // Maximized single-status view: one full-width, denser card grid.
-          <div className="animate-expand space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Badge tone={PATIENT_STATUS_TONE[statusFilter as PatientStatus]}>
-                  {PATIENT_STATUS_LABEL[statusFilter as PatientStatus]}
-                </Badge>
-                <span className="text-sm text-muted">
-                  {(byStatus.get(statusFilter as PatientStatus) ?? []).length} patient
-                  {(byStatus.get(statusFilter as PatientStatus) ?? []).length === 1 ? "" : "s"}
-                </span>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => setParams({ status: null })}>
-                <Minimize2 /> Back to board
-              </Button>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {(byStatus.get(statusFilter as PatientStatus) ?? []).map((p) => (
-                <div
-                  key={p.id}
-                  className="hover-lift rounded-lg border border-border bg-surface p-3 shadow-card"
-                >
-                  <Link
-                    href={`/patients/${p.id}`}
-                    className="block text-sm font-medium hover:text-primary"
-                  >
-                    {p.full_name}
-                  </Link>
-                  <p className="mt-0.5 truncate text-xs text-muted">
-                    {p.countries?.name ?? "—"} · {p.profiles?.name ?? "Unassigned"}
-                  </p>
-                  <div className="relative mt-2">
-                    <Select
-                      className="h-7 text-xs shadow-none"
-                      value={p.status}
-                      disabled={statusPending.has(p.id)}
-                      onChange={(e) => onStatusChange(p, e.target.value as PatientStatus)}
-                    >
-                      {PATIENT_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {PATIENT_STATUS_LABEL[s]}
-                        </option>
-                      ))}
-                    </Select>
-                    {statusPending.has(p.id) && (
-                      <Loader2 className="pointer-events-none absolute right-7 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted" />
-                    )}
-                  </div>
-                </div>
-              ))}
-              {(byStatus.get(statusFilter as PatientStatus) ?? []).length === 0 && (
-                <p className="col-span-full py-10 text-center text-sm text-muted-light">
-                  No patients in this status.
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {PATIENT_STATUSES.map((status) => {
             const col = byStatus.get(status) ?? [];
             const collapsed = colToggles[status] ?? col.length === 0;
             return (
-              <div key={status} className="flex flex-col gap-2">
+              <div key={status} data-col className="flex flex-col gap-2">
                 {/* Header is a div (not a button) so the collapse and maximize
                     controls can be sibling buttons — no nested interactives. */}
                 <div className="flex w-full items-center justify-between gap-1 px-1">
@@ -487,8 +503,15 @@ export function PatientsView({
                   </button>
                   <button
                     className="pressable shrink-0 rounded p-0.5 text-muted-light hover:text-primary cursor-pointer"
-                    aria-label={`Focus ${PATIENT_STATUS_LABEL[status]} column`}
-                    onClick={() => setParams({ status })}
+                    aria-label={`Maximize ${PATIENT_STATUS_LABEL[status]} column`}
+                    onClick={(e) => {
+                      const el = (e.currentTarget as HTMLElement).closest("[data-col]");
+                      const r = el?.getBoundingClientRect();
+                      openMaximized(
+                        status,
+                        r ? `${r.left + r.width / 2}px ${r.top + r.height / 2}px` : undefined
+                      );
+                    }}
                   >
                     <Maximize2 className="size-3.5" />
                   </button>
@@ -540,7 +563,6 @@ export function PatientsView({
             );
           })}
         </div>
-        )
       ) : (
         <Table>
           <THead>
@@ -671,6 +693,94 @@ export function PatientsView({
           </>
         }
       />
+
+      {takeover.mounted &&
+        maximized &&
+        createPortal(
+          <div className="fixed inset-0 z-50">
+            <div
+              className={cn(
+                "animate-overlay absolute inset-0 bg-black/40 backdrop-blur-[2px]",
+                takeover.closing && "animate-overlay-out"
+              )}
+              onClick={() => setMaximized(null)}
+            />
+            <div
+              ref={takeoverRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${PATIENT_STATUS_LABEL[maximized]} patients`}
+              style={{ transformOrigin: origin }}
+              className={cn(
+                "absolute inset-3 flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-pop sm:inset-8",
+                takeover.closing ? "animate-takeover-out" : "animate-takeover"
+              )}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+                <div className="flex items-center gap-2">
+                  <Badge tone={PATIENT_STATUS_TONE[maximized]}>
+                    {PATIENT_STATUS_LABEL[maximized]}
+                  </Badge>
+                  <span className="text-sm text-muted">
+                    {takeoverLoading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <>
+                        {takeoverCards.length} patient{takeoverCards.length === 1 ? "" : "s"}
+                      </>
+                    )}
+                  </span>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => setMaximized(null)}>
+                  <Minimize2 /> Close
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {takeoverCards.map((p) => (
+                    <div
+                      key={p.id}
+                      className="hover-lift rounded-lg border border-border bg-surface p-3 shadow-card"
+                    >
+                      <Link
+                        href={`/patients/${p.id}`}
+                        className="block text-sm font-medium hover:text-primary"
+                      >
+                        {p.full_name}
+                      </Link>
+                      <p className="mt-0.5 truncate text-xs text-muted">
+                        {p.countries?.name ?? "—"} · {p.profiles?.name ?? "Unassigned"}
+                      </p>
+                      <div className="relative mt-2">
+                        <Select
+                          className="h-7 text-xs shadow-none"
+                          value={p.status}
+                          disabled={statusPending.has(p.id)}
+                          onChange={(e) => onStatusChange(p, e.target.value as PatientStatus)}
+                        >
+                          {PATIENT_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {PATIENT_STATUS_LABEL[s]}
+                            </option>
+                          ))}
+                        </Select>
+                        {statusPending.has(p.id) && (
+                          <Loader2 className="pointer-events-none absolute right-7 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {!takeoverLoading && takeoverCards.length === 0 && (
+                    <p className="col-span-full py-16 text-center text-sm text-muted-light">
+                      No patients in this status.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

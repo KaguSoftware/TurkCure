@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
-import type { PatientStatus } from "@/lib/types";
+import type { Patient, PatientStatus } from "@/lib/types";
 
 export async function upsertPatient(
   values: Record<string, unknown>,
@@ -50,6 +50,24 @@ export async function setPatientStatus(
   revalidatePath("/patients");
   revalidatePath(`/patients/${id}`);
   return {};
+}
+
+// Patients of a single status for the board's "maximize column" takeover, which
+// is local state (no URL filter) and so can't rely on the page's paginated load.
+// Capped at 50 like the board page; RLS-respected via the cookie client.
+export async function getPatientsByStatus(
+  status: PatientStatus
+): Promise<{ patients?: Patient[]; error?: string }> {
+  await requireProfile();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("patients")
+    .select("id, full_name, status, created_at, country_id, assigned_agent_id, countries(name), profiles(name)")
+    .eq("status", status)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) return { error: error.message };
+  return { patients: (data ?? []) as unknown as Patient[] };
 }
 
 export async function bulkUpdatePatients(

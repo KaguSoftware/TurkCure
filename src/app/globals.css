@@ -252,6 +252,32 @@ body {
   transform-origin: top;
 }
 
+/* Fullscreen "takeover": a surface that zooms open from its origin (set via
+   transform-origin on the element) with a spring, like a macOS window open. */
+@keyframes takeover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-takeover {
+  animation: takeover-in 320ms var(--ease-spring) both;
+}
+
+@keyframes takeover-out {
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+.animate-takeover-out {
+  animation: takeover-out 180ms ease-in both;
+}
+
 /* Exits: quicker and without bounce, like macOS dismissals. */
 @keyframes overlay-out {
   to { opacity: 0; }
@@ -366,11 +392,13 @@ body {
   .animate-dropdown,
   .animate-drawer,
   .animate-expand,
+  .animate-takeover,
   .animate-overlay-out,
   .animate-pop-out,
   .animate-dropdown-out,
   .animate-expand-out,
-  .animate-drawer-out {
+  .animate-drawer-out,
+  .animate-takeover-out {
     animation-duration: 1ms;
   }
   .pressable:active:not(:disabled) {

@@ -73,7 +73,7 @@ export default async function DashboardPage() {
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {PATIENT_STATUSES.map((s) => (
-          <Link key={s} href={`/patients?status=${s}`}>
+          <Link key={s} href={`/patients?focus=${s}`}>
             <Card className="hover-lift">
               <CardContent className="pt-4">
                 <p className="text-2xl font-bold tabular-nums">{counts[s] ?? 0}</p>

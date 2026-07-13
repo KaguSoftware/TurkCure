@@ -215,11 +215,17 @@ ephemeral view state), not rebuilding it.
   (`?view=`), patient-detail **tab + case** (`?tab=`,`?case=`), settings **tab**
   (`?tab=`).
 - **Maximize a board column**: each Patients board column has a maximize button
-  that sets `?status=<status>` and renders that one status as a full-width denser
-  card grid ("Back to board" clears it). Dashboard status cards deep-link into
-  this via `/patients?status=<status>`. No new route — reuses the existing URL
-  status filter (avoids colliding with `/patients/[id]`). Drag-and-drop is still
-  intentionally out of scope.
+  that opens a **local, same-URL screen-takeover** — a portaled overlay
+  (`patients-view.tsx` + `createPortal`) that zooms open from the clicked column
+  (`transform-origin` set to its centre) via the `animate-takeover` spring in
+  `globals.css`; Esc / backdrop / close animate it out, focus is trapped
+  (`useFocusTrap`), body scroll locked. It **fetches that status's patients on
+  open** (`getPatientsByStatus` in `lib/actions/patients.ts`, ≤50), seeded
+  instantly from the board's loaded cards so counts are accurate regardless of
+  pagination. Dashboard status cards open it on landing via a throwaway
+  `/patients?focus=<status>` param that's stripped immediately (settled URL stays
+  clean `/patients`). `?status=` is now **only** the filters-panel filter, no
+  longer tied to maximize. Drag-and-drop remains intentionally out of scope.
 
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
