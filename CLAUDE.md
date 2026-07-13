@@ -227,6 +227,49 @@ ephemeral view state), not rebuilding it.
   clean `/patients`). `?status=` is now **only** the filters-panel filter, no
   longer tied to maximize. Drag-and-drop remains intentionally out of scope.
 
+---
+
+## Recent work — 2026-07-13 auth fix + cleanup
+
+Auth "sometimes sent you to localhost" and was structurally messy. Root causes and
+the overhaul:
+
+- **Localhost redirect bug.** Email links were built from `window.location.origin`,
+  so triggering a reset from localhost/a preview baked that origin into the emailed
+  link. Fixed with `src/lib/site-url.ts` `getSiteURL()` (resolves
+  `NEXT_PUBLIC_SITE_URL` → `NEXT_PUBLIC_VERCEL_URL` → browser origin → localhost).
+  **`NEXT_PUBLIC_SITE_URL` must be set in Vercel Production** (= the deployed URL) or
+  links inherit the request origin. Supabase dashboard **Site URL** must also be the
+  prod URL, and the **Redirect URLs** allowlist must include `<prod>/**` +
+  `http://localhost:3000/**`.
+- **Server-side callback.** New `src/app/auth/confirm/route.ts` (GET) verifies the
+  email token (`verifyOtp` with `token_hash`+`type`) or exchanges the PKCE `?code=`
+  server-side, then redirects to a validated relative `next`. Replaces the old racy
+  browser-SDK detection. The recovery email's `redirectTo` points here with
+  `next=/reset-password/update`, so that page is reached **already authenticated**;
+  `update-form.tsx` was simplified accordingly (no more `getSession()`/
+  `onAuthStateChange` race, no magic `setTimeout`). The proxy exempts `/auth/confirm`
+  and `/reset-password/update` from the "bounce authed users away" rule.
+  Note: with Supabase's **default** email template (no custom SMTP), recovery uses the
+  PKCE `?code=` path — works **same-browser only** (needs the verifier cookie). For
+  cross-device, set up custom SMTP and edit the Reset Password template to the
+  `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=…` form;
+  the route already handles it.
+- **Removed public `/signup`.** Anyone could self-create an active account on an
+  internal CRM. Accounts now come only from the admin invite flow (`inviteUser`).
+- **One sign-out path.** The sidebar hard-navigates to GET `/auth/signout`, which now
+  clears both `turkcure_session_start` and `turkcure_intro`. No more divergent
+  client-side signout.
+- **Shared constants + server-owned session clock.** `src/lib/auth/cookies.ts` holds
+  `SESSION_START_COOKIE`/`INTRO_COOKIE`/`MAX_SESSION_MS`. Forms no longer stamp the
+  session cookie client-side (the proxy owns it); fixed the 30-day-cookie-vs-24h-cap
+  mismatch.
+- **Consistent errors.** `src/components/auth/auth-error.tsx` + `src/lib/auth/errors.ts`
+  (`authErrorMessage` maps raw Supabase strings to friendly copy) replace the four
+  copy-pasted banners. `/login?error=link_invalid` renders via `authErrorFromCode`.
+- **Deduped bare client.** `createAnonClient()` in `supabase/server.ts` replaces the
+  inline anon client in `account.ts`.
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this
