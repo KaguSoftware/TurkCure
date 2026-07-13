@@ -42,7 +42,7 @@ export function PaymentsTab({
   directories: Directories;
 }) {
   const activeCase = cases[0] ?? null;
-  const { items: allPayments, mutate } = useOptimisticList<Payment>(payments);
+  const { items: allPayments, mutate, pending } = useOptimisticList<Payment>(payments);
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Payment | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -195,17 +195,19 @@ export function PaymentsTab({
           ? prev.map((p) => (p.id === optimisticRow.id ? (r.payment as unknown as Payment) : p))
           : prev,
     });
-    if (!ok && result?.error) setError(result.error);
+    // The dialog already closed (optimistic row is showing), so surface any
+    // failure via a toast rather than an unseen inline error.
+    if (!ok && result?.error) toast.error(result.error);
   }
 
   async function onDelete(p: Payment) {
-    setConfirmDelete(null);
-    setOpen(false);
+    // Keep the confirm dialog open with a spinner until the delete resolves.
     await mutate({
       optimistic: (prev) => prev.filter((x) => x.id !== p.id),
       action: () => deletePayment(patient.id, p.id),
       success: "Payment deleted.",
     });
+    setConfirmDelete(null);
   }
 
   const section = (title: string, list: Payment[], icon: React.ReactNode) => (
@@ -509,7 +511,7 @@ export function PaymentsTab({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={false}
+        pending={pending}
         title="Delete payment"
         description={
           <>

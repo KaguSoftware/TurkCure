@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Check, Moon, Sun, Upload, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
+import { TabBar, TabPanel } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { UsersManager } from "@/components/settings/users-manager";
 import {
@@ -45,33 +46,32 @@ function applyAccentClass(value: AccentTheme) {
 
 export function SettingsView({ profile, users }: { profile: Profile; users: Profile[] | null }) {
   const isAdmin = profile.role === "admin";
-  const tabs = isAdmin ? ["Profile", "Appearance", "Team"] : ["Profile", "Appearance"];
-  const [tab, setTab] = React.useState(tabs[0]);
+  const tabs: readonly ("Profile" | "Appearance" | "Team")[] = isAdmin
+    ? ["Profile", "Appearance", "Team"]
+    : ["Profile", "Appearance"];
+  // Active tab lives in the URL (?tab=) so it's linkable and survives refresh.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab");
+  const tab = (tabs as readonly string[]).includes(urlTab ?? "")
+    ? (urlTab as (typeof tabs)[number])
+    : tabs[0];
+  const setTab = (t: (typeof tabs)[number]) =>
+    router.replace(`${pathname}?tab=${t}`, { scroll: false });
+  const tabIndex = tabs.indexOf(tab);
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-border">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "pressable -mb-px border-b-2 px-4 py-2.5 text-sm font-medium cursor-pointer",
-              tab === t
-                ? "border-primary text-primary"
-                : "border-transparent text-muted hover:text-foreground"
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar idBase="settings" tabs={tabs} value={tab} onChange={setTab} />
 
-      {tab === "Profile" && <ProfileTab profile={profile} />}
-      {tab === "Appearance" && <AppearanceTab profile={profile} />}
-      {tab === "Team" && isAdmin && users && (
-        <UsersManager users={users} currentUserId={profile.id} />
-      )}
+      <TabPanel idBase="settings" index={tabIndex}>
+        {tab === "Profile" && <ProfileTab profile={profile} />}
+        {tab === "Appearance" && <AppearanceTab profile={profile} />}
+        {tab === "Team" && isAdmin && users && (
+          <UsersManager users={users} currentUserId={profile.id} />
+        )}
+      </TabPanel>
     </div>
   );
 }

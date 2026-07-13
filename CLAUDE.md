@@ -161,6 +161,66 @@ client-side re-render cost.
 
 ---
 
+## Recent work — 2026-07-13 UI/UX pass
+
+A four-track sweep for a more premium, consistent, accessible feel. Context: the
+design system was already strong; the wins were in fixing rough edges (layout
+jumps, missing feedback, a11y plumbing, unsafe/inconsistent destructive actions,
+ephemeral view state), not rebuilding it.
+
+**New shared primitives / hooks:**
+- `src/lib/use-focus-trap.ts` — traps Tab, autofocuses first element, restores
+  focus on close. Used by `Dialog`, the mobile drawer, and the command palette.
+- `src/components/ui/tabs.tsx` — accessible `TabBar` + `TabPanel` (role="tab"/
+  "tablist"/"tabpanel", roving tabindex, arrow-key nav). Replaces the ad-hoc
+  button rows in `patient-detail.tsx` and `settings-view.tsx`.
+
+**Shared-component fixes (lift the whole app):**
+- `Field` in `input.tsx` now associates its `<Label>` with the control via a
+  generated id (`useId` + cloneElement), so every form has proper label→field
+  wiring. `Select` gained full listbox ARIA + keyboard nav (arrows/Home/End/
+  Enter, `aria-activedescendant`) and accepts `id`/`aria-label`.
+- `Dialog` got `role="dialog"`/`aria-modal`/`aria-labelledby` + the focus trap.
+- `date-picker.tsx`: the clear control is now a real sibling `<button>` (was a
+  nested `<span role=button>` — invalid to nest once it's a button); day cells
+  have `aria-label`s.
+- `button.tsx`: `danger` hover uses a token bg (was `opacity-90`).
+
+**Feel / motion (premium but fast):**
+- Skeletons now mirror first paint: `CardsPageSkeleton` = 6 stat cards + 2/3+1/3
+  row; new `BoardPageSkeleton` for the Patients board default; finance chart has
+  a `loading:` skeleton. No more skeleton→content layout jump.
+- In-flight feedback: per-card status `<Select>` spinner + disable, patients
+  search spinner, confirm-gated user role/disable changes.
+
+**Interaction correctness:**
+- Destructive actions now all confirm: reminder delete, instruction-image remove,
+  user role change / disable (each with real `pending` state). The 4 hardcoded
+  `ConfirmDialog pending={false}` callers (directory/payments/files/instructions)
+  now await-then-close so the confirm button spins and double-clicks can't fire a
+  second delete.
+- Errors no longer land on a closed dialog: invite (users) and payment upsert
+  surface failures via toast / keep-open instead of an unseen inline banner.
+- De-duped feedback: `reminders-panel` dropped its inline error banner (toasts
+  only); `csv-importer` keeps the persistent inline result, drops the toast.
+
+**Navigation / wayfinding:**
+- Shell: mobile top bar now shows a per-route page title and a search button
+  (opens the palette via the new `openCommandPalette()` — replaces the old fake
+  Ctrl+K dispatch). Sidebar nav got `aria-label`/`aria-current`. **Sign-out moved
+  from the top bar into the sidebar user footer** (shows in desktop sidebar and
+  mobile drawer). The mobile drawer is now **portaled to `document.body`** so it
+  isn't trapped under `<main>` by the sticky header's `z-20` stacking context.
+- Deep-linkable view state (was ephemeral `useState`): Patients **view mode**
+  (`?view=`), patient-detail **tab + case** (`?tab=`,`?case=`), settings **tab**
+  (`?tab=`).
+- **Maximize a board column**: each Patients board column has a maximize button
+  that sets `?status=<status>` and renders that one status as a full-width denser
+  card grid ("Back to board" clears it). Dashboard status cards deep-link into
+  this via `/patients?status=<status>`. No new route — reuses the existing URL
+  status filter (avoids colliding with `/patients/[id]`). Drag-and-drop is still
+  intentionally out of scope.
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this

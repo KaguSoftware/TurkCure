@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
 import { toast } from "@/components/ui/toast";
@@ -66,7 +67,9 @@ export function RemindersPanel({
   const [dueTo, setDueTo] = React.useState("");
   const filtersPanel = usePresence(showFilters, 160);
   const [error, setError] = React.useState<string | null>(null);
-  const [listError, setListError] = React.useState<string | null>(null);
+  // Reminder staged for delete-confirmation (null = no dialog open).
+  const [confirmDelete, setConfirmDelete] = React.useState<Reminder | null>(null);
+  const [deletePending, setDeletePending] = React.useState(false);
   const [now] = React.useState(() => Date.now());
 
   // Optimistic copy of the list. Server revalidation resets it via the effect
@@ -190,7 +193,6 @@ export function RemindersPanel({
       done_at: null,
     };
     pendingIds.current.add(tempId);
-    setListError(null);
     setItems((prev) =>
       [...prev, optimistic].sort(
         (a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
@@ -202,7 +204,6 @@ export function RemindersPanel({
     pendingIds.current.delete(tempId);
     if (result.error) {
       setItems((prev) => prev.filter((r) => r.id !== tempId));
-      setListError(`Couldn't save reminder: ${result.error}`);
       toast.error(`Couldn't save reminder: ${result.error}`);
     } else if (result.reminder) {
       const saved = result.reminder;
@@ -237,7 +238,6 @@ export function RemindersPanel({
   function onToggleDone(r: Reminder) {
     if (exiting.has(r.id)) return;
     const marking = !r.done_at;
-    setListError(null);
     if (marking) {
       // Check pop + strike-through animation; the row stays put.
       setInSet(setCompleting, r.id, true);
@@ -256,7 +256,6 @@ export function RemindersPanel({
           delete next[r.id];
           return next;
         });
-        setListError(`Couldn't update: ${result.error}`);
         toast.error(`Couldn't update: ${result.error}`);
       }
     });
@@ -264,7 +263,6 @@ export function RemindersPanel({
 
   function onSnooze(r: Reminder) {
     if (snoozing.has(r.id) || completing.has(r.id) || exiting.has(r.id)) return;
-    setListError(null);
     // Tomorrow relative to now if overdue, otherwise +1 day from the due time.
     const base = Math.max(Date.now(), new Date(r.due_at).getTime());
     const newDue = new Date(base + 24 * 60 * 60 * 1000).toISOString();
@@ -283,7 +281,6 @@ export function RemindersPanel({
             .map((x) => (x.id === r.id ? { ...x, due_at: prevDue } : x))
             .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         );
-        setListError(`Couldn't snooze: ${result.error}`);
         toast.error(`Couldn't snooze: ${result.error}`);
       } else {
         toast.success("Snoozed until tomorrow.");
@@ -314,14 +311,18 @@ export function RemindersPanel({
     });
   }
 
-  function onDelete(r: Reminder) {
+  // Runs the actual delete once confirmed: start the exit animation, then fire
+  // the server call with optimistic rollback on failure.
+  function runDelete(r: Reminder) {
     if (exiting.has(r.id)) return;
-    setListError(null);
+    setDeletePending(true);
     animatingIds.current.add(r.id);
     removedIds.current.add(r.id);
     setInSet(setExiting, r.id, true);
     timers.current.set(r.id, [setTimeout(() => removeRow(r.id), EXIT_MS)]);
     deleteReminder(r.id).then((result) => {
+      setDeletePending(false);
+      setConfirmDelete(null);
       if (result.error) {
         cancelTimers(r.id);
         animatingIds.current.delete(r.id);
@@ -332,7 +333,6 @@ export function RemindersPanel({
             ? prev
             : [...prev, r].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         );
-        setListError(`Couldn't delete: ${result.error}`);
         toast.error(`Couldn't delete: ${result.error}`);
       }
     });
@@ -477,9 +477,6 @@ export function RemindersPanel({
             )}
           </div>
         )}
-        {listError && (
-          <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{listError}</p>
-        )}
         {shown.length === 0 && (
           <p className="py-8 text-center text-sm text-muted">
             {filtersActive
@@ -575,7 +572,7 @@ export function RemindersPanel({
                   size="icon"
                   aria-label="Delete"
                   className="hover:text-danger"
-                  onClick={() => onDelete(r)}
+                  onClick={() => setConfirmDelete(r)}
                 >
                   <Trash2 />
                 </Button>
@@ -711,6 +708,23 @@ export function RemindersPanel({
           </div>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && runDelete(confirmDelete)}
+        pending={deletePending}
+        title="Delete reminder"
+        description={
+          <>
+            Delete{" "}
+            <span className="font-medium text-foreground">
+              {confirmDelete?.title || "this reminder"}
+            </span>
+            ? This cannot be undone.
+          </>
+        }
+      />
     </Card>
   );
 }

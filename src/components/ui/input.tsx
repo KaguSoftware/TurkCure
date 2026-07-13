@@ -153,7 +153,7 @@ const SEARCH_THRESHOLD = 7;
 export const Select = React.forwardRef<
   HTMLSelectElement,
   React.SelectHTMLAttributes<HTMLSelectElement>
->(({ className, children, name, value, defaultValue, onChange, disabled }) => {
+>(({ className, children, name, value, defaultValue, onChange, disabled, id, "aria-label": ariaLabel }) => {
   const options = collectOptions(children);
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -163,6 +163,9 @@ export const Select = React.forwardRef<
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
+  // Keyboard-highlighted option (index into `filtered`); -1 when none.
+  const [active, setActive] = React.useState(-1);
+  const listboxId = React.useId();
 
   const { mounted: menuMounted, closing: menuClosing } = usePresence(open, 150);
   const showSearch = options.length > SEARCH_THRESHOLD;
@@ -175,19 +178,17 @@ export const Select = React.forwardRef<
     const onDown = (e: MouseEvent) => {
       if (!isInsidePopover(e.target, rootRef.current)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
   React.useEffect(() => {
     if (open) {
-      // Reset the query each open, then focus search or scroll to selection.
+      // Reset the query each open, seed the highlight on the current selection,
+      // then focus search or scroll to selection.
       setQuery("");
+      const sel = options.findIndex((o) => o.value === current);
+      setActive(sel);
       if (showSearch) {
         searchRef.current?.focus();
       } else {
@@ -196,7 +197,16 @@ export const Select = React.forwardRef<
           ?.scrollIntoView({ block: "nearest" });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, showSearch]);
+
+  // Keep the highlighted option scrolled into view as it moves.
+  React.useEffect(() => {
+    if (!open || active < 0) return;
+    listRef.current
+      ?.querySelector(`[data-index="${active}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active, open]);
 
   const selected = options.find((o) => o.value === current);
 
@@ -204,16 +214,89 @@ export const Select = React.forwardRef<
     if (value === undefined) setInternal(v);
     onChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLSelectElement>);
     setOpen(false);
+    triggerRef.current?.focus();
   }
+
+  // Move the highlight by `delta`, skipping disabled options and wrapping.
+  function move(delta: number) {
+    if (filtered.length === 0) return;
+    setActive((a) => {
+      let next = a;
+      for (let step = 0; step < filtered.length; step++) {
+        next = (next + delta + filtered.length) % filtered.length;
+        if (!filtered[next]?.disabled) return next;
+      }
+      return a;
+    });
+  }
+
+  // Shared keydown for the trigger and the search box.
+  function onKeyDown(e: React.KeyboardEvent) {
+    switch (e.key) {
+      case "Escape":
+        if (open) {
+          e.preventDefault();
+          setOpen(false);
+          triggerRef.current?.focus();
+        }
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        if (!open) setOpen(true);
+        else move(1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        if (!open) setOpen(true);
+        else move(-1);
+        break;
+      case "Home":
+        if (open) {
+          e.preventDefault();
+          setActive(filtered.findIndex((o) => !o.disabled));
+        }
+        break;
+      case "End":
+        if (open) {
+          e.preventDefault();
+          for (let i = filtered.length - 1; i >= 0; i--)
+            if (!filtered[i].disabled) {
+              setActive(i);
+              break;
+            }
+        }
+        break;
+      case "Enter":
+      case " ":
+        if (!open) {
+          e.preventDefault();
+          setOpen(true);
+        } else if (active >= 0 && filtered[active] && !filtered[active].disabled) {
+          e.preventDefault();
+          pick(filtered[active].value);
+        }
+        break;
+    }
+  }
+
+  const activeOptionId = open && active >= 0 ? `${listboxId}-opt-${active}` : undefined;
 
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       {name && <input type="hidden" name={name} value={current} />}
       <button
         ref={triggerRef}
+        id={id}
         type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        aria-activedescendant={showSearch ? undefined : activeOptionId}
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onKeyDown}
         className={cn(
           "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-foreground shadow-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50 cursor-pointer",
           open && "ring-2 ring-[var(--ring)]"
@@ -240,35 +323,43 @@ export const Select = React.forwardRef<
               <input
                 ref={searchRef}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    const first = filtered.find((o) => !o.disabled);
-                    if (first) pick(first.value);
-                  }
+                role="combobox"
+                aria-expanded
+                aria-controls={listboxId}
+                aria-activedescendant={activeOptionId}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setActive(0);
                 }}
+                onKeyDown={onKeyDown}
                 placeholder="Search…"
                 className="h-8 w-full rounded-md border border-border bg-surface pl-8 pr-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               />
             </div>
           )}
-          <div ref={listRef} className="max-h-56 overflow-y-auto">
+          <div ref={listRef} id={listboxId} role="listbox" className="max-h-56 overflow-y-auto">
             {filtered.length === 0 && (
               <p className="px-2.5 py-2 text-sm text-muted-light">No matches</p>
             )}
             {filtered.map((o, i) => (
               <button
                 key={o.value + i}
+                id={`${listboxId}-opt-${i}`}
                 type="button"
+                role="option"
+                aria-selected={o.value === current}
+                data-index={i}
                 disabled={o.disabled}
                 data-selected={o.value === current}
                 onClick={() => pick(o.value)}
+                onMouseEnter={() => setActive(i)}
                 className={cn(
                   "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
                   o.value === current
                     ? "bg-primary-soft font-medium text-primary"
-                    : "hover:bg-surface-hover",
+                    : i === active
+                      ? "bg-surface-hover"
+                      : "hover:bg-surface-hover",
                   o.disabled && "opacity-50"
                 )}
               >
@@ -302,10 +393,25 @@ export function Field({
   children: React.ReactNode;
   className?: string;
 }) {
+  const generatedId = React.useId();
+  // Associate the label with its control: clone the single child to give it an
+  // id (unless it already has one), and point the label's htmlFor at it. Makes
+  // clicking the label focus the field and screen readers announce its name.
+  let control = children;
+  let htmlFor: string | undefined;
+  if (React.isValidElement(children)) {
+    const childId = (children.props as { id?: string }).id;
+    htmlFor = childId ?? generatedId;
+    if (!childId) {
+      control = React.cloneElement(children as React.ReactElement<{ id?: string }>, {
+        id: generatedId,
+      });
+    }
+  }
   return (
     <div className={className}>
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {control}
     </div>
   );
 }

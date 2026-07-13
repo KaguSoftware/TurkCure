@@ -1,7 +1,7 @@
 "use client";
 
 import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -12,7 +12,9 @@ import {
   Settings,
   ClipboardList,
   Loader2,
+  LogOut,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -50,6 +52,13 @@ export function SidebarContent({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function signOut() {
+    await createClient().auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   const link = (item: (typeof NAV)[number]) => {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -58,6 +67,7 @@ export function SidebarContent({
         key={item.href}
         href={item.href}
         onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
         className={cn(
           "pressable flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium",
           active
@@ -73,7 +83,7 @@ export function SidebarContent({
 
   return (
     <>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
+      <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {NAV.map(link)}
         {isAdmin && (
           <>
@@ -98,10 +108,17 @@ export function SidebarContent({
               {userName.slice(0, 1).toUpperCase()}
             </div>
           )}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{userName}</p>
             <p className="text-xs text-muted">{isAdmin ? "Administrator" : "Agent"}</p>
           </div>
+          <button
+            onClick={signOut}
+            aria-label="Sign out"
+            className="pressable shrink-0 rounded-lg p-2 text-muted hover:bg-surface-hover hover:text-foreground cursor-pointer"
+          >
+            <LogOut className="size-4" />
+          </button>
         </div>
       </div>
     </>

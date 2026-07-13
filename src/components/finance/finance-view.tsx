@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CURRENCIES, formatMoney, cn } from "@/lib/utils";
 import { toUsd, FX_RATES_AS_OF } from "@/lib/fx";
 
 // recharts loads only when the chart actually renders (client-only).
 const FinanceChart = dynamic(() => import("./finance-chart"), {
   ssr: false,
-  loading: () => <div className="h-72" />,
+  loading: () => <Skeleton className="h-72 rounded-xl" />,
 });
 
 const TABLE_PAGE_SIZE = 50;
@@ -148,7 +149,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
   );
 
   const stat = (label: string, value: number, accent?: string, sub?: string) => (
-    <Card>
+    <Card className="hover-lift">
       <CardContent className="pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
         <p className={cn("mt-1 text-2xl font-bold tabular-nums", accent)}>

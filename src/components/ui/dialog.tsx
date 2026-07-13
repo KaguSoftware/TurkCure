@@ -4,6 +4,7 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export function Dialog({
   open,
@@ -19,6 +20,10 @@ export function Dialog({
   wide?: boolean;
 }) {
   const { mounted, closing } = usePresence(open, 180);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  // Trap focus only while fully open (not during the exit animation).
+  useFocusTrap(panelRef, open && mounted);
 
   React.useEffect(() => {
     if (!open) return;
@@ -43,6 +48,10 @@ export function Dialog({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={cn(
           "animate-pop relative z-10 mt-8 w-full rounded-xl border border-border bg-surface shadow-pop",
           closing && "animate-pop-out",
@@ -50,9 +59,12 @@ export function Dialog({
         )}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 id={titleId} className="text-sm font-semibold">
+            {title}
+          </h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="rounded-md p-1 text-muted hover:bg-surface-hover hover:text-foreground cursor-pointer"
           >
             <X className="size-4" />

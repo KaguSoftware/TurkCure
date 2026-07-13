@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Select, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
-import { toast } from "@/components/ui/toast";
 import { importPatients } from "@/lib/actions/patients";
 
 const TARGETS = [
@@ -75,12 +74,12 @@ export function CsvImporter() {
     setError(null);
     const res = await importPatients(mapped as { full_name: string }[]);
     setImporting(false);
+    // The import page shows its outcome inline (persistent error banner / result
+    // summary), so no duplicate toast here.
     if (res.error) {
       setError(res.error);
-      toast.error(res.error);
     } else {
       setResult({ inserted: res.inserted ?? 0, skipped: res.skipped ?? 0 });
-      toast.success(`${res.inserted ?? 0} patients imported, ${res.skipped ?? 0} duplicates skipped.`);
       React.startTransition(() => router.refresh());
     }
   }

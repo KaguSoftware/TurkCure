@@ -118,7 +118,7 @@ function InstructionCard({
 }: {
   patientId: string;
   instruction: CaseInstruction;
-  onRemove: () => void;
+  onRemove: () => Promise<void>;
 }) {
   const router = useRouter();
   const [body, setBody] = React.useState(instruction.body_md);
@@ -126,6 +126,10 @@ function InstructionCard({
   const [uploading, setUploading] = React.useState(false);
   const [thumbs, setThumbs] = React.useState<Record<string, string>>({});
   const [confirmRemove, setConfirmRemove] = React.useState(false);
+  const [removing, setRemoving] = React.useState(false);
+  // Image path staged for removal (null = no dialog); separate pending flag.
+  const [confirmRemoveImage, setConfirmRemoveImage] = React.useState<string | null>(null);
+  const [imageRemoving, setImageRemoving] = React.useState(false);
   const dirty = body !== instruction.body_md;
   const images = instruction.image_paths ?? [];
 
@@ -179,9 +183,18 @@ function InstructionCard({
   }
 
   async function onRemoveImage(path: string) {
+    setImageRemoving(true);
     const supabase = createClient();
-    await supabase.storage.from("patient-files").remove([path]);
+    const { error } = await supabase.storage.from("patient-files").remove([path]);
+    if (error) {
+      setImageRemoving(false);
+      setConfirmRemoveImage(null);
+      toast.error(`Couldn't remove image: ${error.message}`);
+      return;
+    }
     await setImagePaths(images.filter((p) => p !== path));
+    setImageRemoving(false);
+    setConfirmRemoveImage(null);
   }
 
   return (
@@ -226,11 +239,14 @@ function InstructionCard({
         <ConfirmDialog
           open={confirmRemove}
           onClose={() => setConfirmRemove(false)}
-          onConfirm={() => {
+          onConfirm={async () => {
+            setRemoving(true);
+            await onRemove();
+            // On success the card unmounts; if it's still here the action failed.
+            setRemoving(false);
             setConfirmRemove(false);
-            onRemove();
           }}
-          pending={false}
+          pending={removing}
           title="Remove instructions"
           confirmLabel="Remove"
           description={
@@ -260,7 +276,7 @@ function InstructionCard({
               <button
                 type="button"
                 aria-label="Remove image"
-                onClick={() => onRemoveImage(path)}
+                onClick={() => setConfirmRemoveImage(path)}
                 className="absolute -right-1.5 -top-1.5 hidden rounded-full bg-danger p-0.5 text-white group-hover:block cursor-pointer"
               >
                 <X className="size-3" />
@@ -277,6 +293,16 @@ function InstructionCard({
           Images are included in the instruction PDF and the patient confirmation PDF.
         </p>
       </CardContent>
+
+      <ConfirmDialog
+        open={confirmRemoveImage !== null}
+        onClose={() => setConfirmRemoveImage(null)}
+        onConfirm={() => confirmRemoveImage && onRemoveImage(confirmRemoveImage)}
+        pending={imageRemoving}
+        title="Remove image"
+        confirmLabel="Remove"
+        description="Remove this image from the instructions? It will be deleted from storage and the PDF."
+      />
     </Card>
   );
 }

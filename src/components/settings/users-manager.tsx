@@ -5,11 +5,20 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { inviteUser, setUserActive, setUserRole } from "@/lib/actions/users";
 import type { Profile, Role } from "@/lib/types";
+
+// A permission-changing action staged behind a confirmation dialog.
+type PendingAction = {
+  title: string;
+  description: React.ReactNode;
+  confirmLabel: string;
+  run: () => Promise<{ ok: boolean; result?: { error?: string } }>;
+};
 
 export function UsersManager({
   users: serverUsers,
@@ -22,7 +31,8 @@ export function UsersManager({
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [togglingId, setTogglingId] = React.useState<string | null>(null);
+  const [confirm, setConfirm] = React.useState<PendingAction | null>(null);
+  const [confirmPending, setConfirmPending] = React.useState(false);
 
   async function onInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,14 +50,24 @@ export function UsersManager({
       role,
       active: true,
     } as unknown as Profile;
-    setSaving(false);
-    setOpen(false);
+    // Keep the dialog open until the server confirms, so an error is visible
+    // on the form the user is still looking at (not on a closed dialog).
     const { ok, result } = await mutate({
       optimistic: (prev) => [...prev, temp],
       action: () => inviteUser(email, name, role, password),
       success: "Team member created.",
     });
-    if (!ok && result?.error) setError(result.error);
+    setSaving(false);
+    if (ok) setOpen(false);
+    else if (result?.error) setError(result.error);
+  }
+
+  async function runConfirm() {
+    if (!confirm) return;
+    setConfirmPending(true);
+    await confirm.run();
+    setConfirmPending(false);
+    setConfirm(null);
   }
 
   return (
@@ -83,11 +103,27 @@ export function UsersManager({
                   disabled={u.id === currentUserId}
                   onChange={(e) => {
                     const role = e.target.value as Role;
-                    mutate({
-                      optimistic: (prev) =>
-                        prev.map((p) => (p.id === u.id ? { ...p, role } : p)),
-                      action: () => setUserRole(u.id, role),
-                      success: `${u.name} is now ${role === "admin" ? "an admin" : "an agent"}.`,
+                    if (role === u.role) return;
+                    const isAdmin = role === "admin";
+                    setConfirm({
+                      title: "Change role",
+                      description: (
+                        <>
+                          Make <span className="font-medium text-foreground">{u.name}</span>{" "}
+                          {isAdmin ? "an admin" : "an agent"}?{" "}
+                          {isAdmin
+                            ? "Admins can see internal costs and the finance view."
+                            : "Agents lose access to internal costs and finance."}
+                        </>
+                      ),
+                      confirmLabel: isAdmin ? "Make admin" : "Make agent",
+                      run: () =>
+                        mutate({
+                          optimistic: (prev) =>
+                            prev.map((p) => (p.id === u.id ? { ...p, role } : p)),
+                          action: () => setUserRole(u.id, role),
+                          success: `${u.name} is now ${isAdmin ? "an admin" : "an agent"}.`,
+                        }),
                     });
                   }}
                 >
@@ -103,17 +139,28 @@ export function UsersManager({
                   <Button
                     variant="secondary"
                     size="sm"
-                    pending={togglingId === u.id}
-                    onClick={async () => {
-                      setTogglingId(u.id);
-                      await mutate({
-                        optimistic: (prev) =>
-                          prev.map((p) => (p.id === u.id ? { ...p, active: !u.active } : p)),
-                        action: () => setUserActive(u.id, !u.active),
-                        success: `${u.name} ${u.active ? "disabled" : "enabled"}.`,
-                      });
-                      setTogglingId(null);
-                    }}
+                    onClick={() =>
+                      setConfirm({
+                        title: u.active ? "Disable team member" : "Enable team member",
+                        description: (
+                          <>
+                            {u.active ? "Disable" : "Enable"} access for{" "}
+                            <span className="font-medium text-foreground">{u.name}</span>?{" "}
+                            {u.active
+                              ? "They will be signed out and unable to log in until re-enabled."
+                              : "They will be able to log in again."}
+                          </>
+                        ),
+                        confirmLabel: u.active ? "Disable" : "Enable",
+                        run: () =>
+                          mutate({
+                            optimistic: (prev) =>
+                              prev.map((p) => (p.id === u.id ? { ...p, active: !u.active } : p)),
+                            action: () => setUserActive(u.id, !u.active),
+                            success: `${u.name} ${u.active ? "disabled" : "enabled"}.`,
+                          }),
+                      })
+                    }
                   >
                     {u.active ? "Disable" : "Enable"}
                   </Button>
@@ -152,6 +199,16 @@ export function UsersManager({
           </div>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        onConfirm={runConfirm}
+        pending={confirmPending}
+        title={confirm?.title ?? ""}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+      />
     </div>
   );
 }

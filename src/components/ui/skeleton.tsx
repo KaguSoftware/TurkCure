@@ -45,19 +45,50 @@ export function TablePageSkeleton({ rows = 8, cols = 4 }: { rows?: number; cols?
   );
 }
 
-/** Dashboard-style skeleton: stat cards + two content panels. */
+/** Dashboard-style skeleton: 6 stat cards + a 2/3 + 1/3 content row, mirroring
+    the real dashboard so there's no layout jump when content swaps in. */
 export function CardsPageSkeleton() {
   return (
     <div>
       <PageHeaderSkeleton />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-xl" />
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-[88px] rounded-xl" />
         ))}
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Skeleton className="h-72 rounded-xl" />
-        <Skeleton className="h-72 rounded-xl" />
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Skeleton className="h-96 rounded-xl xl:col-span-2" />
+        <div className="space-y-5">
+          <Skeleton className="h-44 rounded-xl" />
+          <Skeleton className="h-44 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Kanban board skeleton: 6 status columns each with a header + a few cards,
+    matching the Patients board (the default view) so its skeleton doesn't
+    resolve into a different layout. */
+export function BoardPageSkeleton() {
+  return (
+    <div>
+      <PageHeaderSkeleton />
+      <div className="mb-4 flex items-center justify-between">
+        <Skeleton className="h-9 w-full max-w-xs" />
+        <Skeleton className="h-9 w-56" />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, col) => (
+          <div key={col} className="flex flex-col gap-2">
+            <Skeleton className="h-5 w-24" />
+            <div className="flex flex-col gap-2 rounded-xl bg-surface-hover/50 p-2">
+              {Array.from({ length: (col % 3) + 1 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 rounded-lg" />
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

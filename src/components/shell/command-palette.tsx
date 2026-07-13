@@ -6,6 +6,7 @@ import { Building2, Car, Hotel, Loader2, Search, Stethoscope, User } from "lucid
 import { globalSearch, type SearchResult } from "@/lib/actions/search";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 const KIND_META: Record<SearchResult["kind"], { label: string; icon: typeof User }> = {
   patient: { label: "Patient", icon: User },
@@ -14,6 +15,13 @@ const KIND_META: Record<SearchResult["kind"], { label: string; icon: typeof User
   hotel: { label: "Hotel", icon: Hotel },
   driver: { label: "Driver", icon: Car },
 };
+
+const OPEN_EVENT = "turkcure:open-command-palette";
+
+/** Opens the command palette from anywhere (topbar search button, etc.). */
+export function openCommandPalette() {
+  document.dispatchEvent(new CustomEvent(OPEN_EVENT));
+}
 
 export function CommandPalette() {
   const router = useRouter();
@@ -24,7 +32,9 @@ export function CommandPalette() {
   const [pending, setPending] = React.useState(false);
   const seq = React.useRef(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
   const { mounted, closing } = usePresence(open, 180);
+  useFocusTrap(panelRef, open && mounted);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -33,8 +43,13 @@ export function CommandPalette() {
         setOpen((v) => !v);
       }
     };
+    const onOpen = () => setOpen(true);
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener(OPEN_EVENT, onOpen);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener(OPEN_EVENT, onOpen);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -96,6 +111,10 @@ export function CommandPalette() {
         onClick={() => setOpen(false)}
       />
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
         className={cn(
           "animate-pop relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-pop",
           closing && "animate-pop-out"
@@ -162,11 +181,7 @@ export function CommandPalette() {
 export function SearchTrigger() {
   return (
     <button
-      onClick={() =>
-        document.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })
-        )
-      }
+      onClick={openCommandPalette}
       className="pressable hidden h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-muted-light hover:border-border-strong sm:flex cursor-pointer"
     >
       <Search className="size-3.5" />

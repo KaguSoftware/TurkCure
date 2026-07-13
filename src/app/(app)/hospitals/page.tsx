@@ -31,8 +31,11 @@ export default async function HospitalsPage() {
         ]}
       />
 
-      <div className="mt-10">
-        <h2 className="mb-4 text-lg font-semibold">Doctors</h2>
+      <div className="mt-12 border-t border-border pt-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold">Doctors</h2>
+          <p className="mt-1 text-sm text-muted">Surgeons and specialists, linked to their hospital</p>
+        </div>
         <DirectoryManager
           table="doctors"
           entityName="Doctor"

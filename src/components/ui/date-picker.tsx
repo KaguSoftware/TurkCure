@@ -90,6 +90,9 @@ function Calendar({
               key={day.toISOString()}
               type="button"
               onClick={() => onSelect(day)}
+              aria-label={format(day, "d MMMM yyyy")}
+              aria-current={isToday ? "date" : undefined}
+              aria-pressed={isSelected ?? undefined}
               className={cn(
                 "rounded-md py-1.5 text-xs transition-colors cursor-pointer",
                 !isSameMonth(day, view) && "text-muted-light/50",
@@ -169,32 +172,39 @@ export function DatePicker({
   return (
     <div ref={ref} className={cn("relative", className)}>
       {name && <input type="hidden" name={name} value={current} />}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
+      {/* Trigger and clear are siblings (not nested) so both are real, keyboard-
+          operable buttons — nesting a button inside a button is invalid. */}
+      <div
         className={cn(
-          "flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm shadow-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] cursor-pointer",
+          "flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm shadow-card transition-colors focus-within:ring-2 focus-within:ring-[var(--ring)]",
           !current && "text-muted-light"
         )}
       >
-        <CalendarDays className="size-4 shrink-0 text-muted" />
-        <span className="flex-1 text-left">
-          {selected ? format(selected, "d MMM yyyy") : placeholder}
-        </span>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Choose date"
+          className="flex flex-1 items-center gap-2 text-left focus:outline-none cursor-pointer"
+        >
+          <CalendarDays className="size-4 shrink-0 text-muted" />
+          <span className="flex-1 text-left">
+            {selected ? format(selected, "d MMM yyyy") : placeholder}
+          </span>
+        </button>
         {current && (
-          <span
-            role="button"
+          <button
+            type="button"
             aria-label="Clear date"
             onClick={(e) => {
               e.stopPropagation();
               set("");
             }}
-            className="rounded p-0.5 text-muted-light hover:text-danger"
+            className="shrink-0 rounded p-0.5 text-muted-light hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] cursor-pointer"
           >
             <X className="size-3.5" />
-          </span>
+          </button>
         )}
-      </button>
+      </div>
       {mounted && (
         <PopoverLayer
           anchorRef={ref}

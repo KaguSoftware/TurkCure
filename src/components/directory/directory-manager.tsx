@@ -154,13 +154,14 @@ export function DirectoryManager({
   }
 
   async function onDelete(id: string) {
-    setConfirmDelete(null);
-    setOpen(false);
+    // Keep the confirm dialog open (with a spinner) until the delete resolves,
+    // then close — so double-clicks can't fire a second delete.
     await mutate({
       optimistic: (prev) => prev.filter((r) => r.id !== id),
       action: () => deleteDirectoryRow(table, id),
       success: `${entityName} deleted.`,
     });
+    setConfirmDelete(null);
   }
 
   function cellValue(row: Record<string, unknown>, f: FieldDef): string {
@@ -335,7 +336,7 @@ export function DirectoryManager({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={false}
+        pending={pending}
         title={`Delete ${entityName.toLowerCase()}`}
         description={
           <>

@@ -10,7 +10,9 @@ import {
   Kanban,
   List,
   Loader2,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Plus,
   Search,
   SlidersHorizontal,
@@ -70,7 +72,13 @@ export function PatientsView({
 
   // Optimistic status overrides so the board moves cards instantly.
   const [statusOverrides, setStatusOverrides] = React.useState<Record<string, PatientStatus>>({});
-  const [mode, setMode] = React.useState<"board" | "table">("board");
+  // Patient ids with an in-flight status change, so the card select shows it's saving.
+  const [statusPending, setStatusPending] = React.useState<ReadonlySet<string>>(new Set());
+  // View mode lives in the URL so it's shareable and survives back/forward.
+  const mode: "board" | "table" = searchParams.get("view") === "table" ? "table" : "board";
+  const setMode = (m: "board" | "table") => setParams({ view: m === "board" ? null : m }, false);
+  // A single status filter "maximizes" that column: show only it, full-width.
+  const focused = mode === "board" && statusFilter !== "all";
   const [query, setQuery] = React.useState(urlQuery);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Patient | null>(null);
@@ -135,7 +143,13 @@ export function PatientsView({
     async (p: Patient, status: PatientStatus) => {
       const prev = p.status;
       setStatusOverrides((o) => ({ ...o, [p.id]: status }));
+      setStatusPending((s) => new Set(s).add(p.id));
       const result = await setPatientStatus(p.id, status);
+      setStatusPending((s) => {
+        const next = new Set(s);
+        next.delete(p.id);
+        return next;
+      });
       if (result.error) {
         setStatusOverrides((o) => ({ ...o, [p.id]: prev }));
         toast.error(`Could not update status: ${result.error}`);
@@ -228,10 +242,14 @@ export function PatientsView({
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-light" />
           <Input
             placeholder="Search patients…"
+            aria-label="Search patients"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-9"
           />
+          {query !== urlQuery && (
+            <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-light" />
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
@@ -384,26 +402,97 @@ export function PatientsView({
       )}
 
       {mode === "board" ? (
+        focused ? (
+          // Maximized single-status view: one full-width, denser card grid.
+          <div className="animate-expand space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Badge tone={PATIENT_STATUS_TONE[statusFilter as PatientStatus]}>
+                  {PATIENT_STATUS_LABEL[statusFilter as PatientStatus]}
+                </Badge>
+                <span className="text-sm text-muted">
+                  {(byStatus.get(statusFilter as PatientStatus) ?? []).length} patient
+                  {(byStatus.get(statusFilter as PatientStatus) ?? []).length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => setParams({ status: null })}>
+                <Minimize2 /> Back to board
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {(byStatus.get(statusFilter as PatientStatus) ?? []).map((p) => (
+                <div
+                  key={p.id}
+                  className="hover-lift rounded-lg border border-border bg-surface p-3 shadow-card"
+                >
+                  <Link
+                    href={`/patients/${p.id}`}
+                    className="block text-sm font-medium hover:text-primary"
+                  >
+                    {p.full_name}
+                  </Link>
+                  <p className="mt-0.5 truncate text-xs text-muted">
+                    {p.countries?.name ?? "—"} · {p.profiles?.name ?? "Unassigned"}
+                  </p>
+                  <div className="relative mt-2">
+                    <Select
+                      className="h-7 text-xs shadow-none"
+                      value={p.status}
+                      disabled={statusPending.has(p.id)}
+                      onChange={(e) => onStatusChange(p, e.target.value as PatientStatus)}
+                    >
+                      {PATIENT_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {PATIENT_STATUS_LABEL[s]}
+                        </option>
+                      ))}
+                    </Select>
+                    {statusPending.has(p.id) && (
+                      <Loader2 className="pointer-events-none absolute right-7 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted" />
+                    )}
+                  </div>
+                </div>
+              ))}
+              {(byStatus.get(statusFilter as PatientStatus) ?? []).length === 0 && (
+                <p className="col-span-full py-10 text-center text-sm text-muted-light">
+                  No patients in this status.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {PATIENT_STATUSES.map((status) => {
             const col = byStatus.get(status) ?? [];
             const collapsed = colToggles[status] ?? col.length === 0;
             return (
               <div key={status} className="flex flex-col gap-2">
-                <button
-                  className="flex w-full cursor-pointer items-center justify-between px-1"
-                  onClick={() => setColToggles((t) => ({ ...t, [status]: !collapsed }))}
-                >
-                  <span className="flex items-center gap-1">
+                {/* Header is a div (not a button) so the collapse and maximize
+                    controls can be sibling buttons — no nested interactives. */}
+                <div className="flex w-full items-center justify-between gap-1 px-1">
+                  <button
+                    className="flex flex-1 cursor-pointer items-center gap-1"
+                    aria-expanded={!collapsed}
+                    onClick={() => setColToggles((t) => ({ ...t, [status]: !collapsed }))}
+                  >
                     {collapsed ? (
                       <ChevronRight className="size-3.5 text-muted-light" />
                     ) : (
                       <ChevronDown className="size-3.5 text-muted-light" />
                     )}
                     <Badge tone={PATIENT_STATUS_TONE[status]}>{PATIENT_STATUS_LABEL[status]}</Badge>
-                  </span>
-                  <span className="text-xs font-medium text-muted-light">{col.length}</span>
-                </button>
+                    <span className="ml-auto text-xs font-medium text-muted-light">
+                      {col.length}
+                    </span>
+                  </button>
+                  <button
+                    className="pressable shrink-0 rounded p-0.5 text-muted-light hover:text-primary cursor-pointer"
+                    aria-label={`Focus ${PATIENT_STATUS_LABEL[status]} column`}
+                    onClick={() => setParams({ status })}
+                  >
+                    <Maximize2 className="size-3.5" />
+                  </button>
+                </div>
                 <div
                   className={cn(
                     "flex min-h-24 flex-col gap-2 rounded-xl bg-surface-hover/50 p-2",
@@ -424,17 +513,23 @@ export function PatientsView({
                       <p className="mt-0.5 truncate text-xs text-muted">
                         {p.countries?.name ?? "—"} · {p.profiles?.name ?? "Unassigned"}
                       </p>
-                      <Select
-                        className="mt-2 h-7 text-xs shadow-none"
-                        value={p.status}
-                        onChange={(e) => onStatusChange(p, e.target.value as PatientStatus)}
-                      >
-                        {PATIENT_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {PATIENT_STATUS_LABEL[s]}
-                          </option>
-                        ))}
-                      </Select>
+                      <div className="relative mt-2">
+                        <Select
+                          className="h-7 text-xs shadow-none"
+                          value={p.status}
+                          disabled={statusPending.has(p.id)}
+                          onChange={(e) => onStatusChange(p, e.target.value as PatientStatus)}
+                        >
+                          {PATIENT_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {PATIENT_STATUS_LABEL[s]}
+                            </option>
+                          ))}
+                        </Select>
+                        {statusPending.has(p.id) && (
+                          <Loader2 className="pointer-events-none absolute right-7 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted" />
+                        )}
+                      </div>
                     </div>
                   ))}
                   {col.length === 0 && (
@@ -445,6 +540,7 @@ export function PatientsView({
             );
           })}
         </div>
+        )
       ) : (
         <Table>
           <THead>

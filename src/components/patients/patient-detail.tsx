@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, FileDown, Pencil, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TabBar, TabPanel } from "@/components/ui/tabs";
 import { useAction } from "@/lib/use-action";
 import { completeCase } from "@/lib/actions/cases";
 import { cn, formatDate, formatMoney, waLink } from "@/lib/utils";
@@ -58,14 +60,31 @@ export function PatientDetail({
   currentUserId: string;
   directories: Directories;
 }) {
-  const [tab, setTab] = React.useState<(typeof TABS)[number]>("Case & Quote");
+  // Tab and selected case live in the URL (?tab=, ?case=) so links, refresh, and
+  // the back button all land on the same view.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab");
+  const tab: (typeof TABS)[number] = (TABS as readonly string[]).includes(urlTab ?? "")
+    ? (urlTab as (typeof TABS)[number])
+    : "Case & Quote";
+  const setParam = (key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(key, value);
+    router.replace(`${pathname}?${params}`, { scroll: false });
+  };
+  const setTab = (t: (typeof TABS)[number]) => setParam("tab", t);
   const [editOpen, setEditOpen] = React.useState(false);
   const [confirmDone, setConfirmDone] = React.useState(false);
   const complete = useAction();
   // Which case is being viewed; "new" shows an empty create form for a repeat visit.
-  const [selectedCaseId, setSelectedCaseId] = React.useState<string | "new">(
-    cases[0]?.id ?? "new"
-  );
+  const urlCase = searchParams.get("case");
+  const selectedCaseId: string | "new" =
+    urlCase === "new" || cases.some((c) => c.id === urlCase)
+      ? (urlCase as string)
+      : cases[0]?.id ?? "new";
+  const setSelectedCaseId = (id: string | "new") => setParam("case", id);
   const activeCase =
     selectedCaseId === "new" ? null : cases.find((c) => c.id === selectedCaseId) ?? cases[0] ?? null;
   // Payments/instructions shown belong to the case being viewed.
@@ -212,54 +231,41 @@ export function PatientDetail({
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "pressable -mb-px border-b-2 px-4 py-2.5 text-sm font-medium cursor-pointer",
-              tab === t
-                ? "border-primary text-primary"
-                : "border-transparent text-muted hover:text-foreground"
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar idBase="patient" tabs={TABS} value={tab} onChange={setTab} />
 
-      {tab === "Case & Quote" && (
-        <CaseTab
-          patient={patient}
-          activeCase={activeCase}
-          quoteItemsByCase={quoteItemsByCase}
-          isAdmin={isAdmin}
-          directories={directories}
-          onCaseCreated={(id) => setSelectedCaseId(id)}
-        />
-      )}
-      {tab === "Payments" && (
-        <PaymentsTab
-          patient={patient}
-          cases={activeCase ? [activeCase] : []}
-          payments={casePayments}
-          quotedTotal={totalPrice}
-          isAdmin={isAdmin}
-          directories={directories}
-        />
-      )}
-      {tab === "Instructions" && (
-        <InstructionsTab
-          patient={patient}
-          cases={activeCase ? [activeCase] : []}
-          instructions={caseInstructions}
-          templates={directories.templates}
-        />
-      )}
-      {tab === "Files" && (
-        <FilesTab patient={patient} files={files} currentUserId={currentUserId} />
-      )}
+      <TabPanel idBase="patient" index={TABS.indexOf(tab)}>
+        {tab === "Case & Quote" && (
+          <CaseTab
+            patient={patient}
+            activeCase={activeCase}
+            quoteItemsByCase={quoteItemsByCase}
+            isAdmin={isAdmin}
+            directories={directories}
+            onCaseCreated={(id) => setSelectedCaseId(id)}
+          />
+        )}
+        {tab === "Payments" && (
+          <PaymentsTab
+            patient={patient}
+            cases={activeCase ? [activeCase] : []}
+            payments={casePayments}
+            quotedTotal={totalPrice}
+            isAdmin={isAdmin}
+            directories={directories}
+          />
+        )}
+        {tab === "Instructions" && (
+          <InstructionsTab
+            patient={patient}
+            cases={activeCase ? [activeCase] : []}
+            instructions={caseInstructions}
+            templates={directories.templates}
+          />
+        )}
+        {tab === "Files" && (
+          <FilesTab patient={patient} files={files} currentUserId={currentUserId} />
+        )}
+      </TabPanel>
 
       <PatientFormDialog
         open={editOpen}

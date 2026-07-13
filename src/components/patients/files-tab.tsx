@@ -20,7 +20,7 @@ export function FilesTab({
   files: PatientFile[];
   currentUserId: string;
 }) {
-  const { items: files, mutate } = useOptimisticList<PatientFile>(serverFiles);
+  const { items: files, mutate, pending } = useOptimisticList<PatientFile>(serverFiles);
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<PatientFile | null>(null);
@@ -79,7 +79,7 @@ export function FilesTab({
   }
 
   async function onDelete(f: PatientFile) {
-    setConfirmDelete(null);
+    // Keep the confirm dialog open with a spinner until the delete resolves.
     await mutate({
       optimistic: (prev) => prev.filter((x) => x.id !== f.id),
       action: async () => {
@@ -90,6 +90,7 @@ export function FilesTab({
       },
       success: `${f.label} deleted.`,
     });
+    setConfirmDelete(null);
   }
 
   return (
@@ -140,7 +141,7 @@ export function FilesTab({
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => confirmDelete && onDelete(confirmDelete)}
-        pending={false}
+        pending={pending}
         title="Delete file"
         description={
           <>

@@ -1,5 +1,5 @@
-import { TablePageSkeleton } from "@/components/ui/skeleton";
+import { BoardPageSkeleton } from "@/components/ui/skeleton";
 
 export default function Loading() {
-  return <TablePageSkeleton cols={7} />;
+  return <BoardPageSkeleton />;
 }
