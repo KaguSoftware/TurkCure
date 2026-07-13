@@ -161,7 +161,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {stat("Revenue (quoted)", totalRevenue)}
           {stat(
@@ -173,8 +173,8 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
           {stat("Internal cost", totalCost)}
           {stat("Margin (quoted)", margin, margin >= 0 ? "text-success" : "text-danger")}
         </div>
-        <div className="ml-4 flex shrink-0 flex-col items-end gap-2">
-          <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-2 md:ml-4">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
               <Download /> Export CSV
             </Button>

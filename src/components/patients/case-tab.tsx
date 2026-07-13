@@ -399,7 +399,7 @@ function QuoteEditor({
         <div className="mx-5 rounded-xl border border-dashed border-border-strong p-4">
           <p className="mb-3 text-sm font-semibold">Add quote item</p>
           <form ref={formRef} onSubmit={onAdd} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <Field label="Type">
                 <Select name="kind" defaultValue="surgery">
                   {KINDS.map((k) => (
@@ -409,7 +409,7 @@ function QuoteEditor({
                   ))}
                 </Select>
               </Field>
-              <Field label="Description" className="col-span-2 sm:col-span-1">
+              <Field label="Description" className="sm:col-span-1">
                 <Input name="description" required placeholder="e.g. FUE 3500 grafts" />
               </Field>
               {isAdmin && (

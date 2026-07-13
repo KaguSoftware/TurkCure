@@ -194,7 +194,7 @@ export function DirectoryManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-light" />
           <Input

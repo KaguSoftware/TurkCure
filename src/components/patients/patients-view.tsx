@@ -233,7 +233,7 @@ export function PatientsView({
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant={showFilters || filtersActive ? "soft" : "secondary"}
             size="sm"

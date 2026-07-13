@@ -187,8 +187,8 @@ function InstructionCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{instruction.title}</CardTitle>
-        <div className="flex gap-1">
+        <CardTitle className="min-w-0 truncate">{instruction.title}</CardTitle>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
           {dirty && (
             <Button
               size="sm"
