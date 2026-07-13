@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { createClient as createBareClient } from "@supabase/supabase-js";
-import { createAdminClient, createClient, requireProfile } from "@/lib/supabase/server";
+import { createAdminClient, createAnonClient, createClient, requireProfile } from "@/lib/supabase/server";
 import { ACCENT_THEMES, type AccentTheme } from "@/lib/types";
 
 export async function updateOwnProfile(name: string): Promise<{ error?: string }> {
@@ -104,11 +103,7 @@ export async function changeOwnPassword(
 
   // Verify the current password with a throwaway client so the real session
   // cookies are untouched either way.
-  const bare = createBareClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const bare = createAnonClient();
   const { error: verifyError } = await bare.auth.signInWithPassword({
     email: profile.email,
     password: currentPassword,

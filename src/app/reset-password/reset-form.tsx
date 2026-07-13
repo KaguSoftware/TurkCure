@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getSiteURL } from "@/lib/site-url";
+import { authErrorMessage } from "@/lib/auth/errors";
+import { AuthError } from "@/components/auth/auth-error";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,10 +21,10 @@ export function ResetForm() {
     setError(null);
     const supabase = createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password/update`,
+      redirectTo: `${getSiteURL()}/auth/confirm?next=/reset-password/update`,
     });
     if (error) {
-      setError(error.message);
+      setError(authErrorMessage(error.message));
       setLoading(false);
       return;
     }
@@ -57,9 +60,7 @@ export function ResetForm() {
               placeholder="you@turkcure.com"
             />
           </Field>
-          {error && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
-          )}
+          <AuthError message={error} />
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Sending link…" : "Send reset link"}
           </Button>

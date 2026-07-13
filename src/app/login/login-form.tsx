@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth/errors";
+import { AuthError } from "@/components/auth/auth-error";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { INTRO_COOKIE } from "@/components/shell/intro-overlay";
 
 export function LoginForm() {
   const router = useRouter();
@@ -22,14 +23,13 @@ export function LoginForm() {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setError(error.message);
+      setError(authErrorMessage(error.message));
       setLoading(false);
       return;
     }
-    // Clear the intro marker so the splash also plays on every fresh login,
-    // and restart the 24h session clock enforced by the proxy.
-    document.cookie = `${INTRO_COOKIE}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    document.cookie = `turkcure_session_start=${Date.now()}; path=/; max-age=${30 * 24 * 60 * 60}; samesite=lax`;
+    // The session clock (and intro replay) are handled server-side: signout
+    // clears the start cookie, and the proxy stamps a fresh one on the next
+    // authenticated request.
     router.push("/dashboard");
     router.refresh();
   }
@@ -57,9 +57,7 @@ export function LoginForm() {
               placeholder="••••••••"
             />
           </Field>
-          {error && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
-          )}
+          <AuthError message={error} />
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}
           </Button>

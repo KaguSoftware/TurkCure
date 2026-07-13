@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { INTRO_COOKIE } from "@/lib/auth/cookies";
 
-export const INTRO_COOKIE = "turkcure_intro";
+// Re-exported for existing importers; the source of truth is @/lib/auth/cookies.
+export { INTRO_COOKIE };
 
 function greeting() {
   const h = new Date().getHours();

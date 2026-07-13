@@ -37,6 +37,19 @@ export function createAdminClient() {
 }
 
 /**
+ * Anon-key client that never persists a session. For throwaway credential
+ * checks (e.g. re-verifying a current password) that must not touch the real
+ * session cookies.
+ */
+export function createAnonClient() {
+  return createBareClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
+
+/**
  * Profiles row by user id, cached across requests. Uses the admin client
  * because unstable_cache callbacks cannot read cookies; callers must pass an
  * id taken from a verified JWT. Invalidated via the "profiles" tag by the

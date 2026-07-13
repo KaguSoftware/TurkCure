@@ -1,7 +1,7 @@
 "use client";
 
 import Link, { useLinkStatus } from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -14,7 +14,6 @@ import {
   Loader2,
   LogOut,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -52,13 +51,6 @@ export function SidebarContent({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-
-  async function signOut() {
-    await createClient().auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
 
   const link = (item: (typeof NAV)[number]) => {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -112,13 +104,16 @@ export function SidebarContent({
             <p className="truncate text-sm font-medium">{userName}</p>
             <p className="text-xs text-muted">{isAdmin ? "Administrator" : "Agent"}</p>
           </div>
-          <button
-            onClick={signOut}
+          {/* Full navigation (not router.push) so the GET route runs and clears
+              the session + session-clock/intro cookies server-side. */}
+          <a
+            href="/auth/signout"
+            onClick={onNavigate}
             aria-label="Sign out"
             className="pressable shrink-0 rounded-lg p-2 text-muted hover:bg-surface-hover hover:text-foreground cursor-pointer"
           >
             <LogOut className="size-4" />
-          </button>
+          </a>
         </div>
       </div>
     </>

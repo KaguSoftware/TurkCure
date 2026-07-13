@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { MAX_SESSION_MS, SESSION_START_COOKIE } from "@/lib/auth/cookies";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -45,10 +46,6 @@ function readTokenExp(request: NextRequest): number | null {
   }
 }
 
-// Sessions are capped at 24h: after that, users must sign in again.
-const SESSION_START_COOKIE = "turkcure_session_start";
-const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
-
 /**
  * Enforce the 24h session cap. Returns a redirect to the signout route when
  * the session is too old; otherwise stamps a start-time cookie if missing
@@ -64,9 +61,10 @@ function enforceSessionAge(request: NextRequest, response: NextResponse): NextRe
     }
     return null;
   }
+  // Cookie lifetime matches the enforced cap so the two never disagree.
   response.cookies.set(SESSION_START_COOKIE, String(Date.now()), {
     path: "/",
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: MAX_SESSION_MS / 1000,
     sameSite: "lax",
   });
   return null;
@@ -78,13 +76,15 @@ export async function proxy(request: NextRequest) {
   // Pages an unauthenticated visitor is allowed to reach.
   const isAuthPage =
     path.startsWith("/login") ||
-    path.startsWith("/signup") ||
-    path.startsWith("/reset-password");
-  // The password-update page is reached via an email recovery link that
-  // deliberately creates a session — so authenticated users must NOT be bounced
-  // away from it. Every other auth page redirects signed-in users to the app.
+    path.startsWith("/reset-password") ||
+    path.startsWith("/auth/confirm");
+  // The password-update page and the /auth/confirm handler are reached via email
+  // recovery links that deliberately create a session — so authenticated users
+  // must NOT be bounced away from them (the confirm route must run to verify the
+  // token). Every other auth page redirects signed-in users to the app.
   const isUpdatePasswordPage = path.startsWith("/reset-password/update");
-  const redirectAuthedAway = isAuthPage && !isUpdatePasswordPage;
+  const isConfirmRoute = path.startsWith("/auth/confirm");
+  const redirectAuthedAway = isAuthPage && !isUpdatePasswordPage && !isConfirmRoute;
   const exp = readTokenExp(request);
   const now = Math.floor(Date.now() / 1000);
   // Treat a token with more than 5 minutes of life left as a valid session

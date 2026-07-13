@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { LoginForm } from "./login-form";
+import { AuthError } from "@/components/auth/auth-error";
+import { authErrorFromCode } from "@/lib/auth/errors";
 
 export const metadata = { title: "Sign in" };
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+  const errorMessage = authErrorFromCode(error);
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -13,13 +22,15 @@ export default function LoginPage() {
           </div>
           <p className="mt-2 text-sm text-muted">Internal operations system</p>
         </div>
+        {errorMessage && (
+          <div className="mb-4">
+            <AuthError message={errorMessage} />
+          </div>
+        )}
         <LoginForm />
-        <div className="mt-4 flex items-center justify-between text-xs">
+        <div className="mt-4 text-center text-xs">
           <Link href="/reset-password" className="text-muted hover:text-foreground">
             Forgot password?
-          </Link>
-          <Link href="/signup" className="font-medium text-primary hover:underline">
-            Create account
           </Link>
         </div>
       </div>

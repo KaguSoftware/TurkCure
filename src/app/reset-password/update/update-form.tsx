@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth/errors";
+import { AuthError } from "@/components/auth/auth-error";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,23 +14,7 @@ export function UpdatePasswordForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
-  // Whether the recovery link established a session we can update against.
-  const [hasSession, setHasSession] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-    // The browser client auto-detects the recovery token in the URL and
-    // establishes a session; reflect that here (and via the auth event).
-    supabase.auth.getSession().then(({ data }) => {
-      setHasSession((prev) => prev ?? !!data.session);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setHasSession(!!session);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,43 +28,17 @@ export function UpdatePasswordForm() {
       return;
     }
     setLoading(true);
+    // The recovery link was verified server-side by /auth/confirm, so a session
+    // is already established by the time we get here.
     const supabase = createClient();
     const { error } = await supabase.auth.updateUser({ password });
     if (error) {
-      setError(error.message);
+      setError(authErrorMessage(error.message));
       setLoading(false);
       return;
     }
-    setDone(true);
-    setLoading(false);
-    setTimeout(() => {
-      router.push("/dashboard");
-      router.refresh();
-    }, 1200);
-  }
-
-  if (done) {
-    return (
-      <Card>
-        <CardContent className="space-y-2 pt-5 text-center">
-          <p className="text-sm font-medium">Password updated</p>
-          <p className="text-xs text-muted">Taking you to your dashboard…</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (hasSession === false) {
-    return (
-      <Card>
-        <CardContent className="space-y-2 pt-5 text-center">
-          <p className="text-sm font-medium">This link is invalid or expired</p>
-          <p className="text-xs text-muted">
-            Request a fresh reset link and try again.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    router.replace("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -104,10 +64,8 @@ export function UpdatePasswordForm() {
               placeholder="••••••••"
             />
           </Field>
-          {error && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
-          )}
-          <Button type="submit" className="w-full" disabled={loading || hasSession === null}>
+          <AuthError message={error} />
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Saving…" : "Update password"}
           </Button>
         </form>
