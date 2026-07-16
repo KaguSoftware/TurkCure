@@ -124,7 +124,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     "Hospital operating room costs",
     ...(hospitalNights ? [`${hospitalNights} night hospital accommodation`] : []),
     ...(totalNights ? [`${totalNights} nights hotel accommodation`] : []),
-    ...(items ?? []).map((i) => i.description),
+    ...(items ?? []).map((i) => i.description).filter((d): d is string => Boolean(d)),
     "English speaking medical translator",
     "VIP Airport – Hotel – Hospital transfers",
   ];
@@ -350,9 +350,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
         {(instructions ?? []).map((ins, idx) => (
           <View key={idx}>
             <Text style={s.instrHeading} minPresenceAhead={40}>
-              {ins.title}
+              {ins.title ?? ""}
             </Text>
-            <PdfMarkdown md={ins.body_md} scale={0.95} />
+            <PdfMarkdown md={ins.body_md ?? ""} scale={0.95} />
             {(ins.image_paths ?? []).filter((p: string) => imageUrls[p]).length > 0 && (
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }} wrap={false}>
                 {(ins.image_paths ?? [])

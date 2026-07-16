@@ -40,11 +40,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     <Document title={`TurkCure — ${ins.title}`}>
       <Page size="A4" style={s.page}>
         <PdfHeader
-          title={<Text style={s.docTitle}>{ins.title}</Text>}
+          title={<Text style={s.docTitle}>{ins.title ?? ""}</Text>}
           meta={patientName ? `Prepared for ${patientName}` : undefined}
         />
 
-        <PdfMarkdown md={ins.body_md} />
+        <PdfMarkdown md={ins.body_md ?? ""} />
 
         {imageUrls.length > 0 && (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
