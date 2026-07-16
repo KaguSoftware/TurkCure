@@ -13,6 +13,8 @@ import {
   GOLD_DARK,
   GOLD_SOFT_BG,
   TABLE_LINE,
+  SANS,
+  SERIF,
   pdfStyles as s,
   fmtDate,
   fmtGender,
@@ -138,7 +140,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
   const doc = (
     <Document title={`TurkCure WOF — ${patient?.full_name ?? "Patient"}`}>
       {/* Cover page — navy, gold frame, all content in normal flow */}
-      <Page size="A4" style={{ backgroundColor: NAVY, padding: 28, fontFamily: "SourceSans" }}>
+      <Page size="A4" style={{ backgroundColor: NAVY, padding: 28, fontFamily: SANS }}>
         <View
           style={{
             flex: 1,
@@ -170,7 +172,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
             style={{
               fontSize: 30,
               color: "#ffffff",
-              fontFamily: "Playfair",
+              fontFamily: SERIF,
               fontWeight: 700,
               textAlign: "center",
             }}
@@ -181,7 +183,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
             style={{
               fontSize: 30,
               color: GOLD,
-              fontFamily: "Playfair",
+              fontFamily: SERIF,
               fontWeight: 700,
               textAlign: "center",
               marginTop: 6,
@@ -209,7 +211,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
             style={{
               fontSize: 26,
               color: "#ffffff",
-              fontFamily: "Playfair",
+              fontFamily: SERIF,
               fontWeight: 700,
               marginTop: 10,
               textAlign: "center",
@@ -222,7 +224,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
               style={{
                 fontSize: 13,
                 color: GOLD_LIGHT,
-                fontFamily: "Playfair",
+                fontFamily: SERIF,
                 fontStyle: "italic",
                 marginTop: 8,
                 textAlign: "center",

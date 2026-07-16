@@ -1,5 +1,6 @@
 import React from "react";
 import path from "node:path";
+import fs from "node:fs";
 import {
   StyleSheet,
   Font,
@@ -14,26 +15,58 @@ import {
 } from "@react-pdf/renderer";
 
 // Embedded brand fonts: Playfair Display (display serif) + Source Sans 3 (text).
-const FONT_DIR = path.join(process.cwd(), "src", "lib", "pdf", "fonts");
+//
+// Resolve the font directory robustly. On Vercel the serverless function's cwd
+// is the traced app root and the TTFs are pulled in via `outputFileTracingIncludes`
+// in next.config.ts — but the exact location can differ between the dev server,
+// `next start`, and the serverless bundle, so probe a few candidates and use the
+// first that actually exists. If none resolve we skip custom fonts entirely
+// rather than letting `renderToBuffer` throw and blow up the whole PDF route.
+const FONT_CANDIDATES = [
+  path.join(process.cwd(), "src", "lib", "pdf", "fonts"),
+  path.join(process.cwd(), ".next", "server", "src", "lib", "pdf", "fonts"),
+  path.join(__dirname, "fonts"),
+];
+const FONT_DIR =
+  FONT_CANDIDATES.find((dir) => {
+    try {
+      return fs.existsSync(path.join(dir, "SourceSans3-Regular.ttf"));
+    } catch {
+      return false;
+    }
+  }) ?? null;
 
-Font.register({
-  family: "Playfair",
-  fonts: [
-    { src: path.join(FONT_DIR, "PlayfairDisplay-Regular.ttf"), fontWeight: 400 },
-    { src: path.join(FONT_DIR, "PlayfairDisplay-Bold.ttf"), fontWeight: 700 },
-    { src: path.join(FONT_DIR, "PlayfairDisplay-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
-  ],
-});
+if (FONT_DIR) {
+  Font.register({
+    family: "Playfair",
+    fonts: [
+      { src: path.join(FONT_DIR, "PlayfairDisplay-Regular.ttf"), fontWeight: 400 },
+      { src: path.join(FONT_DIR, "PlayfairDisplay-Bold.ttf"), fontWeight: 700 },
+      { src: path.join(FONT_DIR, "PlayfairDisplay-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
+    ],
+  });
 
-Font.register({
-  family: "SourceSans",
-  fonts: [
-    { src: path.join(FONT_DIR, "SourceSans3-Regular.ttf"), fontWeight: 400 },
-    { src: path.join(FONT_DIR, "SourceSans3-SemiBold.ttf"), fontWeight: 600 },
-    { src: path.join(FONT_DIR, "SourceSans3-Bold.ttf"), fontWeight: 700 },
-    { src: path.join(FONT_DIR, "SourceSans3-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
-  ],
-});
+  Font.register({
+    family: "SourceSans",
+    fonts: [
+      { src: path.join(FONT_DIR, "SourceSans3-Regular.ttf"), fontWeight: 400 },
+      { src: path.join(FONT_DIR, "SourceSans3-SemiBold.ttf"), fontWeight: 600 },
+      { src: path.join(FONT_DIR, "SourceSans3-Bold.ttf"), fontWeight: 700 },
+      { src: path.join(FONT_DIR, "SourceSans3-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
+    ],
+  });
+} else {
+  console.error(
+    "PDF fonts not found; falling back to built-in Helvetica. Checked:",
+    FONT_CANDIDATES.join(", ")
+  );
+}
+
+// Family names to use throughout the PDFs. When the brand TTFs load we use them;
+// otherwise fall back to react-pdf's built-in Helvetica so the route still renders
+// (unstyled but working) instead of throwing "font not registered".
+export const SERIF = FONT_DIR ? "Playfair" : "Helvetica";
+export const SANS = FONT_DIR ? "SourceSans" : "Helvetica";
 
 // Never hyphenate — broken words look terrible on a formal document.
 Font.registerHyphenationCallback((word) => [word]);
@@ -80,10 +113,10 @@ export const pdfStyles = StyleSheet.create({
     paddingBottom: 76,
     fontSize: 10,
     color: TEXT,
-    fontFamily: "SourceSans",
+    fontFamily: SANS,
     lineHeight: 1.45,
   },
-  docTitle: { fontSize: 14, color: INK, textAlign: "right", fontFamily: "Playfair", fontWeight: 700 },
+  docTitle: { fontSize: 14, color: INK, textAlign: "right", fontFamily: SERIF, fontWeight: 700 },
   docSub: { fontSize: 8.5, color: MUTED, textAlign: "right", marginTop: 3 },
 
   // Numbered table section — navy header band + hairline-bordered body.
@@ -106,7 +139,7 @@ export const pdfStyles = StyleSheet.create({
     marginRight: 9,
   },
   tableHeadTitle: {
-    fontFamily: "Playfair",
+    fontFamily: SERIF,
     fontWeight: 700,
     fontSize: 11,
     color: "#ffffff",
@@ -169,7 +202,7 @@ export const pdfStyles = StyleSheet.create({
     marginRight: 7,
   },
   sectionTitle: {
-    fontFamily: "Playfair",
+    fontFamily: SERIF,
     fontWeight: 700,
     fontSize: 11,
     color: BLUE_DEEP,
@@ -229,7 +262,7 @@ export const pdfStyles = StyleSheet.create({
     fontSize: 7,
   },
   instrHeading: {
-    fontFamily: "Playfair",
+    fontFamily: SERIF,
     fontWeight: 700,
     fontSize: 11,
     color: BLUE_DEEP,
@@ -260,7 +293,7 @@ export function Wordmark({ scale = 1 }: { scale?: number }) {
         x={0}
         y={21}
         fill={BLUE}
-        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Turk
       </Text>
@@ -268,7 +301,7 @@ export function Wordmark({ scale = 1 }: { scale?: number }) {
         x={49}
         y={21}
         fill="url(#cureGrad)"
-        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Cure
       </Text>
@@ -291,7 +324,7 @@ export function WordmarkGold({ scale = 1 }: { scale?: number }) {
         x={0}
         y={21}
         fill="#f5f1e6"
-        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Turk
       </Text>
@@ -299,7 +332,7 @@ export function WordmarkGold({ scale = 1 }: { scale?: number }) {
         x={49}
         y={21}
         fill={GOLD}
-        style={{ fontFamily: "SourceSans", fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
+        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
       >
         Cure
       </Text>

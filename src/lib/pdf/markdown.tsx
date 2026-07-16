@@ -13,6 +13,7 @@ import {
   ACCENT_SOFT,
   TABLE_LINE,
   LABEL_BG,
+  SERIF,
 } from "@/lib/pdf/common";
 
 /**
@@ -78,8 +79,8 @@ function BlockPdf({ block, scale }: { block: Block; scale: number }) {
   switch (block.type) {
     case "heading": {
       const styles: Record<1 | 2 | 3, Style> = {
-        1: { fontFamily: "Playfair", fontWeight: 700, fontSize: 12.5 * scale, color: BLUE_DEEP },
-        2: { fontFamily: "Playfair", fontWeight: 700, fontSize: 11 * scale, color: BLUE_DEEP },
+        1: { fontFamily: SERIF, fontWeight: 700, fontSize: 12.5 * scale, color: BLUE_DEEP },
+        2: { fontFamily: SERIF, fontWeight: 700, fontSize: 11 * scale, color: BLUE_DEEP },
         3: { fontWeight: 600, fontSize: 10 * scale, color: INK },
       };
       return (
