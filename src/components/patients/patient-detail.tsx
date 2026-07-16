@@ -163,7 +163,7 @@ export function PatientDetail({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {activeCase && (
-              <a href={`/api/pdf/${activeCase.id}`} target="_blank" rel="noreferrer">
+              <a href={`/api/pdf/${activeCase.id}`} download>
                 <Button variant="secondary">
                   <FileDown /> Download PDF
                 </Button>

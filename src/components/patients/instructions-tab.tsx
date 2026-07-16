@@ -221,7 +221,7 @@ function InstructionCard({
               <Save /> Save
             </Button>
           )}
-          <a href={`/api/pdf/instruction/${instruction.id}`} target="_blank" rel="noreferrer">
+          <a href={`/api/pdf/instruction/${instruction.id}`} download>
             <Button variant="secondary" size="sm">
               <FileDown /> Download PDF
             </Button>

@@ -398,11 +398,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     </Document>
   );
 
-  const buffer = await renderToBuffer(doc);
+  let buffer: Buffer;
+  try {
+    buffer = await renderToBuffer(doc);
+  } catch (err) {
+    console.error("PDF render failed for case", caseId, err);
+    return new NextResponse("Failed to generate PDF", { status: 500 });
+  }
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="turkcure-wof-${(patient?.full_name ?? "patient")
+      "Content-Disposition": `attachment; filename="turkcure-wof-${(patient?.full_name ?? "patient")
         .toLowerCase()
         .replace(/\s+/g, "-")}.pdf"`,
     },

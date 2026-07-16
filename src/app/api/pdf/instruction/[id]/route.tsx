@@ -60,11 +60,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     </Document>
   );
 
-  const buffer = await renderToBuffer(doc);
+  let buffer: Buffer;
+  try {
+    buffer = await renderToBuffer(doc);
+  } catch (err) {
+    console.error("PDF render failed for instruction", id, err);
+    return new NextResponse("Failed to generate PDF", { status: 500 });
+  }
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="turkcure-instructions.pdf"`,
+      "Content-Disposition": `attachment; filename="turkcure-instructions.pdf"`,
     },
   });
 }
