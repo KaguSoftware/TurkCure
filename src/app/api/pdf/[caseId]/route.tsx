@@ -400,19 +400,20 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     </Document>
   );
 
-  let buffer: Buffer;
-  try {
-    buffer = await renderToBuffer(doc);
-  } catch (err) {
-    console.error("PDF render failed for case", caseId, err);
-    return new NextResponse("Failed to generate PDF", { status: 500 });
-  }
+  // HTTP headers are Latin-1 only, so the filename must be ASCII — a curly
+  // apostrophe or any accented character in the patient's name would throw a
+  // ByteString conversion error. Strip everything that isn't a safe ASCII char.
+  const slug =
+    (patient?.full_name ?? "patient")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "patient";
+
+  const buffer = await renderToBuffer(doc);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="turkcure-wof-${(patient?.full_name ?? "patient")
-        .toLowerCase()
-        .replace(/\s+/g, "-")}.pdf"`,
+      "Content-Disposition": `attachment; filename="turkcure-wof-${slug}.pdf"`,
     },
   });
 }
