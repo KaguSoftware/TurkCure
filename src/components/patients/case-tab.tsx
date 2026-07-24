@@ -3,15 +3,14 @@
 import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Select, Field, Textarea } from "@/components/ui/input";
+import { Input, Select, Field, Textarea, ComboBox } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
-import { upsertDirectoryRow } from "@/lib/actions/directory";
+import { upsertDirectoryRow, type DirectoryTable } from "@/lib/actions/directory";
 import { upsertCase, upsertQuoteItem, deleteQuoteItem } from "@/lib/actions/cases";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
@@ -43,25 +42,6 @@ export function CaseTab({
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [doctorOpen, setDoctorOpen] = React.useState(false);
-  const [doctorSaving, setDoctorSaving] = React.useState(false);
-
-  async function onAddDoctor(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setDoctorSaving(true);
-    const fd = new FormData(e.currentTarget);
-    const r = await upsertDirectoryRow("doctors", {
-      name: String(fd.get("name")),
-      specialty: String(fd.get("specialty") ?? ""),
-    });
-    setDoctorSaving(false);
-    if (r.error) toast.error(r.error);
-    else {
-      toast.success("Doctor added.");
-      setDoctorOpen(false);
-      React.startTransition(() => router.refresh());
-    }
-  }
 
   async function onSaveCase(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -97,26 +77,65 @@ export function CaseTab({
     }
   }
 
+  // Each case dropdown is a search-or-create combobox backed by a directory
+  // table. We hold the option lists in local state (seeded from the server
+  // props) so a row created inline appears immediately, before the next refresh.
+  const [comboOptions, setComboOptions] = React.useState({
+    operation_type_id: directories.operationTypes,
+    doctor_id: directories.doctors,
+    hospital_id: directories.hospitals,
+    hotel_id: directories.hotels,
+    driver_id: directories.drivers,
+  });
+
+  // Re-seed from the server whenever the props change (e.g. after a refresh),
+  // adjusting during render rather than in an effect to avoid a stale frame.
+  const [seenDirectories, setSeenDirectories] = React.useState(directories);
+  if (seenDirectories !== directories) {
+    setSeenDirectories(directories);
+    setComboOptions({
+      operation_type_id: directories.operationTypes,
+      doctor_id: directories.doctors,
+      hospital_id: directories.hospitals,
+      hotel_id: directories.hotels,
+      driver_id: directories.drivers,
+    });
+  }
+
   const selectFields: {
-    key: string;
+    key: keyof typeof comboOptions;
     label: string;
-    options: { id: string; name: string }[];
+    table: DirectoryTable;
     value: string | null;
-  }[] = activeCase
-    ? [
-        { key: "operation_type_id", label: "Operation", options: directories.operationTypes, value: activeCase.operation_type_id },
-        { key: "doctor_id", label: "Doctor", options: directories.doctors, value: activeCase.doctor_id },
-        { key: "hospital_id", label: "Hospital", options: directories.hospitals, value: activeCase.hospital_id },
-        { key: "hotel_id", label: "Hotel", options: directories.hotels, value: activeCase.hotel_id },
-        { key: "driver_id", label: "Driver", options: directories.drivers, value: activeCase.driver_id },
-      ]
-    : [
-        { key: "operation_type_id", label: "Operation", options: directories.operationTypes, value: null },
-        { key: "doctor_id", label: "Doctor", options: directories.doctors, value: null },
-        { key: "hospital_id", label: "Hospital", options: directories.hospitals, value: null },
-        { key: "hotel_id", label: "Hotel", options: directories.hotels, value: null },
-        { key: "driver_id", label: "Driver", options: directories.drivers, value: null },
-      ];
+  }[] = [
+    { key: "operation_type_id", label: "Operation", table: "operation_types", value: activeCase?.operation_type_id ?? null },
+    { key: "doctor_id", label: "Doctor", table: "doctors", value: activeCase?.doctor_id ?? null },
+    { key: "hospital_id", label: "Hospital", table: "hospitals", value: activeCase?.hospital_id ?? null },
+    { key: "hotel_id", label: "Hotel", table: "hotels", value: activeCase?.hotel_id ?? null },
+    { key: "driver_id", label: "Driver", table: "drivers", value: activeCase?.driver_id ?? null },
+  ];
+
+  async function createDirectoryRow(
+    key: keyof typeof comboOptions,
+    table: DirectoryTable,
+    name: string
+  ): Promise<string | null> {
+    const r = await upsertDirectoryRow(table, { name });
+    if (r.error || !r.row) {
+      toast.error(r.error ?? "Could not create.");
+      return null;
+    }
+    const row = r.row as { id: string; name: string };
+    setComboOptions((prev) => ({
+      ...prev,
+      [key]: [...prev[key], { id: row.id, name: row.name }].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      ),
+    }));
+    toast.success(`${row.name} added.`);
+    React.startTransition(() => router.refresh());
+    return row.id;
+  }
 
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -133,28 +152,13 @@ export function CaseTab({
           >
             {selectFields.map((f) => (
               <Field key={f.key} label={f.label}>
-                <div className="flex gap-1.5">
-                  <Select name={f.key} defaultValue={f.value ?? ""}>
-                    <option value="">—</option>
-                    {f.options.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </Select>
-                  {f.key === "doctor_id" && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      aria-label="Add doctor"
-                      className="shrink-0"
-                      onClick={() => setDoctorOpen(true)}
-                    >
-                      <Plus />
-                    </Button>
-                  )}
-                </div>
+                <ComboBox
+                  name={f.key}
+                  options={comboOptions[f.key]}
+                  defaultValue={f.value ?? ""}
+                  onCreate={(name) => createDirectoryRow(f.key, f.table, name)}
+                  placeholder={`Search or add ${f.label.toLowerCase()}…`}
+                />
               </Field>
             ))}
             <Field label="Status">
@@ -181,7 +185,7 @@ export function CaseTab({
             <Field label="Hospital check-out">
               <DatePicker name="hospital_checkout" defaultValue={activeCase?.hospital_checkout ?? ""} />
             </Field>
-            <Field label="Airport">
+            <Field label="Departure airport">
               <Input name="airport" placeholder="IST" defaultValue={activeCase?.airport ?? ""} />
             </Field>
             <Field label="Airport pickup">
@@ -232,25 +236,6 @@ export function CaseTab({
           </CardContent>
         </Card>
       )}
-
-      <Dialog open={doctorOpen} onClose={() => setDoctorOpen(false)} title="Add doctor">
-        <form onSubmit={onAddDoctor} className="space-y-4">
-          <Field label="Name">
-            <Input name="name" required autoFocus />
-          </Field>
-          <Field label="Specialty">
-            <Input name="specialty" placeholder="e.g. Plastic surgery" />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setDoctorOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" pending={doctorSaving}>
-              Add doctor
-            </Button>
-          </div>
-        </form>
-      </Dialog>
     </div>
   );
 }

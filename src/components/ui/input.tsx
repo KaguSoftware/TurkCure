@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
 
@@ -374,6 +374,227 @@ export const Select = React.forwardRef<
   );
 });
 Select.displayName = "Select";
+
+interface ComboOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Search-or-create combobox. Behaves like a <select> whose current value is a
+ * directory row id, submitted via a hidden input named `name`. Typing filters
+ * the list; if nothing matches, an inline "Create «query»" row calls `onCreate`,
+ * which resolves to the new row's id and selects it. Rendered as a portaled
+ * popover so it can't be clipped by table/overflow containers.
+ */
+export function ComboBox({
+  name,
+  options,
+  defaultValue,
+  onCreate,
+  placeholder = "Search or create…",
+  createLabel = "Create",
+  disabled,
+  id,
+  className,
+}: {
+  name: string;
+  options: ComboOption[];
+  defaultValue?: string;
+  /** Given the typed text, create the row and return its new id. */
+  onCreate: (name: string) => Promise<string | null>;
+  placeholder?: string;
+  createLabel?: string;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+}) {
+  const [value, setValue] = React.useState(defaultValue ?? "");
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [active, setActive] = React.useState(0);
+  const [creating, setCreating] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const listboxId = React.useId();
+  const { mounted, closing } = usePresence(open, 150);
+
+  const selected = options.find((o) => o.id === value);
+  const q = query.trim();
+  const filtered = q
+    ? options.filter((o) => o.name.toLowerCase().includes(q.toLowerCase()))
+    : options;
+  const exact = options.some((o) => o.name.toLowerCase() === q.toLowerCase());
+  const showCreate = q.length > 0 && !exact;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!isInsidePopover(e.target, rootRef.current)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (open) {
+      setQuery("");
+      setActive(0);
+      searchRef.current?.focus();
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    listRef.current
+      ?.querySelector(`[data-index="${active}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active, open]);
+
+  function pick(v: string) {
+    setValue(v);
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  async function create() {
+    if (!q || creating) return;
+    setCreating(true);
+    const newId = await onCreate(q);
+    setCreating(false);
+    if (newId) pick(newId);
+  }
+
+  // Number of selectable rows: filtered options plus an optional create row.
+  const rowCount = filtered.length + (showCreate ? 1 : 0);
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    switch (e.key) {
+      case "Escape":
+        if (open) {
+          e.preventDefault();
+          setOpen(false);
+          triggerRef.current?.focus();
+        }
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        if (!open) setOpen(true);
+        else setActive((a) => Math.min(a + 1, rowCount - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        if (open) setActive((a) => Math.max(a - 1, 0));
+        break;
+      case "Enter":
+        if (open) {
+          e.preventDefault();
+          if (showCreate && active === filtered.length) create();
+          else if (filtered[active]) pick(filtered[active].id);
+        }
+        break;
+    }
+  }
+
+  return (
+    <div ref={rootRef} className={cn("relative", className)}>
+      <input type="hidden" name={name} value={value} />
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={onKeyDown}
+        className={cn(
+          "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-foreground shadow-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50 cursor-pointer",
+          open && "ring-2 ring-[var(--ring)]"
+        )}
+      >
+        <span className={cn("truncate text-left", !selected && "text-muted-light")}>
+          {selected?.name ?? "—"}
+        </span>
+        <ChevronDown
+          className={cn("size-4 shrink-0 text-muted-light transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {mounted && (
+        <PopoverLayer
+          anchorRef={triggerRef}
+          className={cn(
+            "animate-dropdown min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop",
+            closing && "animate-dropdown-out"
+          )}
+        >
+          <div className="relative mb-1 px-1 pt-1">
+            <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-light" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={onKeyDown}
+              placeholder={placeholder}
+              className="h-8 w-full rounded-md border border-border bg-surface pl-8 pr-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            />
+          </div>
+          <div ref={listRef} id={listboxId} role="listbox" className="max-h-56 overflow-y-auto">
+            {filtered.map((o, i) => (
+              <button
+                key={o.id}
+                type="button"
+                role="option"
+                aria-selected={o.id === value}
+                data-index={i}
+                onClick={() => pick(o.id)}
+                onMouseEnter={() => setActive(i)}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+                  o.id === value
+                    ? "bg-primary-soft font-medium text-primary"
+                    : i === active
+                      ? "bg-surface-hover"
+                      : "hover:bg-surface-hover"
+                )}
+              >
+                <span className="truncate">{o.name}</span>
+                {o.id === value && <Check className="size-3.5 shrink-0" />}
+              </button>
+            ))}
+            {showCreate && (
+              <button
+                type="button"
+                data-index={filtered.length}
+                onClick={create}
+                onMouseEnter={() => setActive(filtered.length)}
+                disabled={creating}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer text-primary",
+                  active === filtered.length ? "bg-surface-hover" : "hover:bg-surface-hover"
+                )}
+              >
+                <Plus className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {createLabel} “{q}”
+                </span>
+              </button>
+            )}
+            {filtered.length === 0 && !showCreate && (
+              <p className="px-2.5 py-2 text-sm text-muted-light">No matches</p>
+            )}
+          </div>
+        </PopoverLayer>
+      )}
+    </div>
+  );
+}
 
 export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (

@@ -162,11 +162,50 @@
   --font-mono: var(--font-geist-mono), monospace;
 }
 
+/* Always reserve the vertical scrollbar gutter on the root scroller. When an
+   overlay locks scrolling (Dialog, drawer, palette) the page keeps the same
+   content width, so nothing snaps sideways as the scrollbar appears/disappears.
+   Firefox honours scrollbar-gutter; the webkit-scrollbar rules below style it. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Custom scrollbars (all scrollable surfaces) ------------------- */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* WebKit / Chromium / Safari */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+  /* Inset the thumb so it reads as a slim pill inside the gutter. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-light);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .brand-gradient-text {
