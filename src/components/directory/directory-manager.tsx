@@ -20,7 +20,7 @@ import {
 export interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "textarea" | "markdown" | "select" | "tel" | "email" | "list" | "stars";
+  type?: "text" | "number" | "textarea" | "markdown" | "select" | "tel" | "email" | "url" | "list" | "stars";
   options?: { value: string; label: string }[];
   required?: boolean;
   hideInTable?: boolean;
@@ -179,6 +179,28 @@ export function DirectoryManager({
   }
 
   function renderCell(row: Record<string, unknown>, f: FieldDef): React.ReactNode {
+    if (f.type === "email" || f.type === "tel" || f.type === "url") {
+      const val = String(row[f.key] ?? "").trim();
+      if (!val) return "—";
+      const href =
+        f.type === "email"
+          ? `mailto:${val}`
+          : f.type === "tel"
+            ? `tel:${val.replace(/[^\d+]/g, "")}`
+            : /^https?:\/\//i.test(val)
+              ? val
+              : `https://${val}`;
+      return (
+        <a
+          href={href}
+          {...(f.type === "url" ? { target: "_blank", rel: "noreferrer" } : {})}
+          className="text-primary hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {val}
+        </a>
+      );
+    }
     if (f.type === "stars") {
       const n = Number(row[f.key] ?? 0);
       if (!n) return "—";

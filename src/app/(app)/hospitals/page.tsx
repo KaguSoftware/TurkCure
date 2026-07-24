@@ -26,7 +26,9 @@ export default async function HospitalsPage() {
         fields={[
           { key: "name", label: "Name", required: true },
           { key: "city", label: "District", type: "select", options: ISTANBUL_DISTRICT_OPTIONS },
-          { key: "contact", label: "Contact" },
+          { key: "email", label: "Email", type: "email" },
+          { key: "website", label: "Website", type: "url" },
+          { key: "contact", label: "Contact", type: "textarea" },
           { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
         ]}
       />
@@ -51,7 +53,9 @@ export default async function HospitalsPage() {
               options: hospitalOptions,
               displayKey: "hospitals",
             },
-            { key: "contact", label: "Contact", type: "tel" },
+            { key: "email", label: "Email", type: "email" },
+            { key: "phone", label: "Phone", type: "tel" },
+            { key: "contact", label: "Contact", type: "textarea", hideInTable: true },
             { key: "notes", label: "Notes", type: "textarea", hideInTable: true },
           ]}
         />
