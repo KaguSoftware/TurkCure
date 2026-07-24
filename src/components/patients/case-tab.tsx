@@ -17,6 +17,22 @@ import { CURRENCIES, formatMoney } from "@/lib/utils";
 import type { Case, Patient, QuoteItem, QuoteItemKind } from "@/lib/types";
 import type { Directories } from "./patient-detail";
 
+// Common arrival/departure airports for Turkey medical-tourism trips. The
+// airport fields are free-text (not directory-backed), so these are just
+// suggestions — any code can still be typed and committed.
+const AIRPORT_SUGGESTIONS = [
+  { id: "IST", name: "IST — İstanbul Airport" },
+  { id: "SAW", name: "SAW — İstanbul Sabiha Gökçen" },
+  { id: "ESB", name: "ESB — Ankara Esenboğa" },
+  { id: "ADB", name: "ADB — İzmir Adnan Menderes" },
+  { id: "AYT", name: "AYT — Antalya" },
+  { id: "DLM", name: "DLM — Dalaman" },
+  { id: "BJV", name: "BJV — Bodrum Milas" },
+  { id: "ADA", name: "ADA — Adana Şakirpaşa" },
+  { id: "TZX", name: "TZX — Trabzon" },
+  { id: "GZT", name: "GZT — Gaziantep" },
+];
+
 const KINDS: { value: QuoteItemKind; label: string }[] = [
   { value: "surgery", label: "Surgery" },
   { value: "hotel", label: "Hotel" },
@@ -186,10 +202,24 @@ export function CaseTab({
               <DatePicker name="hospital_checkout" defaultValue={activeCase?.hospital_checkout ?? ""} />
             </Field>
             <Field label="Departure airport">
-              <Input name="airport" placeholder="IST" defaultValue={activeCase?.airport ?? ""} />
+              <ComboBox
+                name="airport"
+                freeText
+                options={AIRPORT_SUGGESTIONS}
+                defaultValue={activeCase?.airport ?? ""}
+                placeholder="Search or type a code…"
+                createLabel="Use"
+              />
             </Field>
             <Field label="Airport pickup">
-              <Input name="airport_pickup" placeholder="IST" defaultValue={activeCase?.airport_pickup ?? ""} />
+              <ComboBox
+                name="airport_pickup"
+                freeText
+                options={AIRPORT_SUGGESTIONS}
+                defaultValue={activeCase?.airport_pickup ?? ""}
+                placeholder="Search or type a code…"
+                createLabel="Use"
+              />
             </Field>
             <Field label="Currency">
               <Select name="currency" defaultValue={activeCase?.currency ?? "EUR"}>

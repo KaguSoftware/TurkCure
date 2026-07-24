@@ -392,6 +392,7 @@ export function ComboBox({
   options,
   defaultValue,
   onCreate,
+  freeText = false,
   placeholder = "Search or create…",
   createLabel = "Create",
   disabled,
@@ -401,8 +402,16 @@ export function ComboBox({
   name: string;
   options: ComboOption[];
   defaultValue?: string;
-  /** Given the typed text, create the row and return its new id. */
-  onCreate: (name: string) => Promise<string | null>;
+  /**
+   * Given the typed text, create the row and return its new id. In `freeText`
+   * mode this is optional — "create" just commits the raw typed value.
+   */
+  onCreate?: (name: string) => Promise<string | null>;
+  /**
+   * When true, the submitted value IS the option name / typed text (not an id).
+   * Used for free-text fields (e.g. airport codes) that aren't directory-backed.
+   */
+  freeText?: boolean;
   placeholder?: string;
   createLabel?: string;
   disabled?: boolean;
@@ -421,7 +430,11 @@ export function ComboBox({
   const listboxId = React.useId();
   const { mounted, closing } = usePresence(open, 150);
 
-  const selected = options.find((o) => o.id === value);
+  // In freeText mode the value matches an option by name; the label falls back
+  // to the raw value so a typed-in code still shows even if it's not listed.
+  const selected = freeText
+    ? options.find((o) => o.id === value) ?? (value ? { id: value, name: value } : undefined)
+    : options.find((o) => o.id === value);
   const q = query.trim();
   const filtered = q
     ? options.filter((o) => o.name.toLowerCase().includes(q.toLowerCase()))
@@ -439,11 +452,21 @@ export function ComboBox({
   }, [open]);
 
   React.useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActive(0);
-      searchRef.current?.focus();
-    }
+    if (!open) return;
+    setQuery("");
+    setActive(0);
+    // The popover mounts in a portal (positioned in a layout effect, starting
+    // hidden), so the input isn't focusable on this tick. Focus on the next
+    // frame; retry once more in case layout hasn't settled.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      if (searchRef.current) searchRef.current.focus();
+      else raf2 = requestAnimationFrame(() => searchRef.current?.focus());
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, [open]);
 
   React.useEffect(() => {
@@ -461,8 +484,13 @@ export function ComboBox({
 
   async function create() {
     if (!q || creating) return;
+    if (freeText && !onCreate) {
+      // Nothing to persist — the typed text is itself the value.
+      pick(q);
+      return;
+    }
     setCreating(true);
-    const newId = await onCreate(q);
+    const newId = await onCreate!(q);
     setCreating(false);
     if (newId) pick(newId);
   }
