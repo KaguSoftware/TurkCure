@@ -17,8 +17,8 @@ const nextConfig: NextConfig = {
     "/api/pdf/**": ["./src/lib/pdf/fonts/**"],
   },
 
-  // Tree-shake heavy barrel-import libs so only used symbols hit the bundle.
   experimental: {
+    // Tree-shake heavy barrel-import libs so only used symbols hit the bundle.
     optimizePackageImports: [
       "lucide-react",
       "recharts",
@@ -26,6 +26,11 @@ const nextConfig: NextConfig = {
       "@tiptap/react",
       "@tiptap/starter-kit",
     ],
+    // Reuse the rendered RSC payload on client-side back/forward nav within the
+    // window instead of re-hitting Supabase — makes bouncing between Patients,
+    // a patient detail, and the Dashboard feel instant. Experimental; drop if a
+    // future Next upgrade breaks it.
+    staleTimes: { dynamic: 30, static: 180 },
   },
 
   // Drop console.* from production bundles (keep error for observability).
