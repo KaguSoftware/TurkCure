@@ -47,12 +47,29 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-07-24)
+## Current status (2026-07-27)
 The app is built and in real use on Vercel. Recent threads: auth overhaul (2026-07-13), a
 performance pass (2026-07-13, migration `0011`), a UI/UX pass (2026-07-13), PDF resilience fixes,
-and structured directory contact fields (`0013`).
+structured directory contact fields (`0013`), and case comboboxes (2026-07-24).
 
-**This session (2026-07-24) — three UI fixes, committed + pushed (`f91ba42`, `e26dd88`):**
+**This session (2026-07-27) — three asks from live use. ⚠️ Migrations `0014` + `0015` are
+written but NOT yet applied — Parsa applies them by hand, and the app breaks until he does
+(the code reads `patient_files.category` and `cases.protocol_number`).**
+1. **Patient files are categorised** — `Reports` / `Passport` / `Other`. `0014` adds
+   `patient_files.category` (text + named check, defaults to `other` so old files land there) and a
+   `(patient_id, category, created_at desc)` index. `files-tab.tsx` went from one flat list to
+   grouped sections, each with **its own drop target** (so uploading never asks for a category) and
+   a per-row `Select` to re-file a mistake. Empty sections show a hint instead of collapsing.
+   `FILE_CATEGORIES` in `types.ts` drives the order.
+2. **Cases have a protocol number** — `0015` adds `cases.protocol_number` + a `pg_trgm` GIN index
+   (not partial — the planner can't prove `ilike '%q%'` implies `<> ''`). It heads the case form, becomes the `Ref` on the generated PDF (falling back to the
+   case-id slice), and is matched by the command palette (a protocol hit deep-links to
+   `?case=<id>` and outranks the plain patient row, since a numeric query can hit a phone too).
+3. **The case PDF downloads as `<Full Name>.pdf`** — was `turkcure-wof-<slug>.pdf`. Uses RFC 5987
+   `filename*=UTF-8''…` with a stripped-ASCII `filename=` fallback, which is what makes
+   `Ayşe Çelik.pdf` work without the Latin-1 ByteString error. Instruction PDF unchanged.
+
+**Previous session (2026-07-24) — three UI fixes, committed + pushed (`f91ba42`, `e26dd88`):**
 1. **Custom scrollbars everywhere** — `globals.css` styles `::-webkit-scrollbar` (thin rounded-pill
    thumb, transparent track, token colours) + `scrollbar-width`/`scrollbar-color` for Firefox.
 2. **No more scrollbar layout-snap** — `html { scrollbar-gutter: stable }` reserves the gutter
@@ -68,11 +85,12 @@ and structured directory contact fields (`0013`).
      new **`freeText` mode** (submitted value = the typed/selected code, not an id), seeded with a
      curated Turkish-airport suggestion list but accepting any typed code.
 
-⚠️ **Not driven in a browser by the assistant** — verified by `npm run build` (types + lint green)
-and the impeccable design detector (no NEW findings; pre-existing gradient-text / spring-easing
-warnings are the documented, intentional house style). Worth Parsa opening a case and confirming:
-the comboboxes focus-on-open, create a new doctor/hospital inline, and the airport fields accept
-both a suggestion and a free-typed code.
+⚠️ **Neither session was driven in a browser by the assistant** — both verified by `npm run build`
+(types + lint green) and the impeccable design detector (2026-07-27: clean, zero findings on the
+changed files). For 2026-07-27, worth Parsa applying `0014`/`0015` then confirming: files upload
+into the right section and re-file via the row dropdown; a protocol number saves, shows as `Ref` on
+the PDF, and is findable in Ctrl+K; and the PDF downloads as the patient's name — test one with
+Turkish characters.
 
 ## File map (key files) — see CLAUDE.md for the fuller list
 - `src/app/globals.css` — all design tokens + motion utilities + the new scrollbar rules.
@@ -83,10 +101,16 @@ both a suggestion and a free-typed code.
 - `src/components/patients/patient-detail.tsx` — tab shell + `Directories` type.
 - `src/lib/actions/directory.ts` — `upsertDirectoryRow` / `deleteDirectoryRow` (tables: countries,
   hospitals, doctors, hotels, drivers, operation_types, instruction_templates).
-- `src/lib/actions/cases.ts` — `upsertCase`, quote-item actions.
+- `src/lib/actions/cases.ts` — `upsertCase`, quote-item actions. **`upsertCase` does not whitelist
+  fields**; the allowlist is the `values` object in `case-tab.tsx`'s `onSaveCase`.
+- `src/components/patients/files-tab.tsx` — categorised files (grouped sections, per-section
+  upload, per-row re-file). Talks to Supabase from the browser; no server action.
+- `src/lib/actions/search.ts` — command-palette `globalSearch` (patients, **case protocol
+  numbers**, and the four directories).
 - `src/lib/supabase/server.ts` — cookie + admin clients, cached `getProfile()`.
 - `src/proxy.ts` — Next 16 middleware / auth gate (local JWT exp check).
-- `supabase/migrations/` — hand-applied SQL, numbered `0001`…`0013` (all applied per git history).
+- `supabase/migrations/` — hand-applied SQL, numbered `0001`…`0015`. `0001`–`0013` are applied;
+  **`0014` and `0015` are pending.**
 
 ## Roadmap / next steps
 No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**

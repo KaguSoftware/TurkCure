@@ -65,6 +65,7 @@ export function CaseTab({
     setError(null);
     const fd = new FormData(e.currentTarget);
     const values = {
+      protocol_number: fd.get("protocol_number") ?? "",
       operation_type_id: fd.get("operation_type_id") || null,
       doctor_id: fd.get("doctor_id") || null,
       hospital_id: fd.get("hospital_id") || null,
@@ -166,6 +167,14 @@ export function CaseTab({
             onSubmit={onSaveCase}
             className="grid grid-cols-1 gap-4 sm:grid-cols-2"
           >
+            {/* The case's own identifier, so it heads the form. */}
+            <Field label="Protocol number" className="sm:col-span-2">
+              <Input
+                name="protocol_number"
+                defaultValue={activeCase?.protocol_number ?? ""}
+                placeholder="Hospital protocol / file number"
+              />
+            </Field>
             {selectFields.map((f) => (
               <Field key={f.key} label={f.label}>
                 <ComboBox

@@ -129,7 +129,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     "VIP Airport – Hotel – Hospital transfers",
   ];
 
-  const ref = caseId.slice(0, 8).toUpperCase();
+  // The hospital's protocol number is the reference everyone quotes; fall back to
+  // the case id for cases recorded before it was captured.
+  const ref = (caseRow.protocol_number as string | null)?.trim() || caseId.slice(0, 8).toUpperCase();
   const issued = fmtDate(new Date().toISOString());
   const coverLine1 = [doctor, hospital].filter(Boolean).join("   ·   ");
   const coverLine2 =
@@ -400,20 +402,22 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     </Document>
   );
 
-  // HTTP headers are Latin-1 only, so the filename must be ASCII — a curly
-  // apostrophe or any accented character in the patient's name would throw a
-  // ByteString conversion error. Strip everything that isn't a safe ASCII char.
-  const slug =
-    (patient?.full_name ?? "patient")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "patient";
+  // The file gets forwarded to patients and hospitals, so it downloads as just
+  // the patient's name. HTTP headers are Latin-1 only — a Turkish "ı ş ğ" or a
+  // curly apostrophe in a raw filename= throws a ByteString conversion error —
+  // so the real name goes in the RFC 5987 filename* (percent-encoded UTF-8) and
+  // filename= carries a stripped ASCII fallback for clients that ignore it.
+  const name =
+    (patient?.full_name ?? "Patient").replace(/[\\/:*?"<>|\r\n]/g, " ").trim() || "Patient";
+  const ascii = name.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").trim() || "patient";
 
   const buffer = await renderToBuffer(doc);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="turkcure-wof-${slug}.pdf"`,
+      "Content-Disposition": `attachment; filename="${ascii}.pdf"; filename*=UTF-8''${encodeURIComponent(
+        `${name}.pdf`
+      )}`,
     },
   });
 }

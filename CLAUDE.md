@@ -270,6 +270,49 @@ the overhaul:
 - **Deduped bare client.** `createAnonClient()` in `supabase/server.ts` replaces the
   inline anon client in `account.ts`.
 
+## Recent work — 2026-07-27 file categories, protocol number, PDF filename
+
+Three small operational asks from live use.
+
+**Patient file categories** — `supabase/migrations/0014_patient_file_categories.sql`
+(⚠️ apply by hand):
+- `patient_files.category` — `text not null default 'other'` + a named check
+  constraint (`'reports' | 'passport' | 'other'`). Text-plus-check rather than a PG
+  enum so the list can grow without a non-transactional `alter type`. Pre-existing
+  rows land in `other`; forcing them into `reports` would assert what we don't know.
+- Index `patient_files(patient_id, category, created_at desc)`.
+- `FileCategory` + `FILE_CATEGORIES` (value/label/**hint**) in `src/lib/types.ts` —
+  the order of that array is the render order of the sections.
+- `files-tab.tsx` is now **grouped sections**, not one flat list: header + count,
+  rows, and **a drop target per section** — so upload never has to ask for a
+  category. Empty sections show their `hint` rather than collapsing, keeping the
+  three targets in a stable position. Files are grouped in one `useMemo` pass. Each
+  row carries a narrow `Select` that re-files it (optimistic move between groups);
+  Reports/Passport accept `image/*,application/pdf`, Other stays open; the file
+  input resets so the same file can be re-picked.
+
+**Case protocol number** — `supabase/migrations/0015_case_protocol_number.sql`
+(⚠️ apply by hand):
+- `cases.protocol_number text not null default ''` + a **`pg_trgm` GIN** index (the
+  palette does a leading-wildcard `ILIKE`, which a b-tree can't serve — same
+  reasoning as the patient-name index in `0011`). Deliberately *not* partial on
+  `<> ''`: the planner can't prove `ilike '%q%'` implies it, so the predicate would
+  only make the index unusable.
+- Field heads the case form in `case-tab.tsx` and is added to the `values` object in
+  `onSaveCase` — **that object is the effective allowlist**, `upsertCase` passes
+  `values` straight to Supabase.
+- The case PDF's `ref` now prefers `protocol_number`, falling back to the case-id
+  slice, so the cover footer and page meta read `Ref <protocol>` with no layout change.
+- `globalSearch` gained a sixth parallel query over `cases.protocol_number`. A
+  protocol hit deep-links to `?case=<id>` and **wins over the plain patient row** for
+  the same patient — a numeric query can match both a phone and a protocol number.
+
+**PDF download name** — `api/pdf/[caseId]/route.tsx` now downloads as `<Full Name>.pdf`
+(was `turkcure-wof-<slug>.pdf`). Headers are Latin-1, so the real name goes in the RFC
+5987 `filename*=UTF-8''…` and `filename=` keeps a stripped-ASCII fallback — this is
+what makes `Ayşe Çelik.pdf` work instead of throwing the ByteString error that caused
+past PDF 500s. The instruction PDF keeps its static name.
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this

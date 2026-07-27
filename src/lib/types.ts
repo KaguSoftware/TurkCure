@@ -6,6 +6,7 @@ export type PaymentDirection = "in" | "out";
 export type CounterpartyType = "patient" | "hotel" | "doctor" | "hospital" | "driver";
 export type PaymentStatus = "pending" | "partial" | "paid";
 export type ReminderType = "follow_up" | "arrival" | "operation" | "payment" | "aftercare";
+export type FileCategory = "reports" | "passport" | "other";
 
 export const PATIENT_STATUSES: PatientStatus[] = [
   "lead",
@@ -14,6 +15,13 @@ export const PATIENT_STATUSES: PatientStatus[] = [
   "treated",
   "aftercare",
   "lost",
+];
+
+/** Order matters — the Files tab renders its sections in this order. */
+export const FILE_CATEGORIES: { value: FileCategory; label: string; hint: string }[] = [
+  { value: "reports", label: "Reports", hint: "Scans, lab results and medical reports (PDF or image)" },
+  { value: "passport", label: "Passport", hint: "Passport and ID scans" },
+  { value: "other", label: "Other", hint: "Anything else — contracts, tickets, correspondence" },
 ];
 
 export type AccentTheme = "default" | "violet" | "emerald" | "amber";
@@ -114,6 +122,7 @@ export interface Patient {
 export interface Case {
   id: string;
   patient_id: string;
+  protocol_number: string;
   operation_type_id: string | null;
   doctor_id: string | null;
   hospital_id: string | null;
@@ -182,6 +191,7 @@ export interface PatientFile {
   patient_id: string;
   storage_path: string;
   label: string;
+  category: FileCategory;
   created_at: string;
 }
 
