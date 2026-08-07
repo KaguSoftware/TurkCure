@@ -63,7 +63,13 @@ one-off explicit authorization, not a new default.
    case fetched `1 USD = 0.86640097 EUR` live and previewed the converted total correctly.
 2. **Quote labels are free text.** `0017` moves `quote_items.kind` off its enum; both Type and
    Description accept anything or nothing.
-3. **Mobile pass at 390×844, screenshot-driven** via the new `scripts/mobile-audit.mjs`
+3. **"Done" on a case is now "Add dates to reminders."** `0018` adds `hospital` and `departure`
+   reminder types; the button (`syncCaseReminders`) pushes all five case dates into the
+   dashboard as seven reminders and is safe to re-run. `completeCase` was deleted — completing
+   a case is the Status field on the case form. **Verified end-to-end in a browser:** 4
+   reminders → 7 with the right types and dates, unchanged on a second run, and the Departure
+   one renders on the dashboard with its new badge.
+4. **Mobile pass at 390×844, screenshot-driven** via the new `scripts/mobile-audit.mjs`
    (Playwright devDependency). See CLAUDE.md for what changed; the short version is that tables
    used to compress instead of scrolling, dialogs ran off the bottom of the screen, and the
    instruction-image remove button was unreachable on touch.
@@ -166,6 +172,8 @@ Standing candidates if asked:
 - **`cases.currency` is now locked once off-currency payments exist** — their `fx_rate` was
   computed against the old target and no check constraint can reference another table, so
   `upsertCase` refuses the change with a message rather than silently corrupting the rates.
+- **`"use server"` files may only export async functions.** `tsc --noEmit` will not tell you;
+  only the dev server / `npm run build` will. Bit me once already this session.
 - **`Table` has a `min-w` floor now.** A table that should fit a phone must opt out
   (`min-w-0 sm:min-w-[34rem]`) *and* hide its low-value columns, or it will scroll sideways.
 - **`unstable_cache` staleness**: any new cached read needs its tag raised from every writer — the

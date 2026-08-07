@@ -380,6 +380,33 @@ past PDF 500s. The instruction PDF keeps its static name.
   done-toggle (via `before:-inset-3`), board chevrons, table checkboxes and the markdown
   toolbar.
 
+## Recent work — 2026-08-07 "Add dates to reminders" replaces "Done"
+
+`supabase/migrations/0018_reminder_types_schedule.sql` (applied 2026-08-07):
+- Case reminders only ever covered **arrival, operation and the two aftercare check-ins**, so
+  the hospital check-in/check-out and departure dates sat inert on the case form. Two new
+  `reminder_type` values, `hospital` and `departure`, give them somewhere to live.
+- `ALTER TYPE ... ADD VALUE` has been transaction-safe since PG12 (we're on 17.6) **provided
+  the new value isn't used in the same transaction** — nothing in the file uses them, which is
+  why they can share one migration despite the cautionary note in `0005`.
+- `regenerateCaseReminders` now takes a `CaseSchedule` and drives off a single `plan` table of
+  `[date, type, title, offset]` rows instead of five near-identical if-blocks, so adding a date
+  column is a one-line change. It returns the count and still deletes only the **open,
+  generated** types — hand-written follow-ups and anything already ticked off survive, so the
+  action is safe to re-run.
+- `completeCase` is **gone**; the patient-detail "Done" button is now **"Add dates to
+  reminders"** (`syncCaseReminders`). Completing a case is the Status field on the case form,
+  which is where it belonged — the Completed badge still shows.
+- ⚠️ **`"use server"` modules may only export async functions.** `tsc --noEmit` does not catch
+  a violation; the dev server and `npm run build` do. `CaseSchedule` / `CASE_SCHEDULE_COLUMNS`
+  are deliberately module-private for this reason.
+- `TYPE_META` in `reminders-panel.tsx` is a `Record<ReminderType, …>` **and** drives the type
+  `<Select>` in the reminder dialog — adding a type there makes it hand-pickable too.
+- Dashboard "Upcoming arrivals" needed no change: it reads `cases.arrival_date` directly, so a
+  saved arrival date already appears there within the 14-day horizon.
+- Reminder rows now wrap on a phone (title claims the line, badge + actions drop below) — with
+  real content the single-row layout truncated the patient name to "Cherr…".
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this

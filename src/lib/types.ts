@@ -9,7 +9,16 @@ export type QuoteItemKind = string;
 export type PaymentDirection = "in" | "out";
 export type CounterpartyType = "patient" | "hotel" | "doctor" | "hospital" | "driver";
 export type PaymentStatus = "pending" | "partial" | "paid";
-export type ReminderType = "follow_up" | "arrival" | "operation" | "payment" | "aftercare";
+export type ReminderType =
+  | "follow_up"
+  | "arrival"
+  | "operation"
+  | "payment"
+  | "aftercare"
+  /** Hospital check-in and check-out (0018). */
+  | "hospital"
+  /** Flight home (0018). */
+  | "departure";
 export type FileCategory = "reports" | "passport" | "other";
 
 export const PATIENT_STATUSES: PatientStatus[] = [

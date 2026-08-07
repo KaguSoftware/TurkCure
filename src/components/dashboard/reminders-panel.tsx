@@ -25,10 +25,14 @@ import type { Reminder, ReminderType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
 
+// Also drives the type <Select> in the reminder dialog — add a type here and it
+// becomes pickable by hand as well as generatable from a case.
 const TYPE_META: Record<ReminderType, { label: string; tone: Tone }> = {
   follow_up: { label: "Follow-up", tone: "blue" },
   arrival: { label: "Arrival", tone: "teal" },
+  hospital: { label: "Hospital", tone: "violet" },
   operation: { label: "Operation", tone: "violet" },
+  departure: { label: "Departure", tone: "teal" },
   payment: { label: "Payment", tone: "amber" },
   aftercare: { label: "Aftercare", tone: "green" },
 };
@@ -494,7 +498,7 @@ export function RemindersPanel({
             <div key={r.id} className={cn(isExiting && "reminder-exit")}>
             <div
               className={cn(
-                "flex items-center gap-3 rounded-lg border border-border p-3",
+                "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border p-3 sm:flex-nowrap",
                 overdue && "border-danger/40 bg-danger-soft/40",
                 isDone && !isCompleting && "opacity-70",
                 pendingIds.current.has(r.id) && "reminder-enter"
@@ -515,7 +519,10 @@ export function RemindersPanel({
               >
                 <Check className={cn("size-3", isCompleting && "reminder-check-pop")} />
               </button>
-              <div className="min-w-0 flex-1">
+              {/* Claiming everything except the toggle ends the line here, so
+                  the badge and actions wrap underneath on a phone. On one line
+                  they squeezed the patient's name down to "Cherr…". */}
+              <div className="min-w-0 flex-1 basis-[calc(100%-2.5rem)] sm:basis-auto">
                 <p className="truncate text-sm font-medium">
                   <span
                     className={cn(
@@ -532,21 +539,25 @@ export function RemindersPanel({
                     )}
                   </span>
                 </p>
-                <p className="text-xs text-muted">
-                  {new Date(r.due_at).toLocaleString("en-GB", {
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                <p className="truncate text-xs text-muted">
+                  <span className="whitespace-nowrap">
+                    {new Date(r.due_at).toLocaleString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                   {overdue && (
                     <span className="ml-1.5 font-medium text-danger">Overdue</span>
                   )}
                   {r.note && <span className="ml-1.5">· {r.note}</span>}
                 </p>
               </div>
-              <Badge tone={meta.tone}>{meta.label}</Badge>
-              <div className="flex shrink-0 gap-0.5">
+              <Badge tone={meta.tone} className="shrink-0">
+                {meta.label}
+              </Badge>
+              <div className="ml-auto flex shrink-0 gap-0.5 sm:ml-0">
                 {!isDone && (
                   <Button
                     variant="ghost"

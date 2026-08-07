@@ -3,13 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, FileDown, Pencil, PlusCircle } from "lucide-react";
+import { ArrowLeft, CalendarPlus, CheckCircle2, FileDown, Pencil, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TabBar, TabPanel } from "@/components/ui/tabs";
+import { toast } from "@/components/ui/toast";
 import { useAction } from "@/lib/use-action";
-import { completeCase } from "@/lib/actions/cases";
+import { syncCaseReminders } from "@/lib/actions/cases";
 import { cn, formatDate, formatMoney, waLink } from "@/lib/utils";
 import { MessageCircle } from "lucide-react";
 import type {
@@ -76,8 +77,8 @@ export function PatientDetail({
   };
   const setTab = (t: (typeof TABS)[number]) => setParam("tab", t);
   const [editOpen, setEditOpen] = React.useState(false);
-  const [confirmDone, setConfirmDone] = React.useState(false);
-  const complete = useAction();
+  const [confirmSync, setConfirmSync] = React.useState(false);
+  const syncing = useAction();
   // Which case is being viewed; "new" shows an empty create form for a repeat visit.
   const urlCase = searchParams.get("case");
   const selectedCaseId: string | "new" =
@@ -167,22 +168,23 @@ export function PatientDetail({
                 </Button>
               </a>
             )}
-            {activeCase &&
-              (caseCompleted ? (
-                <Badge tone="green" className="gap-1 px-3 py-1.5">
-                  <CheckCircle2 className="size-3.5" /> Completed
-                </Badge>
-              ) : (
-                <Button onClick={() => setConfirmDone(true)}>
-                  <CheckCircle2 /> Done
-                </Button>
-              ))}
+            {caseCompleted && (
+              <Badge tone="green" className="gap-1 px-3 py-1.5">
+                <CheckCircle2 className="size-3.5" /> Completed
+              </Badge>
+            )}
+            {activeCase && (
+              <Button onClick={() => setConfirmSync(true)}>
+                <CalendarPlus /> Add dates to reminders
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setEditOpen(true)}>
               <Pencil /> Edit
             </Button>
           </div>
         </div>
-        {patient.notes && (
+        {/* Trimmed: a whitespace-only note rendered as an empty grey bar. */}
+        {patient.notes?.trim() && (
           <p className="mt-3 max-w-2xl rounded-lg bg-surface-hover px-3 py-2 text-sm text-muted">
             {patient.notes}
           </p>
@@ -276,23 +278,31 @@ export function PatientDetail({
       />
 
       <ConfirmDialog
-        open={confirmDone}
-        onClose={() => setConfirmDone(false)}
+        open={confirmSync}
+        onClose={() => setConfirmSync(false)}
         onConfirm={async () => {
           if (!activeCase) return;
-          const { ok } = await complete.run(completeCase(patient.id, activeCase.id), {
-            success: "Case marked as completed.",
+          // The message depends on how many dates were actually set, so it's
+          // raised from onSuccess rather than useAction's static `success`.
+          const { ok } = await syncing.run(syncCaseReminders(patient.id, activeCase.id), {
+            onSuccess: (r) =>
+              toast.success(
+                r?.count
+                  ? `${r.count} reminder${r.count === 1 ? "" : "s"} added to the dashboard.`
+                  : "No dates set on this case yet — nothing to add."
+              ),
           });
-          if (ok) setConfirmDone(false);
+          if (ok) setConfirmSync(false);
         }}
-        pending={complete.pending}
-        title="Mark case as completed"
-        confirmLabel="Mark as done"
+        pending={syncing.pending}
+        title="Add dates to reminders"
+        confirmLabel="Add to reminders"
         description={
           <>
-            This sets the case status to <strong>Completed</strong> and refreshes the arrival,
-            operation and aftercare reminders on the dashboard. Downloading the PDF does not require
-            this.
+            Creates a dashboard reminder for every date on this case — arrival, hospital check-in,
+            operation, hospital check-out, departure, and the 1-week and 1-month aftercare
+            check-ins. Re-runs cleanly: it replaces the previously generated ones and leaves your
+            own reminders, and anything already ticked off, alone.
           </>
         }
       />

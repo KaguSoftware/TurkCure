@@ -12,71 +12,87 @@ function revalidateCase(patientId: string) {
   revalidateTag("finance", "max");
 }
 
+/** The reminder types this function owns — deleted and rebuilt on every run, so
+ *  anything hand-created (follow_up, payment) is never touched. */
+const GENERATED_REMINDER_TYPES = [
+  "arrival",
+  "operation",
+  "aftercare",
+  "hospital",
+  "departure",
+] as const;
+
 /**
- * Rebuild the arrival/operation/aftercare reminders for a case from its dates.
- * Deletes existing open ones of those types first so it stays idempotent.
+ * The date columns a case reminder can be generated from. Not exported — a
+ * "use server" module may only export async functions.
+ */
+interface CaseSchedule {
+  arrival_date: string | null;
+  surgery_date: string | null;
+  departure_date: string | null;
+  hospital_checkin: string | null;
+  hospital_checkout: string | null;
+}
+
+const CASE_SCHEDULE_COLUMNS =
+  "arrival_date, surgery_date, departure_date, hospital_checkin, hospital_checkout";
+
+/**
+ * Rebuild every date-derived reminder for a case. Deletes the open generated
+ * ones first so it stays idempotent — run it as often as you like; only
+ * hand-written reminders survive, and anything already ticked off is left alone.
+ *
+ * Returns how many were written, so the UI can say something truthful.
  */
 async function regenerateCaseReminders(
   supabase: SupabaseClient,
   caseId: string,
   patientId: string,
-  arrival: string | null,
-  surgery: string | null
-) {
+  schedule: CaseSchedule
+): Promise<number> {
   const { data: patient } = await supabase
     .from("patients")
     .select("full_name, assigned_agent_id")
     .eq("id", patientId)
     .single();
-  if (!patient) return;
+  if (!patient) return 0;
 
   await supabase
     .from("reminders")
     .delete()
     .eq("case_id", caseId)
     .is("done_at", null)
-    .in("type", ["arrival", "operation", "aftercare"]);
+    .in("type", GENERATED_REMINDER_TYPES);
 
-  const reminders: Record<string, unknown>[] = [];
-  if (arrival) {
-    reminders.push({
-      type: "arrival",
-      case_id: caseId,
-      patient_id: patientId,
-      title: `${patient.full_name} arrives tomorrow`,
-      due_at: formatISO(addDays(new Date(arrival), -1)),
-      assigned_to: patient.assigned_agent_id,
-    });
-  }
-  if (surgery) {
-    reminders.push(
-      {
-        type: "operation",
-        case_id: caseId,
-        patient_id: patientId,
-        title: `${patient.full_name} — operation day`,
-        due_at: formatISO(new Date(surgery)),
-        assigned_to: patient.assigned_agent_id,
-      },
-      {
-        type: "aftercare",
-        case_id: caseId,
-        patient_id: patientId,
-        title: `${patient.full_name} — 1 week aftercare check-in`,
-        due_at: formatISO(addDays(new Date(surgery), 7)),
-        assigned_to: patient.assigned_agent_id,
-      },
-      {
-        type: "aftercare",
-        case_id: caseId,
-        patient_id: patientId,
-        title: `${patient.full_name} — 1 month aftercare check-in`,
-        due_at: formatISO(addDays(new Date(surgery), 30)),
-        assigned_to: patient.assigned_agent_id,
-      }
-    );
-  }
+  const name = patient.full_name;
+  const base = { case_id: caseId, patient_id: patientId, assigned_to: patient.assigned_agent_id };
+  const at = (date: string, offsetDays = 0) =>
+    formatISO(offsetDays ? addDays(new Date(date), offsetDays) : new Date(date));
+
+  // Every entry is [date, type, title, offset] — one table rather than five
+  // near-identical if-blocks, so adding a date column is a one-line change.
+  const plan: [string | null, string, string, number?][] = [
+    // Arrival fires the day before: it's a "get ready" nudge, not a log entry.
+    [schedule.arrival_date, "arrival", `${name} arrives tomorrow`, -1],
+    [schedule.hospital_checkin, "hospital", `${name} — hospital check-in`],
+    [schedule.surgery_date, "operation", `${name} — operation day`],
+    [schedule.hospital_checkout, "hospital", `${name} — hospital check-out`],
+    [schedule.departure_date, "departure", `${name} — departure`],
+    [schedule.surgery_date, "aftercare", `${name} — 1 week aftercare check-in`, 7],
+    [schedule.surgery_date, "aftercare", `${name} — 1 month aftercare check-in`, 30],
+  ];
+
+  const reminders = plan
+    .filter(([date]) => Boolean(date))
+    .map(([date, type, title, offset]) => ({
+      ...base,
+      type,
+      title,
+      due_at: at(date as string, offset ?? 0),
+    }));
+
   if (reminders.length) await supabase.from("reminders").insert(reminders);
+  return reminders.length;
 }
 
 export async function upsertCase(
@@ -126,13 +142,13 @@ export async function upsertCase(
   }
 
   if (caseId) {
-    await regenerateCaseReminders(
-      supabase,
-      caseId,
-      patientId,
-      (values.arrival_date as string | null) ?? null,
-      (values.surgery_date as string | null) ?? null
-    );
+    await regenerateCaseReminders(supabase, caseId, patientId, {
+      arrival_date: (values.arrival_date as string | null) ?? null,
+      surgery_date: (values.surgery_date as string | null) ?? null,
+      departure_date: (values.departure_date as string | null) ?? null,
+      hospital_checkin: (values.hospital_checkin as string | null) ?? null,
+      hospital_checkout: (values.hospital_checkout as string | null) ?? null,
+    });
   }
 
   revalidateCase(patientId);
@@ -140,34 +156,38 @@ export async function upsertCase(
 }
 
 /**
- * Mark a case completed and refresh its reminders. This is the write-heavy
- * "Done" action, deliberately separate from downloading the PDF (which is
- * read-only) so the two are no longer coupled in the UI.
+ * Push every date on the case into the reminders list — arrival, hospital
+ * check-in/out, operation, departure and the two aftercare check-ins — so they
+ * surface on the dashboard instead of sitting inert on the case form.
+ *
+ * Reads the case rather than trusting the client, and is safe to run repeatedly:
+ * `regenerateCaseReminders` replaces only the open generated reminders, leaving
+ * hand-written follow-ups and anything already ticked off untouched. Replaces
+ * the old "Done" button — completing a case is now just the Status field, which
+ * is where it belonged.
  */
-export async function completeCase(
+export async function syncCaseReminders(
   patientId: string,
   caseId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; count?: number }> {
   await requireProfile();
   const supabase = await createClient();
   const { data: caseRow, error } = await supabase
     .from("cases")
-    .update({ status: "completed" })
+    .select(CASE_SCHEDULE_COLUMNS)
     .eq("id", caseId)
-    .select("arrival_date, surgery_date")
     .single();
   if (error) return { error: error.message };
 
-  await regenerateCaseReminders(
+  const count = await regenerateCaseReminders(
     supabase,
     caseId,
     patientId,
-    caseRow.arrival_date,
-    caseRow.surgery_date
+    caseRow as unknown as CaseSchedule
   );
 
   revalidateCase(patientId);
-  return {};
+  return { count };
 }
 
 /**
