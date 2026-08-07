@@ -3,7 +3,11 @@ import { cn } from "@/lib/utils";
 
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-x-auto rounded-xl border border-border bg-surface shadow-card [-webkit-overflow-scrolling:touch]">
+    // overflow-y-hidden: a sideways scroller with computed overflow-y:auto
+    // grows a phantom vertical scrollbar from 1px of overflow (fractional
+    // browser zoom is enough). The wrapper grows with the table, so it never
+    // legitimately scrolls vertically.
+    <div className="w-full overflow-x-auto overflow-y-hidden rounded-xl border border-border bg-surface shadow-card [-webkit-overflow-scrolling:touch]">
       {/* The min-width floor is what makes the wrapper's overflow-x actually
           engage. Without it `w-full` lets a many-column table compress into a
           390px phone instead of scrolling, wrapping every cell to three lines.

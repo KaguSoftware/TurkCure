@@ -48,3 +48,6 @@ next-env.d.ts
 
 # mobile audit screenshots (scripts/mobile-audit.mjs output)
 /.mobile-audit
+
+# finance audit screenshots (scripts/finance-audit.mjs output)
+/.finance-audit

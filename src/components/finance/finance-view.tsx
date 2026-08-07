@@ -1,192 +1,128 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import dynamic from "next/dynamic";
-import { useTheme } from "next-themes";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Download } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { CURRENCIES, formatMoney, cn } from "@/lib/utils";
-import { toUsd, FX_RATES_AS_OF } from "@/lib/fx";
+import { TabBar, TabPanel } from "@/components/ui/tabs";
+import { CURRENCIES } from "@/lib/utils";
+import { toUsd } from "@/lib/fx";
+import type { UsdRates } from "@/lib/data/fx";
+import {
+  type CaseFinance,
+  type PaymentFinance,
+  type Period,
+  PERIOD_OPTIONS,
+} from "./finance-shared";
+import { FinanceOverview } from "./finance-overview";
+import { FinanceReceivables } from "./finance-receivables";
+import { FinanceBreakdowns } from "./finance-breakdowns";
 
-// recharts loads only when the chart actually renders (client-only).
-const FinanceChart = dynamic(() => import("./finance-chart"), {
-  ssr: false,
-  loading: () => <Skeleton className="h-72 rounded-xl" />,
-});
+const TABS = ["Overview", "Receivables & Payables", "Breakdowns"] as const;
+type Tab = (typeof TABS)[number];
 
-const TABLE_PAGE_SIZE = 50;
+export function FinanceView({
+  rows,
+  payments,
+  usdRates,
+}: {
+  rows: CaseFinance[];
+  payments: PaymentFinance[];
+  usdRates: UsdRates;
+}) {
+  // Tab lives in the URL (?tab=) so links, refresh and back land on the same view.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab");
+  const tab: Tab = (TABS as readonly string[]).includes(urlTab ?? "") ? (urlTab as Tab) : "Overview";
+  const setTab = (t: Tab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", t);
+    router.replace(`${pathname}?${params}`, { scroll: false });
+  };
 
-export interface CaseFinance {
-  id: string;
-  patientId: string;
-  patientName: string;
-  operation: string;
-  currency: string;
-  status: string;
-  month: string; // YYYY-MM
-  revenue: number;
-  cost: number;
-  /**
-   * Cash actually collected, expressed in the case currency: every incoming
-   * paid payment normalized at the rate frozen on its row (0016), whatever
-   * currency it was taken in.
-   */
-  collected: number;
-}
-
-// Palette validated with the dataviz six-checks validator per mode
-const SERIES = {
-  light: { revenue: "#2563eb", cost: "#b45309" },
-  dark: { revenue: "#3b82f6", cost: "#d97706" },
-};
-
-export function FinanceView({ rows }: { rows: CaseFinance[] }) {
-  const { resolvedTheme } = useTheme();
   const [currency, setCurrency] = React.useState("ALL");
-  const [page, setPage] = React.useState(0);
+  const [period, setPeriod] = React.useState<Period>("all");
+  // Planning cases carry quoted numbers for treatments that may never happen;
+  // off by default so "Revenue (quoted)" isn't inflated by pipeline.
+  const [includePlanning, setIncludePlanning] = React.useState(false);
 
-  const colors = SERIES[resolvedTheme === "dark" ? "dark" : "light"];
   const isAll = currency === "ALL";
   const displayCurrency = isAll ? "USD" : currency;
-  // In "All" mode every case is converted to USD; otherwise filter to one currency
-  const filtered = React.useMemo(
+
+  // In "All" mode every figure is converted to USD; otherwise filter to one
+  // currency. Payments are already normalized to their case currency
+  // (amount_case, rate frozen at booking), so the same two moves apply.
+  const cases = React.useMemo(
     () =>
       isAll
         ? rows.map((r) => ({
             ...r,
-            revenue: toUsd(r.revenue, r.currency),
-            cost: toUsd(r.cost, r.currency),
-            collected: toUsd(r.collected, r.currency),
+            revenue: toUsd(r.revenue, r.currency, usdRates.rates),
+            cost: toUsd(r.cost, r.currency, usdRates.rates),
+            collected: toUsd(r.collected, r.currency, usdRates.rates),
+            paidOut: toUsd(r.paidOut, r.currency, usdRates.rates),
           }))
         : rows.filter((r) => r.currency === currency),
-    [rows, isAll, currency]
+    [rows, isAll, currency, usdRates.rates]
   );
-
-  // Reset to the first page whenever the filter set changes.
-  React.useEffect(() => setPage(0), [currency]);
-
-  const { totalRevenue, totalCost, totalCollected } = React.useMemo(() => {
-    let rev = 0,
-      cost = 0,
-      coll = 0;
-    for (const r of filtered) {
-      rev += r.revenue;
-      cost += r.cost;
-      coll += r.collected;
-    }
-    return { totalRevenue: rev, totalCost: cost, totalCollected: coll };
-  }, [filtered]);
-  const margin = totalRevenue - totalCost;
-  const outstanding = totalRevenue - totalCollected;
-
-  function exportCsv() {
-    const esc = (v: string | number) => {
-      const str = String(v);
-      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-    };
-    const header = [
-      "Patient",
-      "Operation",
-      "Status",
-      "Month",
-      "Currency",
-      `Revenue (${displayCurrency})`,
-      `Collected (${displayCurrency})`,
-      `Cost (${displayCurrency})`,
-      `Margin (${displayCurrency})`,
-    ];
-    const lines = filtered.map((r) =>
-      [
-        r.patientName,
-        r.operation,
-        r.status,
-        r.month,
-        r.currency,
-        r.revenue.toFixed(2),
-        r.collected.toFixed(2),
-        r.cost.toFixed(2),
-        (r.revenue - r.cost).toFixed(2),
-      ]
-        .map(esc)
-        .join(",")
-    );
-    const csv = [header.map(esc).join(","), ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `turkcure-finance-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  const chartData = React.useMemo(() => {
-    const byMonth = new Map<string, { revenue: number; cost: number }>();
-    for (const r of filtered) {
-      const entry = byMonth.get(r.month) ?? { revenue: 0, cost: 0 };
-      entry.revenue += r.revenue;
-      entry.cost += r.cost;
-      byMonth.set(r.month, entry);
-    }
-    return [...byMonth.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([month, v]) => ({
-        month: new Date(month + "-01").toLocaleDateString("en-GB", {
-          month: "short",
-          year: "2-digit",
-        }),
-        Revenue: v.revenue,
-        Cost: v.cost,
-      }));
-  }, [filtered]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / TABLE_PAGE_SIZE));
-  const pageRows = React.useMemo(
-    () => filtered.slice(page * TABLE_PAGE_SIZE, page * TABLE_PAGE_SIZE + TABLE_PAGE_SIZE),
-    [filtered, page]
+  const pays = React.useMemo(
+    () =>
+      isAll
+        ? payments.map((p) => ({
+            ...p,
+            amountCase: toUsd(p.amountCase, p.caseCurrency, usdRates.rates),
+          }))
+        : payments.filter((p) => p.caseCurrency === currency),
+    [payments, isAll, currency, usdRates.rates]
   );
-
-  const stat = (label: string, value: number, accent?: string, sub?: string) => (
-    <Card className="hover-lift">
-      <CardContent className="pt-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-        <p className={cn("mt-1 text-2xl font-bold tabular-nums", accent)}>
-          {formatMoney(value, displayCurrency)}
-        </p>
-        {sub && <p className="mt-0.5 text-xs text-muted-light">{sub}</p>}
-      </CardContent>
-    </Card>
+  const quotedCases = React.useMemo(
+    () => (includePlanning ? cases : cases.filter((c) => c.status !== "planning")),
+    [cases, includePlanning]
   );
+  const planningCount = cases.length - quotedCases.length;
+
+  // Receivables/payables are as-of-today balances, not period flows.
+  const periodApplies = tab !== "Receivables & Payables";
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        {/* 2-up on a phone: one-per-row pushed the chart and table four
-            screen-heights down before anything else was visible. */}
-        <div className="grid flex-1 grid-cols-2 gap-3 xl:grid-cols-4">
-          {stat("Revenue (quoted)", totalRevenue)}
-          {stat(
-            "Collected",
-            totalCollected,
-            "text-success",
-            outstanding > 0 ? `${formatMoney(outstanding, displayCurrency)} outstanding` : "Fully collected"
-          )}
-          {stat("Internal cost", totalCost)}
-          {stat("Margin (quoted)", margin, margin >= 0 ? "text-success" : "text-danger")}
-        </div>
-        <div className="flex shrink-0 flex-col gap-2 md:ml-4 md:items-end">
-          <div className="flex items-center gap-2 md:justify-end">
-            <Button variant="secondary" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
-              <Download /> Export CSV
-            </Button>
-            <div className="flex-1 md:w-36 md:flex-none">
-              <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+    <div className="space-y-4">
+      {/* One header line: tabs share their bottom border with the toolbar on
+          desktop, so the controls sit on the tab row instead of floating in
+          dead space above it. On a phone the controls stack first. */}
+      <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-6 lg:border-b lg:border-border">
+          <div className="flex flex-wrap items-center gap-2 lg:order-2 lg:shrink-0 lg:pb-2">
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={includePlanning}
+                onChange={(e) => setIncludePlanning(e.target.checked)}
+              />
+              Include planning cases
+            </label>
+            <div className="w-[8.75rem]">
+              <Select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value as Period)}
+                disabled={!periodApplies}
+                aria-label="Period"
+              >
+                {PERIOD_OPTIONS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="w-32">
+              <Select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                aria-label="Currency"
+              >
                 <option value="ALL">All (in USD)</option>
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
@@ -195,129 +131,106 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                 ))}
               </Select>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => exportCsv(cases, displayCurrency)}
+              disabled={cases.length === 0}
+            >
+              <Download /> Export CSV
+            </Button>
           </div>
-          {isAll && (
-            <p className="text-[10px] leading-tight text-muted-light md:text-right">
-              FX rates as of {FX_RATES_AS_OF}
-            </p>
-          )}
+          <TabBar
+            idBase="finance"
+            tabs={TABS}
+            value={tab}
+            onChange={setTab}
+            className="lg:order-1 lg:min-w-0 lg:flex-1 lg:border-b-0"
+          />
         </div>
+        {isAll && (
+          <p className="mt-1.5 text-right text-[10px] leading-tight text-muted-light">
+            FX rates as of {usdRates.asOf}
+            {usdRates.source === "fallback" && " (offline table)"}
+          </p>
+        )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Monthly revenue vs. cost ({isAll ? "all currencies → USD" : currency})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {chartData.length === 0 ? (
-            <p className="py-16 text-center text-sm text-muted">
-              No quoted cases {isAll ? "" : `in ${currency} `}yet.
-            </p>
-          ) : (
-            <FinanceChart data={chartData} colors={colors} displayCurrency={displayCurrency} />
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Per-case margins ({isAll ? "all currencies → USD" : currency})</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0 pb-0">
-          <Table className="min-w-0 border-0 shadow-none sm:min-w-[34rem]">
-            <THead>
-              <tr>
-                {/* Seven money columns cannot coexist with a 390px screen —
-                    Operation/Status/Cost drop out below md, leaving the three
-                    numbers the page exists to compare. */}
-                <Th>Patient</Th>
-                <Th className="hidden md:table-cell">Operation</Th>
-                <Th className="hidden lg:table-cell">Status</Th>
-                <Th className="text-right">Revenue</Th>
-                <Th className="text-right">Collected</Th>
-                <Th className="hidden text-right md:table-cell">Cost</Th>
-                <Th className="text-right">Margin</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {filtered.length === 0 && <EmptyRow colSpan={7} message="No cases in this currency." />}
-              {pageRows.map((r) => {
-                const m = r.revenue - r.cost;
-                const fullyPaid = r.collected >= r.revenue && r.revenue > 0;
-                return (
-                  <Tr key={r.id}>
-                    <Td className="font-medium">
-                      <Link href={`/patients/${r.patientId}`} className="hover:text-primary">
-                        {r.patientName}
-                      </Link>
-                    </Td>
-                    <Td className="hidden text-muted md:table-cell">{r.operation}</Td>
-                    <Td className="hidden capitalize text-muted lg:table-cell">
-                      {r.status.replace("_", " ")}
-                    </Td>
-                    <Td className="text-right tabular-nums">
-                      {formatMoney(r.revenue, displayCurrency)}
-                      {isAll && r.currency !== "USD" && (
-                        <span className="ml-1 text-xs text-muted-light">({r.currency})</span>
-                      )}
-                    </Td>
-                    <Td
-                      className={cn(
-                        "text-right tabular-nums",
-                        fullyPaid ? "text-success" : "text-muted"
-                      )}
-                    >
-                      {formatMoney(r.collected, displayCurrency)}
-                    </Td>
-                    <Td className="hidden text-right tabular-nums text-muted md:table-cell">
-                      {formatMoney(r.cost, displayCurrency)}
-                    </Td>
-                    <Td
-                      className={cn(
-                        "text-right font-medium tabular-nums",
-                        m >= 0 ? "text-success" : "text-danger"
-                      )}
-                    >
-                      {formatMoney(m, displayCurrency)}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </TBody>
-          </Table>
-          {pageCount > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted">
-              <span>
-                Showing {page * TABLE_PAGE_SIZE + 1}–
-                {Math.min((page + 1) * TABLE_PAGE_SIZE, filtered.length)} of {filtered.length}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                >
-                  Previous
-                </Button>
-                <span className="tabular-nums">
-                  {page + 1} / {pageCount}
-                </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                  disabled={page >= pageCount - 1}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TabPanel idBase="finance" index={TABS.indexOf(tab)}>
+        {tab === "Overview" && (
+          <FinanceOverview
+            cases={cases}
+            quotedCases={quotedCases}
+            planningCount={planningCount}
+            pays={pays}
+            period={period}
+            displayCurrency={displayCurrency}
+            isAll={isAll}
+            currency={currency}
+          />
+        )}
+        {tab === "Receivables & Payables" && (
+          <FinanceReceivables
+            quotedCases={quotedCases}
+            pays={pays}
+            displayCurrency={displayCurrency}
+          />
+        )}
+        {tab === "Breakdowns" && (
+          <FinanceBreakdowns
+            cases={cases}
+            quotedCases={quotedCases}
+            pays={pays}
+            period={period}
+            displayCurrency={displayCurrency}
+          />
+        )}
+      </TabPanel>
     </div>
   );
+}
+
+function exportCsv(cases: CaseFinance[], displayCurrency: string) {
+  const esc = (v: string | number) => {
+    const str = String(v);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const header = [
+    "Patient",
+    "Operation",
+    "Status",
+    "Month",
+    "Currency",
+    `Revenue (${displayCurrency})`,
+    `Collected (${displayCurrency})`,
+    `Cost quoted (${displayCurrency})`,
+    `Paid out (${displayCurrency})`,
+    `Expected margin (${displayCurrency})`,
+    `Actual margin (${displayCurrency})`,
+  ];
+  const lines = cases.map((r) =>
+    [
+      r.patientName,
+      r.operation,
+      r.status,
+      r.month,
+      r.currency,
+      r.revenue.toFixed(2),
+      r.collected.toFixed(2),
+      r.cost.toFixed(2),
+      r.paidOut.toFixed(2),
+      (r.revenue - r.cost).toFixed(2),
+      (r.collected - r.paidOut).toFixed(2),
+    ]
+      .map(esc)
+      .join(",")
+  );
+  const csv = [header.map(esc).join(","), ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `turkcure-finance-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }

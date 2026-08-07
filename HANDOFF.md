@@ -47,7 +47,34 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-08-07)
+## Current status (2026-08-07, evening — finance overhaul)
+
+**Second 2026-08-07 session: the Finance section went from "just numbers" to a real
+finance tool.** Everything builds green (`npm run build`), design detector clean, and
+every tab was screenshot-verified at 1440×900 + 390×844 in light AND dark via the new
+`scripts/finance-audit.mjs`.
+
+1. **Migration `supabase/migrations/0019_finance_overhaul.sql` — ⚠️ WRITTEN BUT NOT
+   APPLIED.** Parsa authorized `supabase db push --linked`, but the assistant's
+   permission layer blocked the command twice, so **Parsa must run
+   `npx supabase db push --linked` himself** (0019 is the only pending migration; CLI
+   history was in sync at 0018). Until then the finance page shows zero
+   cash/paid-out/receivables figures (it degrades, doesn't crash) and Collected on
+   the cards disagrees with the table — both are the missing RPC, not bugs.
+2. What shipped: `finance_case_rows()` gained `paid_out` + hospital/doctor/source/
+   country; new `finance_payment_rows()` per-payment feed; three-tab Finance UI
+   (Overview with vs-previous-period deltas and a Cash⇄Quoted chart toggle;
+   Receivables & Payables with in-card stats and overdue badges; Breakdowns by
+   operation/hospital/doctor/source/country); period filter (whole-calendar-month
+   string math); planning cases excluded from quoted metrics by default; "All (in
+   USD)" mode now uses **live ECB rates** via `getUsdRates()` (offline table is only
+   the fallback and is labelled as such). Full detail in CLAUDE.md → "Recent work —
+   2026-08-07 finance overhaul".
+3. **Phantom-vertical-scrollbar bug fixed at the primitive level**: `TabBar` and the
+   `Table` wrapper now pair `overflow-x-auto` with `overflow-y-hidden` (see Gotchas —
+   Parsa hit this twice in one evening and it is now a standing rule).
+
+## Previous status (2026-08-07, morning)
 
 **This session (2026-08-07) — three asks from live use. Migrations `0016` and `0017` were
 applied to the live Supabase project on 2026-08-07** (Parsa said "linked to supabase, feel free
@@ -144,10 +171,19 @@ Turkish characters.
 - `src/lib/data/fx.ts` — server-only live FX (frankfurter.app) behind `unstable_cache` tag
   `"fx"`; `src/lib/actions/fx.ts` is the client bridge; `src/lib/fx.ts` stays pure + offline
   fallback. **The try/catch must stay outside the cached function.**
+- `src/components/finance/` — `finance-view.tsx` (shell: toolbar + `?tab=` TabBar),
+  `finance-shared.tsx` (types, period math, `Stat`, `Pager`), `finance-overview.tsx`,
+  `finance-receivables.tsx`, `finance-breakdowns.tsx`, `finance-chart.tsx`
+  (series-driven recharts, lazy). `src/lib/data/finance.ts` has both cached RPC reads.
 - `scripts/mobile-audit.mjs` — Playwright phone-width sweep. `node scripts/mobile-audit.mjs
   --label after --out .mobile-audit/after` with `npm run dev` already running.
-- `supabase/migrations/` — numbered `0001`…`0017`, **all applied.** `0001`–`0015` by hand,
-  `0016`/`0017` via `supabase db push --linked` on 2026-08-07.
+- `scripts/finance-audit.mjs` — finance-only sweep: every tab, phone + desktop,
+  light + dark (forces theme via `localStorage.theme`), flags real vertical
+  scrollbars, horizontal bleed and page micro-overflow. Output gitignored
+  (`.finance-audit/`).
+- `supabase/migrations/` — numbered `0001`…`0019`. `0001`–`0015` by hand,
+  `0016`/`0017` via CLI on 2026-08-07, `0018` applied; **`0019` pending — Parsa runs
+  `npx supabase db push --linked`.**
 
 ## Roadmap / next steps
 No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**
@@ -163,6 +199,14 @@ Standing candidates if asked:
 | Custom scrollbars | WebKit + Firefox, token-coloured, gutter reserved on `html` | — | Done |
 
 ## Gotchas / open issues
+- **NO VERTICAL SCROLLBARS on horizontal scrollers — standing rule from Parsa.**
+  Any `overflow-x-auto` element (tab bars, table wrappers, chip rows, anything that
+  scrolls sideways) MUST also set `overflow-y-hidden`. When overflow-x is
+  non-visible the browser computes overflow-y as `auto`, and a single pixel of
+  vertical overflow — an `-mb-px` child or fractional browser zoom is enough —
+  manufactures a phantom vertical scrollbar. `TabBar` (`ui/tabs.tsx`) and `Table`
+  (`ui/table.tsx`) are fixed; check this on every new sideways scroller before
+  shipping, at 90%/110% zoom too.
 - **`ComboBox` id vs freeText**: default mode submits the option **id**; `freeText` submits the
   **name/typed text**. The airport fields rely on `freeText`. Don't mix them up when reusing it.
 - **Locally-created directory rows** live in the ComboBox's local option state until the next

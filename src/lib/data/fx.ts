@@ -70,3 +70,28 @@ export const getFxRates = cache(async (): Promise<FxSnapshot> => {
 export function crossRate(snap: FxSnapshot, from: Currency, to: Currency): number {
   return snap.rates[to] / snap.rates[from];
 }
+
+export interface UsdRates {
+  /** Multiplier to USD per currency — the shape `toUsd()` in lib/fx.ts takes. */
+  rates: Record<Currency, number>;
+  /** Publication date (YYYY-MM-DD) — surfaced on the Finance page. */
+  asOf: string;
+  source: "live" | "fallback";
+}
+
+/**
+ * The EUR snapshot re-based onto USD for the Finance "All" mode. Pure
+ * derivation over getFxRates(), so it rides the existing "fx" cache and its
+ * outside-the-cache fallback untouched; when the API is down this reproduces
+ * exactly FALLBACK_RATES_TO_USD.
+ */
+export const getUsdRates = cache(async (): Promise<UsdRates> => {
+  const snap = await getFxRates();
+  return {
+    rates: Object.fromEntries(
+      CURRENCIES.map((c) => [c, crossRate(snap, c, "USD")])
+    ) as Record<Currency, number>,
+    asOf: snap.date,
+    source: snap.source,
+  };
+});

@@ -12,21 +12,18 @@ import {
 } from "recharts";
 import { formatMoney } from "@/lib/utils";
 
-export interface FinanceChartDatum {
-  month: string;
-  Revenue: number;
-  Cost: number;
-}
+export type FinanceChartDatum = { month: string } & Record<string, string | number>;
 
 // recharts is heavy; this component is loaded via next/dynamic so it stays out
-// of the finance page's eager bundle.
+// of the finance page's eager bundle. Series are data-driven so the same chart
+// serves both the quoted (Revenue/Cost) and cash (Collected/Paid out) views.
 export default function FinanceChart({
   data,
-  colors,
+  series,
   displayCurrency,
 }: {
   data: FinanceChartDatum[];
-  colors: { revenue: string; cost: string };
+  series: { key: string; color: string }[];
   displayCurrency: string;
 }) {
   return (
@@ -62,8 +59,9 @@ export default function FinanceChart({
             iconType="circle"
             iconSize={8}
           />
-          <Bar dataKey="Revenue" fill={colors.revenue} radius={[4, 4, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="Cost" fill={colors.cost} radius={[4, 4, 0, 0]} maxBarSize={28} />
+          {series.map((s) => (
+            <Bar key={s.key} dataKey={s.key} fill={s.color} radius={[4, 4, 0, 0]} maxBarSize={28} />
+          ))}
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -39,11 +39,14 @@ export function TabBar<T extends string>({
 
   return (
     // Scrolls sideways rather than wrapping: at 390px the four patient tabs
-    // used to break "Case & Quote" across three lines.
+    // used to break "Case & Quote" across three lines. overflow-y stays hidden:
+    // a sideways scroller with computed overflow-y:auto grows a phantom
+    // vertical scrollbar from 1px of overflow (fractional browser zoom is
+    // enough) — never let these scroll vertically.
     <div
       role="tablist"
       className={cn(
-        "flex gap-1 overflow-x-auto border-b border-border [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className
       )}
     >
@@ -63,7 +66,10 @@ export function TabBar<T extends string>({
             onClick={() => onChange(t)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "pressable -mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium cursor-pointer",
+              // No -mb-px underline overlap: the container clips vertical
+              // overflow (see above), so the 2px underline sits flush on the
+              // rail instead of over it.
+              "pressable shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium cursor-pointer",
               active
                 ? "border-primary text-primary"
                 : "border-transparent text-muted hover:text-foreground"

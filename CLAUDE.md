@@ -102,6 +102,12 @@ supabase/migrations/     Hand-applied SQL migrations, numbered 0001…
 - **Memoize** derived list transforms (`useMemo`) and row handlers
   (`useCallback`) in large client views to avoid per-keystroke recompute.
 - **Paginate/bound** any list that grows with the dataset.
+- **Horizontal scrollers never scroll vertically.** Any `overflow-x-auto`
+  container (tab bars, table wrappers, chip rows) MUST also set
+  `overflow-y-hidden`: with overflow-x non-visible the browser computes
+  overflow-y as auto, and 1px of vertical overflow — fractional browser zoom is
+  enough — manufactures a phantom vertical scrollbar. `Table` and `TabBar`
+  already do this; match them in any new sideways scroller.
 - **Animations**: prefer `transform`/`opacity` (and `grid-template-rows` for
   collapse). Avoid animating `max-height`/`margin`/`padding`/`border`/`filter`
   on high-count lists — it thrashes layout/paint. Use the spring utilities in
@@ -406,6 +412,54 @@ past PDF 500s. The instruction PDF keeps its static name.
   saved arrival date already appears there within the 14-day horizon.
 - Reminder rows now wrap on a phone (title claims the line, badge + actions drop below) — with
   real content the single-row layout truncated the patient name to "Cherr…".
+
+## Recent work — 2026-08-07 finance overhaul (true margin, R&P, periods, breakdowns, live FX)
+
+The finance page was "just numbers": all-time quoted revenue/cost + collected, one
+chart, one table. Outgoing payments (real payouts to providers) appeared in **zero**
+finance figures. `supabase/migrations/0019_finance_overhaul.sql` (⚠️ apply by hand —
+until applied, the new page degrades to zero cash/receivables figures, not a crash):
+
+- **`finance_case_rows()` rewritten** (3rd time; sole caller `lib/data/finance.ts`).
+  Existing columns byte-identical, appended: `paid_out` (outgoing paid, normalized
+  `amount_case` — a `paid` CTE mirroring `coll`, index-only via 0016's include-index)
+  plus `hospital_id/name`, `doctor_id/name`, `source`, `country` for breakdowns.
+  `drop function` first — `create or replace` can't change a return shape.
+- **New `finance_payment_rows()`**: one flat per-payment feed (with per-type
+  counterparty-name joins; `counterparty_id` has no FK, dangling ids coalesce to `—`).
+  The client derives the cash chart, period totals, receivables aging and payables
+  grouping from this single list. THE LINE (in the migration comment): past ~5–10k
+  rows, move aggregation server-side.
+- **Semantics** (`finance-shared.tsx`): quoted metrics scope by case `month`; cash
+  metrics (Collected/Paid out/Cash margin) by `paid_at`; receivables/payables are
+  as-of-today balances and ignore the period filter (the Select disables on that
+  tab). The two bases are never subtracted across. Planning cases are excluded from
+  quoted metrics by default (toolbar checkbox), always included in cash. Period math
+  is whole-calendar-month string comparison — no Date arithmetic, no TZ landmines.
+- **UI**: `finance-view.tsx` is now a shell — toolbar (planning checkbox, period,
+  currency, CSV) sharing one border-line row with a deep-linked `?tab=` TabBar
+  (Overview / Receivables & Payables / Breakdowns). Overview: 4 cards with
+  vs-previous-period deltas, Cash⇄Quoted segmented chart (always trailing 12
+  months), per-case table with actual-margin-over-expected Margin cell. R&P: stats
+  live *inside* their cards (`MiniStat`), receivable badge = Overdue/next-due/
+  Unscheduled from open incoming rows. Breakdowns: dimension Select over
+  operation/hospital/doctor/source/country.
+- **Live FX in "All" mode**: `getUsdRates()` in `lib/data/fx.ts` re-bases the
+  existing EUR snapshot to USD (rides the `"fx"` cache; try/catch stays outside).
+  The 2026-07-09 hardcoded table is now only the offline fallback, and the page
+  says so ("FX rates as of <date> (offline table)"). Closes the "last hardcoded FX"
+  follow-up from 0016.
+- `finance-chart.tsx` is series-driven (`{key,color}[]`) instead of hardcoded
+  Revenue/Cost bars.
+- **`scripts/finance-audit.mjs`**: finance-only Playwright sweep — every tab at
+  390×844 + 1440×900, light + dark (forced via `localStorage.theme` — next-themes
+  ignores `prefers-color-scheme` emulation once a stored choice exists), and it
+  reports any element with a real vertical scrollbar plus **page micro-overflow**
+  (content 1–60px taller than the viewport = a scrollbar for nothing; the Overview
+  was +11px until the tab panels went `space-y-4 pt-3`).
+- ⚠️ Windows/PS5.1 gotcha that bit this session: `Get-Content -Raw | Set-Content
+  -Encoding utf8` **mojibakes BOM-less UTF-8 source files** (reads them as ANSI).
+  Use the agent Edit/Write tools for source edits, never PowerShell regex.
 
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
