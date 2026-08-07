@@ -31,7 +31,11 @@ export interface CaseFinance {
   month: string; // YYYY-MM
   revenue: number;
   cost: number;
-  /** Cash actually collected (incoming, paid, case currency). */
+  /**
+   * Cash actually collected, expressed in the case currency: every incoming
+   * paid payment normalized at the rate frozen on its row (0016), whatever
+   * currency it was taken in.
+   */
   collected: number;
 }
 

@@ -14,7 +14,7 @@ import { upsertDirectoryRow, type DirectoryTable } from "@/lib/actions/directory
 import { upsertCase, upsertQuoteItem, deleteQuoteItem } from "@/lib/actions/cases";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
-import type { Case, Patient, QuoteItem, QuoteItemKind } from "@/lib/types";
+import type { Case, Patient, QuoteItem } from "@/lib/types";
 import type { Directories } from "./patient-detail";
 
 // Common arrival/departure airports for Turkey medical-tourism trips. The
@@ -33,11 +33,14 @@ const AIRPORT_SUGGESTIONS = [
   { id: "GZT", name: "GZT — Gaziantep" },
 ];
 
-const KINDS: { value: QuoteItemKind; label: string }[] = [
-  { value: "surgery", label: "Surgery" },
-  { value: "hotel", label: "Hotel" },
-  { value: "transfer", label: "Transfer" },
-  { value: "extra", label: "Extra" },
+// Suggested quote-item labels. Since 0017 `kind` is free text, so these are
+// only the fast path — any label can be typed, and leaving it blank is valid.
+// `id` is the stored value (lowercase, matching the pre-0017 enum labels).
+const KIND_SUGGESTIONS = [
+  { id: "surgery", name: "Surgery" },
+  { id: "hotel", name: "Hotel" },
+  { id: "transfer", name: "Transfer" },
+  { id: "extra", name: "Extra" },
 ];
 
 export function CaseTab({
@@ -296,6 +299,9 @@ function QuoteEditor({
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<QuoteItem | null>(null);
   const formRef = React.useRef<HTMLFormElement>(null);
+  // The Type ComboBox keeps its value in React state, so form.reset() can't
+  // clear it — remount it instead after each successful add.
+  const [formKey, setFormKey] = React.useState(0);
 
   async function onDelete(item: QuoteItem) {
     setConfirmDelete(null);
@@ -314,8 +320,8 @@ function QuoteEditor({
     setError(null);
     const fd = new FormData(e.currentTarget);
     const values = {
-      kind: String(fd.get("kind")),
-      description: String(fd.get("description")),
+      kind: String(fd.get("kind") ?? "").trim(),
+      description: String(fd.get("description") ?? "").trim(),
       price: Number(fd.get("price") || 0),
       cost: isAdmin ? Number(fd.get("cost") || 0) : undefined,
       sort_order: items.length,
@@ -330,6 +336,7 @@ function QuoteEditor({
       sort_order: values.sort_order,
     } as QuoteItem;
     formRef.current?.reset();
+    setFormKey((k) => k + 1);
     const { ok, result } = await mutate({
       optimistic: (prev) => [...prev, optimisticRow],
       action: () => upsertQuoteItem(patientId, caseId, values),
@@ -379,8 +386,12 @@ function QuoteEditor({
             )}
             {items.map((item) => (
               <Tr key={item.id}>
-                <Td className="capitalize text-muted">{item.kind}</Td>
-                <Td className="font-medium">{item.description}</Td>
+                {/* Either label may be blank — keep the cell occupied so the
+                    row doesn't visually collapse. */}
+                <Td className="capitalize text-muted">{item.kind || "—"}</Td>
+                <Td className="font-medium">
+                  {item.description || <span className="text-muted-light">—</span>}
+                </Td>
                 {isAdmin && (
                   <Td className="text-right text-muted">
                     {formatMoney(Number(item.cost ?? 0), currency)}
@@ -425,16 +436,19 @@ function QuoteEditor({
           <form ref={formRef} onSubmit={onAdd} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <Field label="Type">
-                <Select name="kind" defaultValue="surgery">
-                  {KINDS.map((k) => (
-                    <option key={k.value} value={k.value}>
-                      {k.label}
-                    </option>
-                  ))}
-                </Select>
+                <ComboBox
+                  key={formKey}
+                  name="kind"
+                  freeText
+                  options={KIND_SUGGESTIONS}
+                  placeholder="Pick, type, or leave blank"
+                  createLabel="Use"
+                />
               </Field>
+              {/* Both label fields are optional — a line can be priced without
+                  being named (see 0017). */}
               <Field label="Description" className="sm:col-span-1">
-                <Input name="description" required placeholder="e.g. FUE 3500 grafts" />
+                <Input name="description" placeholder="e.g. FUE 3500 grafts" />
               </Field>
               {isAdmin && (
                 <Field label={`Cost (${currency})`}>
@@ -467,8 +481,17 @@ function QuoteEditor({
         title="Delete quote item"
         description={
           <>
-            Remove <strong>{confirmDelete?.description}</strong> from the quote? This cannot be
-            undone.
+            {/* Both labels are optional, so fall back through them to the price
+                rather than rendering an empty <strong>. */}
+            Remove{" "}
+            <strong>
+              {confirmDelete
+                ? confirmDelete.description ||
+                  confirmDelete.kind ||
+                  `this ${formatMoney(Number(confirmDelete.price), currency)} item`
+                : "this item"}
+            </strong>{" "}
+            from the quote? This cannot be undone.
           </>
         }
       />

@@ -52,6 +52,40 @@ export async function upsertPayment(
   if (!CURRENCIES.includes(currency as (typeof CURRENCIES)[number]))
     return { error: "Invalid currency." };
 
+  // A payment may be recorded in any currency; the rate that expresses it in the
+  // CASE currency is frozen onto the row so history never re-rates. The case
+  // currency is read here rather than trusted from the client — it is the
+  // authority for "the rate must be 1".
+  const caseId = String(values.case_id ?? "");
+  const { data: caseRow } = await supabase
+    .from("cases")
+    .select("currency")
+    .eq("id", caseId)
+    .single();
+  if (!caseRow) return { error: "Case not found." };
+
+  const sameCurrency = currency === caseRow.currency;
+  // Forced rather than validated when the currencies match: the form hides the
+  // field in that case, so there is nothing for the user to get wrong.
+  const rawRate = sameCurrency ? 1 : Number(values.fx_rate);
+  if (!sameCurrency) {
+    if (!Number.isFinite(rawRate) || rawRate <= 0)
+      return { error: `Enter a conversion rate from ${currency} to ${caseRow.currency}.` };
+    // An inverted entry (e.g. EUR→TRY typed where TRY→EUR was wanted) produces a
+    // plausible-looking number, not a crash — catch the obvious end of it.
+    if (rawRate > 1_000_000)
+      return {
+        error: `That rate looks inverted — enter how many ${caseRow.currency} one ${currency} buys.`,
+      };
+  }
+
+  // Stated once so the client's optimistic row and the DB check constraint agree:
+  // amount to 2dp, rate to 8dp, then the product to 2dp.
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const fxRate = Math.round(rawRate * 1e8) / 1e8;
+  const amount2 = round2(amount);
+  const amountCase = round2(amount2 * fxRate);
+
   const paidAt = values.paid_at ? String(values.paid_at) : null;
   const dueDate = values.due_date ? String(values.due_date) : null;
   // Status is derived, never manual: paid date present ⇒ paid, else pending.
@@ -62,8 +96,10 @@ export async function upsertPayment(
     direction,
     counterparty_type: counterpartyType,
     counterparty_id: counterpartyId,
-    amount,
+    amount: amount2,
     currency,
+    fx_rate: fxRate,
+    amount_case: amountCase,
     method: values.method ? String(values.method) : "",
     iban: values.iban ? String(values.iban) : "",
     due_date: dueDate,

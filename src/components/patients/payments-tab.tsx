@@ -14,9 +14,14 @@ import { toast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { upsertPayment, deletePayment } from "@/lib/actions/payments";
+import { getLiveRate } from "@/lib/actions/fx";
 import { CURRENCIES, formatMoney, formatDate } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
 import type { Directories } from "./patient-detail";
+
+/** Must match the server's rounding in upsertPayment, or the optimistic row and
+ *  the saved row disagree by a cent. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const PROVIDER_TYPES: { value: CounterpartyType; label: string }[] = [
   { value: "hospital", label: "Hospital" },
@@ -53,6 +58,19 @@ export function PaymentsTab({
   const [providerType, setProviderType] = React.useState<CounterpartyType>("hospital");
   const [providerId, setProviderId] = React.useState<string>("");
   const [paidAt, setPaidAt] = React.useState<string>("");
+  // Currency + amount are controlled so the FX block can react and preview.
+  const [currency, setCurrency] = React.useState<string>(cases[0]?.currency ?? "EUR");
+  const [amount, setAmount] = React.useState<string>("");
+  const [fxRate, setFxRate] = React.useState<string>("1");
+  const [rateMeta, setRateMeta] = React.useState<{
+    asOf: string;
+    source: "live" | "fallback";
+  } | null>(null);
+  const [fetchingRate, setFetchingRate] = React.useState(false);
+  // The currency the open row was booked in. Editing an existing payment must
+  // show its frozen rate, not today's — freezing it is the whole point — so we
+  // only auto-fetch once the user actually changes the dropdown.
+  const bookedCurrency = React.useRef<string | null>(null);
   const [receiptPath, setReceiptPath] = React.useState<string>("");
   const [uploadingReceipt, setUploadingReceipt] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<Payment | null>(null);
@@ -76,13 +94,14 @@ export function PaymentsTab({
   const incoming = visiblePayments.filter((p) => p.direction === "in");
   const outgoing = visiblePayments.filter((p) => p.direction === "out");
 
-  // Reconciliation is only meaningful within a single currency. Sum patient
-  // payments that match the case currency; flag anything recorded in another.
+  // Every incoming payment counts, normalized to the case currency at the rate
+  // frozen on each row when it was booked (0016). `amount_case` is the fallback
+  // chain's target; `amount` covers optimistic rows mid-flight.
   const paidInCaseCurrency = incoming
-    .filter((p) => p.currency === caseCurrency && p.paid_at)
-    .reduce((s, p) => s + Number(p.amount), 0);
+    .filter((p) => p.paid_at)
+    .reduce((s, p) => s + Number(p.amount_case ?? p.amount), 0);
   const outstanding = quotedTotal - paidInCaseCurrency;
-  const otherCurrencyCount = incoming.filter((p) => p.currency !== caseCurrency).length;
+  const convertedCount = incoming.filter((p) => p.currency !== caseCurrency).length;
 
   const providerChoices = isAdmin
     ? PROVIDER_TYPES
@@ -115,6 +134,11 @@ export function PaymentsTab({
     setProviderType("hospital");
     setProviderId("");
     setPaidAt("");
+    setCurrency(caseCurrency);
+    setAmount("");
+    setFxRate("1");
+    setRateMeta(null);
+    bookedCurrency.current = caseCurrency;
     setReceiptPath("");
     setError(null);
     setOpen(true);
@@ -126,9 +150,45 @@ export function PaymentsTab({
     setProviderType(p.counterparty_type === "patient" ? "hospital" : p.counterparty_type);
     setProviderId(p.counterparty_id ?? "");
     setPaidAt(p.paid_at ?? "");
+    setCurrency(p.currency);
+    setAmount(String(p.amount ?? ""));
+    setFxRate(String(p.fx_rate ?? 1));
+    setRateMeta(null);
+    bookedCurrency.current = p.currency;
     setReceiptPath(p.receipt_path ?? "");
     setError(null);
     setOpen(true);
+  }
+
+  /** Prefill the rate from the live feed. Failure is silent-ish: the field stays
+   *  editable and the save path is never blocked. */
+  async function pullLiveRate(from: string) {
+    if (from === caseCurrency) return;
+    setFetchingRate(true);
+    const r = await getLiveRate(from, caseCurrency);
+    setFetchingRate(false);
+    if (r.error || r.rate === undefined) {
+      toast.error(r.error ?? "Could not fetch a rate — enter it manually.");
+      return;
+    }
+    setFxRate(String(r.rate));
+    setRateMeta({ asOf: r.asOf!, source: r.source! });
+  }
+
+  function onCurrencyChange(next: string) {
+    setCurrency(next);
+    setRateMeta(null);
+    if (next === caseCurrency) {
+      setFxRate("1");
+      return;
+    }
+    // Only pull today's rate when the user changes the currency in this dialog —
+    // reopening an old row must keep the rate it was booked at.
+    if (next === bookedCurrency.current && editing) {
+      setFxRate(String(editing.fx_rate ?? 1));
+      return;
+    }
+    pullLiveRate(next);
   }
 
   async function onUploadReceipt(e: React.ChangeEvent<HTMLInputElement>) {
@@ -158,13 +218,15 @@ export function PaymentsTab({
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    const rate = currency === caseCurrency ? 1 : Number(fxRate) || 0;
     const values = {
       case_id: activeCase!.id,
       direction,
       counterparty_type: direction === "in" ? "patient" : providerType,
       counterparty_id: direction === "in" ? null : providerId || null,
-      amount: Number(fd.get("amount") || 0),
-      currency: fd.get("currency"),
+      amount: Number(amount || 0),
+      currency,
+      fx_rate: rate,
       method: fd.get("method") ?? "",
       iban: fd.get("iban") ?? "",
       due_date: fd.get("due_date") || null,
@@ -172,13 +234,15 @@ export function PaymentsTab({
       receipt_path: receiptPath,
       notes: fd.get("notes") ?? "",
     };
-    // Mirror the server's derived status so the optimistic row matches.
+    // Mirror the server's derived fields so the optimistic row matches — without
+    // amount_case the reconciliation cards flicker wrong for one round-trip.
     const optimisticRow = {
       ...(editing ?? {}),
       ...values,
       id: editing?.id ?? tempId(),
       counterparty_type: values.counterparty_type,
       status: values.paid_at ? "paid" : "pending",
+      amount_case: round2(values.amount * rate),
     } as Payment;
     setSaving(false);
     setOpen(false);
@@ -243,7 +307,15 @@ export function PaymentsTab({
                     ({p.counterparty_type})
                   </span>
                 </Td>
-                <Td className="text-right font-medium">{formatMoney(Number(p.amount), p.currency)}</Td>
+                <Td className="text-right font-medium">
+                  {formatMoney(Number(p.amount), p.currency)}
+                  {p.currency !== caseCurrency && p.amount_case != null && (
+                    // Shows the converted figure that actually hits the cards above.
+                    <span className="block text-xs font-normal text-muted-light">
+                      ≈ {formatMoney(Number(p.amount_case), caseCurrency)}
+                    </span>
+                  )}
+                </Td>
                 <Td className="text-muted">
                   <span className="inline-flex items-center gap-1.5">
                     {p.method || "—"}
@@ -323,11 +395,12 @@ export function PaymentsTab({
               </p>
             )}
           </div>
-          {otherCurrencyCount > 0 && (
-            <p className="sm:col-span-3 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
-              {otherCurrencyCount} incoming payment{otherCurrencyCount === 1 ? " is" : "s are"} in a
-              currency other than the case currency ({caseCurrency}) and {otherCurrencyCount === 1 ? "is" : "are"} not
-              included in the paid/outstanding figures above.
+          {convertedCount > 0 && (
+            // Information, not a defect: these used to be silently excluded.
+            <p className="sm:col-span-3 rounded-lg bg-surface-hover px-3 py-2 text-xs text-muted">
+              {convertedCount} incoming payment{convertedCount === 1 ? " was" : "s were"} recorded in
+              another currency and {convertedCount === 1 ? "is" : "are"} included above, converted to{" "}
+              {caseCurrency} at the rate stored on each payment.
             </p>
           )}
         </CardContent>
@@ -398,11 +471,12 @@ export function PaymentsTab({
               step="0.01"
               min="0.01"
               required
-              defaultValue={editing?.amount ?? ""}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
             />
           </Field>
           <Field label="Currency">
-            <Select name="currency" defaultValue={editing?.currency ?? caseCurrency}>
+            <Select value={currency} onChange={(e) => onCurrencyChange(e.target.value)}>
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -410,6 +484,56 @@ export function PaymentsTab({
               ))}
             </Select>
           </Field>
+          {currency !== caseCurrency && (
+            // The case is priced in one currency and this payment arrived in
+            // another. The rate is frozen onto the row, so an old payment keeps
+            // the rate it was booked at no matter what the market does later.
+            <div className="sm:col-span-2 space-y-2 rounded-xl border border-dashed border-border-strong p-3">
+              <div className="flex flex-wrap items-end gap-3">
+                {/* Labelled as a full sentence: rate direction is the classic
+                    data-entry error. */}
+                <Field label={`Rate — 1 ${currency} = ? ${caseCurrency}`} className="flex-1">
+                  <Input
+                    type="number"
+                    step="0.00000001"
+                    min="0"
+                    inputMode="decimal"
+                    value={fxRate}
+                    onChange={(e) => {
+                      setFxRate(e.target.value);
+                      setRateMeta(null); // no longer the fetched value
+                    }}
+                  />
+                </Field>
+                <Button
+                  type="button"
+                  variant="soft"
+                  size="sm"
+                  pending={fetchingRate}
+                  onClick={() => pullLiveRate(currency)}
+                >
+                  Use live rate
+                </Button>
+              </div>
+              {rateMeta &&
+                (rateMeta.source === "live" ? (
+                  <p className="text-xs text-muted">Live rate as of {rateMeta.asOf}.</p>
+                ) : (
+                  <p className="text-xs text-warning">
+                    Live rates unavailable — showing the stored table from {rateMeta.asOf}. Confirm
+                    against your bank before saving.
+                  </p>
+                ))}
+              <p className="text-sm font-medium tabular-nums">
+                {formatMoney(Number(amount) || 0, currency)}{" "}
+                <span className="text-muted">→</span>{" "}
+                {formatMoney(round2((Number(amount) || 0) * (Number(fxRate) || 0)), caseCurrency)}
+                <span className="ml-1.5 text-xs font-normal text-muted-light">
+                  counts toward the case total
+                </span>
+              </p>
+            </div>
+          )}
           <Field label="Method">
             <Input name="method" placeholder="Bank transfer, cash, card…" defaultValue={editing?.method ?? ""} />
           </Field>

@@ -1,7 +1,11 @@
 export type Role = "admin" | "agent";
 export type PatientStatus = "lead" | "interested" | "booked" | "treated" | "aftercare" | "lost";
 export type CaseStatus = "planning" | "confirmed" | "in_progress" | "completed" | "cancelled";
-export type QuoteItemKind = "surgery" | "hotel" | "transfer" | "extra";
+/**
+ * Free text since 0017 — the four values below are suggestions, not a closed
+ * set, and an empty label is valid.
+ */
+export type QuoteItemKind = string;
 export type PaymentDirection = "in" | "out";
 export type CounterpartyType = "patient" | "hotel" | "doctor" | "hospital" | "driver";
 export type PaymentStatus = "pending" | "partial" | "paid";
@@ -164,6 +168,10 @@ export interface Payment {
   counterparty_id: string | null;
   amount: number;
   currency: string;
+  /** Multiplier from `currency` to the case currency, frozen when booked (0016). */
+  fx_rate: number;
+  /** `amount * fx_rate`, 2dp — the figure every total sums. */
+  amount_case: number;
   method: string;
   iban: string;
   due_date: string | null;

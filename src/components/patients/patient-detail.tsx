@@ -95,15 +95,13 @@ export function PatientDetail({
   const totalPrice = activeCase
     ? (quoteItemsByCase[activeCase.id] ?? []).reduce((s, i) => s + Number(i.price), 0)
     : 0;
-  // Paid = incoming payments with a paid date, in the case currency (same basis
-  // as the reconciliation in the Payments tab).
+  // Paid = incoming payments with a paid date, normalized to the case currency
+  // at each row's stored rate (same basis as the reconciliation in the Payments
+  // tab). Off-currency payments used to be dropped here and under-report.
   const paidTotal = activeCase
     ? casePayments
-        .filter(
-          (p) =>
-            p.direction === "in" && p.paid_at && p.currency === activeCase.currency
-        )
-        .reduce((s, p) => s + Number(p.amount), 0)
+        .filter((p) => p.direction === "in" && p.paid_at)
+        .reduce((s, p) => s + Number(p.amount_case ?? p.amount), 0)
     : 0;
   const outstanding = totalPrice - paidTotal;
   const caseCompleted = activeCase?.status === "completed";

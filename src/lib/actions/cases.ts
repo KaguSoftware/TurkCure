@@ -88,6 +88,31 @@ export async function upsertCase(
   const supabase = await createClient();
   let caseId = id;
   if (id) {
+    // Every off-currency payment stores a rate computed AGAINST the case
+    // currency (0016). Changing that currency silently invalidates all of them,
+    // and no DB constraint can catch it — a check can't reference another table.
+    // Block it and make the operator clear the payments first.
+    if (values.currency) {
+      const { data: existing } = await supabase
+        .from("cases")
+        .select("currency")
+        .eq("id", id)
+        .single();
+      if (existing && existing.currency !== values.currency) {
+        const { count } = await supabase
+          .from("payments")
+          .select("id", { count: "exact", head: true })
+          .eq("case_id", id)
+          .neq("currency", values.currency as string);
+        if (count && count > 0)
+          return {
+            error:
+              `This case has ${count} payment${count === 1 ? "" : "s"} converted against ` +
+              `${existing.currency}. Changing the case currency would invalidate ${count === 1 ? "its" : "their"} ` +
+              `stored rate${count === 1 ? "" : "s"} — delete or re-record ${count === 1 ? "it" : "them"} first.`,
+          };
+      }
+    }
     const { error } = await supabase.from("cases").update(values).eq("id", id);
     if (error) return { error: error.message };
   } else {
@@ -159,9 +184,13 @@ export async function upsertQuoteItem(
   const profile = await requireProfile();
   const admin = createAdminClient();
 
+  // Both labels are free text and may be empty (0017) — trim and cap them, but
+  // never reject a blank one.
+  const label = (s: unknown) => String(s ?? "").trim().slice(0, 200);
+
   const row: Record<string, unknown> = {
-    kind: values.kind,
-    description: values.description,
+    kind: label(values.kind),
+    description: label(values.description),
     price: values.price,
     sort_order: values.sort_order ?? 0,
   };

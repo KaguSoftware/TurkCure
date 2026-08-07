@@ -53,17 +53,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     .eq("case_id", caseId)
     .order("sort_order");
 
-  // Only count deposits in the same currency as the quote — summing across
-  // currencies (e.g. ₺ into a € total) would print a wrong balance on this
-  // customer-facing document.
+  // Deposits are summed via amount_case — each payment's amount already
+  // normalized to the quote currency at the rate frozen when it was booked. This
+  // used to filter off-currency payments out entirely, which printed a balance
+  // that was too high on this customer-facing document.
   const { data: paidIn } = await supabase
     .from("payments")
-    .select("amount")
+    .select("amount_case")
     .eq("case_id", caseId)
     .eq("direction", "in")
-    .eq("status", "paid")
-    .eq("currency", caseRow.currency);
-  const deposit = (paidIn ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
+    .eq("status", "paid");
+  const deposit = (paidIn ?? []).reduce((sum, p) => sum + Number(p.amount_case), 0);
 
   const { data: instructions } = await supabase
     .from("case_instructions")
