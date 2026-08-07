@@ -285,14 +285,16 @@ export function PaymentsTab({
         </span>
       </CardHeader>
       <CardContent className="px-0 pb-0">
-        <Table className="border-0 shadow-none">
+        <Table className="min-w-0 border-0 shadow-none sm:min-w-[34rem]">
           <THead>
             <tr>
+              {/* Method/Due drop below md — on a phone the row is about who,
+                  how much, and whether it landed. */}
               <Th>Counterparty</Th>
               <Th className="text-right">Amount</Th>
-              <Th>Method</Th>
-              <Th>Due</Th>
-              <Th>Paid</Th>
+              <Th className="hidden md:table-cell">Method</Th>
+              <Th className="hidden md:table-cell">Due</Th>
+              <Th className="hidden sm:table-cell">Paid</Th>
               <Th>Status</Th>
               <Th className="w-16" />
             </tr>
@@ -316,7 +318,7 @@ export function PaymentsTab({
                     </span>
                   )}
                 </Td>
-                <Td className="text-muted">
+                <Td className="hidden text-muted md:table-cell">
                   <span className="inline-flex items-center gap-1.5">
                     {p.method || "—"}
                     {p.receipt_path && (
@@ -334,8 +336,8 @@ export function PaymentsTab({
                     )}
                   </span>
                 </Td>
-                <Td className="text-muted">{formatDate(p.due_date)}</Td>
-                <Td className="text-muted">{formatDate(p.paid_at)}</Td>
+                <Td className="hidden text-muted md:table-cell">{formatDate(p.due_date)}</Td>
+                <Td className="hidden text-muted sm:table-cell">{formatDate(p.paid_at)}</Td>
                 <Td>
                   <Badge tone={PAYMENT_STATUS_TONE[p.status] ?? "slate"} className="capitalize">
                     {p.status}

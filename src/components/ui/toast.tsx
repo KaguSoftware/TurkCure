@@ -72,7 +72,9 @@ export function Toaster() {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2"
+      // Inset on both sides rather than a fixed max-w pinned right: at 390px a
+      // 384px card sat flush against the edges.
+      className="pointer-events-none fixed inset-x-3 bottom-3 z-[100] flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-full sm:max-w-sm"
     >
       {items.map((t) => (
         <div

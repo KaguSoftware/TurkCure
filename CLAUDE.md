@@ -313,6 +313,73 @@ Three small operational asks from live use.
 what makes `Ayşe Çelik.pdf` work instead of throwing the ByteString error that caused
 past PDF 500s. The instruction PDF keeps its static name.
 
+## Recent work — 2026-08-07 multi-currency payments, free quote labels, mobile pass
+
+**Multi-currency payments** — `supabase/migrations/0016_payment_fx.sql` (applied 2026-08-07):
+- A case is priced in one currency but patients sometimes pay in another. The form already
+  accepted any currency while **every total silently dropped the mismatched row**:
+  `finance_case_rows()` joined `coll.currency = c.currency`, the patient header chip filtered
+  on it, and the case PDF's deposit query had an explicit `.eq("currency", …)`. Real cash
+  existed in the DB and appeared nowhere.
+- `payments.fx_rate numeric(18,8)` (multiplier to the **case** currency, frozen at booking
+  time) + `payments.amount_case numeric(12,2)` (`round(amount * fx_rate, 2)`). `amount_case` is
+  **stored, not derived**: a generated column can't reach `cases.currency`, and computing on
+  read lets SQL, the optimistic client row and the PDF each round independently. A
+  `check (abs(amount_case - amount * fx_rate) <= 0.01)` ties the pair together — the tolerance
+  absorbs JS-vs-Postgres rounding; strict equality would fail sporadically on real amounts.
+- Legacy off-currency rows were backfilled from the hand-maintained table in `lib/fx.ts`, not
+  left at 1:1. `0011`'s `(case_id, direction, status, currency)` index became
+  `(case_id, direction, status) include (amount_case)`.
+- **Rounding rule, one place:** amount → 2dp, rate → 8dp, then the product → 2dp. Mirrored in
+  `payments-tab.tsx`'s `round2` so the optimistic row matches the server.
+- Live rates: **`src/lib/data/fx.ts`** (server-only) hits **frankfurter.app** — ECB reference
+  rates, no key, open-source — behind `unstable_cache` (tag `"fx"`, 1h) with
+  `cache: "no-store"` and a 2.5s `AbortSignal.timeout`. **The try/catch sits OUTSIDE the cached
+  function** — inverted, one blip pins the fallback for an hour. This is the app's first
+  outbound `fetch`. `src/lib/actions/fx.ts` `getLiveRate()` is the client bridge; it is called
+  only from the open payment dialog, never on a render path. `src/lib/fx.ts` stays pure
+  (a client component imports it) and now exports `FALLBACK_RATES_TO_USD`.
+- `upsertCase` now **refuses to change `cases.currency`** while off-currency payments exist —
+  their stored rates were computed against the old target and no check constraint can catch it.
+- ⚠️ Applying `0016` **moved numbers**: previously-excluded payments now count.
+- Known follow-up: the finance **"All"** mode is now the last hardcoded FX in the app (still the
+  2026-07-09 table). Not broken, but the two mechanisms disagreeing is confusing.
+
+**Free-form quote labels** — `supabase/migrations/0017_quote_item_kind_text.sql` (applied):
+- `quote_items.kind` moved off the `quote_item_kind` enum to `text` (default `''`), same
+  reasoning as `patient_files.category` in `0014` — **no check constraint**, arbitrary text is
+  the point. The view `quote_items_public` had to be dropped and recreated around the type
+  change. `QuoteItemKind` is now `string`.
+- The Type field is a `ComboBox` in **`freeText`** mode over `KIND_SUGGESTIONS`; Description
+  dropped its `required`. The ComboBox holds its value in React state, so `form.reset()` can't
+  clear it — a `formKey` remounts it after each add. Blank labels render as `—` and the delete
+  confirm falls back kind → price so it never says "Remove **** from the quote?".
+
+**Mobile pass (390×844)** — driven in a real browser, not inferred from classes:
+- **`scripts/mobile-audit.mjs`** + `playwright` (devDependency). Authenticates by minting a
+  magic link with the service-role key in `.env.local` (no test user), then screenshots every
+  route and overlay — **full-page plus one shot per scroll position**, because judging a phone
+  layout from its first 844px is how below-the-fold breakage survives. It also reports pages
+  that scroll horizontally and elements wider than the viewport, **skipping any element whose
+  ancestor scrolls it on purpose** — otherwise every intentionally-wide table is a false
+  positive. Output goes to gitignored `.mobile-audit/`.
+- **Primitives (these lift every screen):** `Table` gained a `min-w` floor — without it
+  `w-full` let an 8-column table compress into 390px instead of scrolling, wrapping every cell
+  to three lines; this was the single largest source of "horrific". `Dialog` is now capped
+  (`max-h` + internally scrolling body) so a tall form no longer takes its own title and
+  buttons off screen. `TabBar` scrolls sideways instead of wrapping "Case & Quote" over three
+  lines. `CardHeader` wraps. `Toaster` is inset on both sides. `PageHeader` stacks below `sm`.
+  The date-picker calendar is wider with ~44px day cells on a phone.
+- **Screens:** wide tables now *drop* low-value columns below `sm`/`md`/`lg` rather than
+  clipping them (patients → Name/Status/Contact; payments → Counterparty/Amount/Status;
+  finance → Patient/Revenue/Collected/Margin). Directory tables can't hide columns (the set is
+  dynamic) so they truncate instead of wrapping. Finance stat cards are 2-up. Fixed-width
+  toolbar selects are `w-full sm:w-NN`. The command palette no longer opens into the keyboard.
+- **A real bug, not cosmetics:** the instruction-image remove button was
+  `hidden group-hover:block` — **unreachable on touch**. Tap targets raised on the reminder
+  done-toggle (via `before:-inset-3`), board chevrons, table checkboxes and the markdown
+  toolbar.
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this

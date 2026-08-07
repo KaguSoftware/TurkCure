@@ -151,8 +151,10 @@ export function FilesTab({
                   const Icon = IMAGE_RE.test(f.label) ? ImageIcon : FileText;
                   return (
                     <Card key={f.id} className="animate-pop">
-                      <CardContent className="flex items-center justify-between gap-3 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
+                      {/* Wraps below sm: filename + category select + two icon
+                          buttons is the tightest row in the app at 390px. */}
+                      <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           <Icon className="size-4 shrink-0 text-muted" />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{f.label}</p>

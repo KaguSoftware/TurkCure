@@ -423,7 +423,7 @@ export function RemindersPanel({
             )}
           >
             <Select
-              className="w-36"
+              className="w-full sm:w-36"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
@@ -435,7 +435,7 @@ export function RemindersPanel({
               ))}
             </Select>
             <Select
-              className="w-44"
+              className="w-full sm:w-44"
               value={patientFilter}
               onChange={(e) => setPatientFilter(e.target.value)}
             >
@@ -447,7 +447,7 @@ export function RemindersPanel({
               ))}
             </Select>
             <Select
-              className="w-40"
+              className="w-full sm:w-40"
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
             >
@@ -458,8 +458,8 @@ export function RemindersPanel({
                 </option>
               ))}
             </Select>
-            <DatePicker value={dueFrom} onChange={setDueFrom} placeholder="Due from" className="w-36" />
-            <DatePicker value={dueTo} onChange={setDueTo} placeholder="Due to" className="w-36" />
+            <DatePicker value={dueFrom} onChange={setDueFrom} placeholder="Due from" className="w-full sm:w-36" />
+            <DatePicker value={dueTo} onChange={setDueTo} placeholder="Due to" className="w-full sm:w-36" />
             {filtersActive && (
               <Button
                 variant="ghost"
@@ -503,8 +503,11 @@ export function RemindersPanel({
               <button
                 aria-label={isDone ? "Mark not done" : "Mark done"}
                 onClick={() => onToggleDone(r)}
+                // The visual circle stays 20px; an invisible ::before extends the
+                // hit area to ~44px without changing the layout.
                 className={cn(
-                  "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors cursor-pointer",
+                  "relative flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors cursor-pointer",
+                  "before:absolute before:-inset-3 before:content-['']",
                   isDone || isCompleting
                     ? "border-success bg-success text-white"
                     : "border-border-strong text-transparent hover:border-success hover:bg-success hover:text-white"

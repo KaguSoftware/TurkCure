@@ -35,7 +35,9 @@ function Calendar({
   const today = new Date();
 
   return (
-    <div className="w-64 select-none p-3">
+    // Wider on a phone so day cells clear the ~44px touch target; the 16rem
+    // desktop width is kept as the cap.
+    <div className="w-[19rem] max-w-[calc(100vw-1.5rem)] select-none p-3 sm:w-64">
       <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
@@ -94,7 +96,7 @@ function Calendar({
               aria-current={isToday ? "date" : undefined}
               aria-pressed={isSelected ?? undefined}
               className={cn(
-                "rounded-md py-1.5 text-xs transition-colors cursor-pointer",
+                "rounded-md py-2.5 text-sm transition-colors cursor-pointer sm:py-1.5 sm:text-xs",
                 !isSameMonth(day, view) && "text-muted-light/50",
                 isSelected
                   ? "bg-primary font-semibold text-primary-fg"

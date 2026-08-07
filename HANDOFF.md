@@ -47,7 +47,33 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-07-27)
+## Current status (2026-08-07)
+
+**This session (2026-08-07) — three asks from live use. Migrations `0016` and `0017` were
+applied to the live Supabase project on 2026-08-07** (Parsa said "linked to supabase, feel free
+to push" — `supabase db push --linked`; the CLI's migration history was in sync with the
+hand-applied `0001`–`0015`). **The standing rule is still hand-applied migrations** — that was a
+one-off explicit authorization, not a new default.
+1. **Payments can be in any currency, with a stored conversion rate.** `0016` adds
+   `payments.fx_rate` + `payments.amount_case`. Live rates from frankfurter.app prefill an
+   editable field; the rate is frozen on the row so history never re-rates. Finance, the patient
+   header chip, the payments cards and the case PDF all now count off-currency payments instead
+   of silently dropping them. ⚠️ **This moved numbers** — case totals containing a
+   previously-excluded payment changed. Verified in a browser: recording a USD payment on a EUR
+   case fetched `1 USD = 0.86640097 EUR` live and previewed the converted total correctly.
+2. **Quote labels are free text.** `0017` moves `quote_items.kind` off its enum; both Type and
+   Description accept anything or nothing.
+3. **Mobile pass at 390×844, screenshot-driven** via the new `scripts/mobile-audit.mjs`
+   (Playwright devDependency). See CLAUDE.md for what changed; the short version is that tables
+   used to compress instead of scrolling, dialogs ran off the bottom of the screen, and the
+   instruction-image remove button was unreachable on touch.
+
+⚠️ **Not yet checked on a real phone.** Playwright emulates a 390px viewport but is not a touch
+device — worth Parsa spot-checking the tap targets and the horizontal table scroll on his own
+handset. Also untested end-to-end: what happens when frankfurter.app is unreachable (the
+fallback path is written and typed, but was not exercised).
+
+## Previous status (2026-07-27)
 The app is built and in real use on Vercel. Recent threads: auth overhaul (2026-07-13), a
 performance pass (2026-07-13, migration `0011`), a UI/UX pass (2026-07-13), PDF resilience fixes,
 structured directory contact fields (`0013`), and case comboboxes (2026-07-24).
@@ -109,8 +135,13 @@ Turkish characters.
   numbers**, and the four directories).
 - `src/lib/supabase/server.ts` — cookie + admin clients, cached `getProfile()`.
 - `src/proxy.ts` — Next 16 middleware / auth gate (local JWT exp check).
-- `supabase/migrations/` — hand-applied SQL, numbered `0001`…`0015`. `0001`–`0013` are applied;
-  **`0014` and `0015` are pending.**
+- `src/lib/data/fx.ts` — server-only live FX (frankfurter.app) behind `unstable_cache` tag
+  `"fx"`; `src/lib/actions/fx.ts` is the client bridge; `src/lib/fx.ts` stays pure + offline
+  fallback. **The try/catch must stay outside the cached function.**
+- `scripts/mobile-audit.mjs` — Playwright phone-width sweep. `node scripts/mobile-audit.mjs
+  --label after --out .mobile-audit/after` with `npm run dev` already running.
+- `supabase/migrations/` — numbered `0001`…`0017`, **all applied.** `0001`–`0015` by hand,
+  `0016`/`0017` via `supabase db push --linked` on 2026-08-07.
 
 ## Roadmap / next steps
 No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**
@@ -130,7 +161,13 @@ Standing candidates if asked:
   **name/typed text**. The airport fields rely on `freeText`. Don't mix them up when reusing it.
 - **Locally-created directory rows** live in the ComboBox's local option state until the next
   `router.refresh()` lands — that's deliberate so the new row shows its name immediately.
-- **Migrations are hand-applied.** `0013` was the last; nothing new added this session.
+- **Migrations are hand-applied by default.** `0016`/`0017` were pushed via the CLI only because
+  Parsa explicitly authorized it on 2026-08-07. Don't assume that carries forward.
+- **`cases.currency` is now locked once off-currency payments exist** — their `fx_rate` was
+  computed against the old target and no check constraint can reference another table, so
+  `upsertCase` refuses the change with a message rather than silently corrupting the rates.
+- **`Table` has a `min-w` floor now.** A table that should fit a phone must opt out
+  (`min-w-0 sm:min-w-[34rem]`) *and* hide its low-value columns, or it will scroll sideways.
 - **`unstable_cache` staleness**: any new cached read needs its tag raised from every writer — the
   classic miss.
 - **PDF routes**: non-ASCII patient names in the `Content-Disposition` filename were the source of

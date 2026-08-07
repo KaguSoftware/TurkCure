@@ -102,7 +102,8 @@ export function CommandPalette() {
   if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[15vh]">
+    <div // A 15vh offset pushed the panel into the on-screen keyboard on a phone.
+      className="fixed inset-0 z-50 flex items-start justify-center p-3 pt-[6vh] sm:p-4 sm:pt-[15vh]">
       <div
         className={cn(
           "animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]",
@@ -138,7 +139,7 @@ export function CommandPalette() {
             esc
           </kbd>
         </div>
-        <div className="max-h-80 overflow-y-auto p-2">
+        <div className="max-h-[50vh] overflow-y-auto overscroll-contain p-2 sm:max-h-80">
           {query.trim().length < 2 ? (
             <p className="px-3 py-6 text-center text-sm text-muted">
               Type at least 2 characters to search.

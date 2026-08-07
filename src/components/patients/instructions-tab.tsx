@@ -277,7 +277,10 @@ function InstructionCard({
                 type="button"
                 aria-label="Remove image"
                 onClick={() => setConfirmRemoveImage(path)}
-                className="absolute -right-1.5 -top-1.5 hidden rounded-full bg-danger p-0.5 text-white group-hover:block cursor-pointer"
+                // Was `hidden group-hover:block`, which made removing an image
+                // impossible on a touch device. Always visible; hover only
+                // strengthens it on pointer devices.
+                className="absolute -right-2 -top-2 rounded-full bg-danger p-1.5 text-white shadow-card opacity-90 transition-opacity hover:opacity-100 cursor-pointer"
               >
                 <X className="size-3" />
               </button>

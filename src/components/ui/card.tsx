@@ -11,7 +11,17 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-center justify-between gap-2 px-5 pt-4 pb-2", className)} {...props} />;
+  // Wraps on narrow screens: a long title next to action buttons used to squeeze
+  // both into unreadable columns at phone width.
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-5 pt-4 pb-2",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {

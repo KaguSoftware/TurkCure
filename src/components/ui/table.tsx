@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-x-auto rounded-xl border border-border bg-surface shadow-card [-webkit-overflow-scrolling:touch]">
-      <table className={cn("w-full caption-bottom text-sm", className)} {...props} />
+      {/* The min-width floor is what makes the wrapper's overflow-x actually
+          engage. Without it `w-full` lets a many-column table compress into a
+          390px phone instead of scrolling, wrapping every cell to three lines.
+          Callers with wider tables raise it via className (tailwind-merge wins). */}
+      <table className={cn("w-full min-w-[34rem] caption-bottom text-sm", className)} {...props} />
     </div>
   );
 }

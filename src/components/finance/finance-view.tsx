@@ -167,7 +167,9 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/* 2-up on a phone: one-per-row pushed the chart and table four
+            screen-heights down before anything else was visible. */}
+        <div className="grid flex-1 grid-cols-2 gap-3 xl:grid-cols-4">
           {stat("Revenue (quoted)", totalRevenue)}
           {stat(
             "Collected",
@@ -178,12 +180,12 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
           {stat("Internal cost", totalCost)}
           {stat("Margin (quoted)", margin, margin >= 0 ? "text-success" : "text-danger")}
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2 md:ml-4">
-          <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex shrink-0 flex-col gap-2 md:ml-4 md:items-end">
+          <div className="flex items-center gap-2 md:justify-end">
             <Button variant="secondary" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
               <Download /> Export CSV
             </Button>
-            <div className="w-36">
+            <div className="flex-1 md:w-36 md:flex-none">
               <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
                 <option value="ALL">All (in USD)</option>
                 {CURRENCIES.map((c) => (
@@ -195,7 +197,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
             </div>
           </div>
           {isAll && (
-            <p className="text-right text-[10px] leading-tight text-muted-light">
+            <p className="text-[10px] leading-tight text-muted-light md:text-right">
               FX rates as of {FX_RATES_AS_OF}
             </p>
           )}
@@ -224,15 +226,18 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
           <CardTitle>Per-case margins ({isAll ? "all currencies → USD" : currency})</CardTitle>
         </CardHeader>
         <CardContent className="px-0 pb-0">
-          <Table className="border-0 shadow-none">
+          <Table className="min-w-0 border-0 shadow-none sm:min-w-[34rem]">
             <THead>
               <tr>
+                {/* Seven money columns cannot coexist with a 390px screen —
+                    Operation/Status/Cost drop out below md, leaving the three
+                    numbers the page exists to compare. */}
                 <Th>Patient</Th>
-                <Th>Operation</Th>
-                <Th>Status</Th>
+                <Th className="hidden md:table-cell">Operation</Th>
+                <Th className="hidden lg:table-cell">Status</Th>
                 <Th className="text-right">Revenue</Th>
                 <Th className="text-right">Collected</Th>
-                <Th className="text-right">Cost</Th>
+                <Th className="hidden text-right md:table-cell">Cost</Th>
                 <Th className="text-right">Margin</Th>
               </tr>
             </THead>
@@ -248,8 +253,10 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                         {r.patientName}
                       </Link>
                     </Td>
-                    <Td className="text-muted">{r.operation}</Td>
-                    <Td className="capitalize text-muted">{r.status.replace("_", " ")}</Td>
+                    <Td className="hidden text-muted md:table-cell">{r.operation}</Td>
+                    <Td className="hidden capitalize text-muted lg:table-cell">
+                      {r.status.replace("_", " ")}
+                    </Td>
                     <Td className="text-right tabular-nums">
                       {formatMoney(r.revenue, displayCurrency)}
                       {isAll && r.currency !== "USD" && (
@@ -264,7 +271,7 @@ export function FinanceView({ rows }: { rows: CaseFinance[] }) {
                     >
                       {formatMoney(r.collected, displayCurrency)}
                     </Td>
-                    <Td className="text-right tabular-nums text-muted">
+                    <Td className="hidden text-right tabular-nums text-muted md:table-cell">
                       {formatMoney(r.cost, displayCurrency)}
                     </Td>
                     <Td

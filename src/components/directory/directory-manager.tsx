@@ -16,6 +16,7 @@ import {
   deleteDirectoryRow,
   type DirectoryTable,
 } from "@/lib/actions/directory";
+import { cn } from "@/lib/utils";
 
 export interface FieldDef {
   key: string;
@@ -232,11 +233,16 @@ export function DirectoryManager({
         </Button>
       </div>
 
-      <Table>
+      {/* Column count is dynamic per directory, so instead of hiding columns
+          this table scrolls with a floor wide enough that cells stop wrapping —
+          on a phone the wrap turned every row into five lines. */}
+      <Table className="min-w-[46rem]">
         <THead>
           <tr>
             {visible.map((f) => (
-              <Th key={f.key}>{f.label}</Th>
+              <Th key={f.key} className="whitespace-nowrap">
+                {f.label}
+              </Th>
             ))}
             <Th className="w-24 text-right">Actions</Th>
           </tr>
@@ -248,7 +254,17 @@ export function DirectoryManager({
           {filtered.map((row) => (
             <Tr key={row.id as string}>
               {visible.map((f) => (
-                <Td key={f.key} className={f === visible[0] ? "font-medium" : "text-muted"}>
+                <Td
+                  key={f.key}
+                  // Truncate rather than wrap: a long doctor title or notes
+                  // value turned a phone row into five lines of text with the
+                  // rest of the row left blank. The full value is one tap away
+                  // in the edit dialog.
+                  className={cn(
+                    "max-w-[14rem] truncate",
+                    f === visible[0] ? "font-medium" : "text-muted"
+                  )}
+                >
                   {renderCell(row, f)}
                 </Td>
               ))}

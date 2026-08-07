@@ -38,7 +38,15 @@ export function TabBar<T extends string>({
   }
 
   return (
-    <div role="tablist" className={cn("flex gap-1 border-b border-border", className)}>
+    // Scrolls sideways rather than wrapping: at 390px the four patient tabs
+    // used to break "Case & Quote" across three lines.
+    <div
+      role="tablist"
+      className={cn(
+        "flex gap-1 overflow-x-auto border-b border-border [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        className
+      )}
+    >
       {tabs.map((t, i) => {
         const active = t === value;
         return (
@@ -55,7 +63,7 @@ export function TabBar<T extends string>({
             onClick={() => onChange(t)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "pressable -mb-px border-b-2 px-4 py-2.5 text-sm font-medium cursor-pointer",
+              "pressable -mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium cursor-pointer",
               active
                 ? "border-primary text-primary"
                 : "border-transparent text-muted hover:text-foreground"

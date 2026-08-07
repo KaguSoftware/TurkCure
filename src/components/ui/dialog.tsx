@@ -39,7 +39,7 @@ export function Dialog({
   if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 sm:p-8">
       <div
         className={cn(
           "animate-overlay fixed inset-0 bg-black/40 backdrop-blur-[2px]",
@@ -53,24 +53,28 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "animate-pop relative z-10 mt-8 w-full rounded-xl border border-border bg-surface shadow-pop",
+          // Capped height with an internally scrolling body: a tall form (the
+          // patient and payment dialogs are ~14 fields) used to run off the
+          // bottom of a phone and take its title and buttons with it.
+          "animate-pop relative z-10 flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-pop",
+          "max-h-[calc(100dvh-1.5rem)] sm:mt-8 sm:max-h-[calc(100dvh-4rem)]",
           closing && "animate-pop-out",
           wide ? "max-w-3xl" : "max-w-lg"
         )}
       >
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
           <h2 id={titleId} className="text-sm font-semibold">
             {title}
           </h2>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-muted hover:bg-surface-hover hover:text-foreground cursor-pointer"
+            className="-mr-1.5 rounded-md p-2 text-muted hover:bg-surface-hover hover:text-foreground cursor-pointer"
           >
             <X className="size-4" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">{children}</div>
       </div>
     </div>
   );

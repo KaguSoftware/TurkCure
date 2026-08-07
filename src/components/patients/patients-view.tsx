@@ -326,7 +326,9 @@ export function PatientsView({
             <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-light" />
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Left-aligned and allowed to fill the row on a phone: right-aligned
+            wrapping stranded "New Patient" alone on its own line. */}
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Button
             variant={showFilters || filtersActive ? "soft" : "secondary"}
             size="sm"
@@ -371,7 +373,7 @@ export function PatientsView({
           )}
         >
           <Select
-            className="w-40"
+            className="w-full sm:w-40"
             value={statusFilter}
             onChange={(e) => setParams({ status: e.target.value })}
           >
@@ -383,7 +385,7 @@ export function PatientsView({
             ))}
           </Select>
           <Select
-            className="w-44"
+            className="w-full sm:w-44"
             value={agentFilter}
             onChange={(e) => setParams({ agent: e.target.value })}
           >
@@ -395,7 +397,7 @@ export function PatientsView({
             ))}
           </Select>
           <Select
-            className="w-44"
+            className="w-full sm:w-44"
             value={countryFilter}
             onChange={(e) => setParams({ country: e.target.value })}
           >
@@ -430,7 +432,7 @@ export function PatientsView({
           </span>
           {bulkPending && <Loader2 className="size-4 animate-spin text-muted" />}
           <Select
-            className="w-44"
+            className="w-full sm:w-44"
             value=""
             disabled={bulkPending}
             onChange={(e) => {
@@ -445,7 +447,7 @@ export function PatientsView({
             ))}
           </Select>
           <Select
-            className="w-44"
+            className="w-full sm:w-44"
             value=""
             disabled={bulkPending}
             onChange={(e) => {
@@ -487,7 +489,7 @@ export function PatientsView({
                     controls can be sibling buttons — no nested interactives. */}
                 <div className="flex w-full items-center justify-between gap-1 px-1">
                   <button
-                    className="flex flex-1 cursor-pointer items-center gap-1"
+                    className="flex flex-1 cursor-pointer items-center gap-1 py-2"
                     aria-expanded={!collapsed}
                     onClick={() => setColToggles((t) => ({ ...t, [status]: !collapsed }))}
                   >
@@ -502,7 +504,7 @@ export function PatientsView({
                     </span>
                   </button>
                   <button
-                    className="pressable shrink-0 rounded p-0.5 text-muted-light hover:text-primary cursor-pointer"
+                    className="pressable shrink-0 rounded p-2.5 text-muted-light hover:text-primary cursor-pointer"
                     aria-label={`Maximize ${PATIENT_STATUS_LABEL[status]} column`}
                     onClick={(e) => {
                       const el = (e.currentTarget as HTMLElement).closest("[data-col]");
@@ -564,7 +566,9 @@ export function PatientsView({
           })}
         </div>
       ) : (
-        <Table>
+        // Columns are dropped below sm/md/lg (see the headers), so the scroll
+        // floor only kicks in once they come back.
+        <Table className="min-w-0 sm:min-w-[34rem]">
           <THead>
             <tr>
               <Th className="w-8">
@@ -575,16 +579,19 @@ export function PatientsView({
                   onChange={() =>
                     setSelected(allSelected ? new Set() : new Set(effective.map((p) => p.id)))
                   }
-                  className="size-3.5 cursor-pointer accent-[var(--color-primary)]"
+                  className="size-4 cursor-pointer accent-[var(--color-primary)]"
                 />
               </Th>
+              {/* Secondary columns drop out below lg rather than being clipped
+                  off the right edge of a phone. Name/Status/Contact are what a
+                  phone user is actually scanning for. */}
               <Th>Name</Th>
               <Th>Status</Th>
-              <Th>Country</Th>
+              <Th className="hidden sm:table-cell">Country</Th>
               <Th>Contact</Th>
-              <Th>Source</Th>
-              <Th>Agent</Th>
-              <Th>Created</Th>
+              <Th className="hidden lg:table-cell">Source</Th>
+              <Th className="hidden lg:table-cell">Agent</Th>
+              <Th className="hidden md:table-cell">Created</Th>
             </tr>
           </THead>
           <TBody>
@@ -597,7 +604,7 @@ export function PatientsView({
                     aria-label={`Select ${p.full_name}`}
                     checked={selected.has(p.id)}
                     onChange={() => toggleSelect(p.id)}
-                    className="size-3.5 cursor-pointer accent-[var(--color-primary)]"
+                    className="size-4 cursor-pointer accent-[var(--color-primary)]"
                   />
                 </Td>
                 <Td className="font-medium">
@@ -608,7 +615,7 @@ export function PatientsView({
                 <Td>
                   <StatusBadge status={p.status} />
                 </Td>
-                <Td className="text-muted">{p.countries?.name ?? "—"}</Td>
+                <Td className="hidden text-muted sm:table-cell">{p.countries?.name ?? "—"}</Td>
                 <Td className="text-muted">
                   <span className="inline-flex items-center gap-1.5">
                     {p.email || p.phone || "—"}
@@ -626,9 +633,9 @@ export function PatientsView({
                     )}
                   </span>
                 </Td>
-                <Td className="text-muted">{p.source || "—"}</Td>
-                <Td className="text-muted">{p.profiles?.name ?? "—"}</Td>
-                <Td className="text-muted">{formatDate(p.created_at)}</Td>
+                <Td className="hidden text-muted lg:table-cell">{p.source || "—"}</Td>
+                <Td className="hidden text-muted lg:table-cell">{p.profiles?.name ?? "—"}</Td>
+                <Td className="hidden text-muted md:table-cell">{formatDate(p.created_at)}</Td>
               </Tr>
             ))}
           </TBody>

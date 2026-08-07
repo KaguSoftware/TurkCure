@@ -167,7 +167,7 @@ function ProfileTab({ profile }: { profile: Profile }) {
           <CardTitle>Profile picture</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- Supabase public URL
               <img

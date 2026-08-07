@@ -273,7 +273,7 @@ export function MarkdownEditor({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => runToolbar(b.id)}
               className={cn(
-                "flex size-7 items-center justify-center rounded-md transition-colors cursor-pointer [&_svg]:size-4",
+                "flex size-9 items-center sm:size-7 justify-center rounded-md transition-colors cursor-pointer [&_svg]:size-4",
                 b.active
                   ? "bg-primary-soft text-primary"
                   : "text-muted hover:bg-surface hover:text-foreground"
@@ -290,7 +290,7 @@ export function MarkdownEditor({
             aria-label="Delete table"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => runToolbar("deleteTable")}
-            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-danger cursor-pointer [&_svg]:size-4"
+            className="flex size-9 items-center sm:size-7 justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-danger cursor-pointer [&_svg]:size-4"
           >
             <Trash2 />
           </button>
@@ -303,7 +303,7 @@ export function MarkdownEditor({
           aria-label={expanded ? "Exit full screen" : "Full screen"}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setExpanded((x) => !x)}
-          className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground cursor-pointer [&_svg]:size-4"
+          className="flex size-9 items-center sm:size-7 justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground cursor-pointer [&_svg]:size-4"
         >
           {expanded ? <Minimize2 /> : <Maximize2 />}
         </button>
