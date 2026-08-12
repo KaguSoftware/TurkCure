@@ -15,6 +15,7 @@ import { cn, formatDate, formatMoney, waLink } from "@/lib/utils";
 import { MessageCircle } from "lucide-react";
 import type {
   Case,
+  CaseAdditionalCost,
   CaseInstruction,
   Patient,
   PatientFile,
@@ -22,6 +23,7 @@ import type {
   QuoteItem,
 } from "@/lib/types";
 import { PatientFormDialog } from "./patient-form";
+import { CombinedPdfDialog } from "./combined-pdf-dialog";
 import { CaseTab } from "./case-tab";
 import { PaymentsTab } from "./payments-tab";
 import { InstructionsTab } from "./instructions-tab";
@@ -44,6 +46,7 @@ export function PatientDetail({
   patient,
   cases,
   quoteItemsByCase,
+  additionalCostsByCase,
   payments,
   instructions,
   files,
@@ -54,6 +57,7 @@ export function PatientDetail({
   patient: Patient;
   cases: Case[];
   quoteItemsByCase: Record<string, QuoteItem[]>;
+  additionalCostsByCase: Record<string, CaseAdditionalCost[]>;
   payments: Payment[];
   instructions: CaseInstruction[];
   files: PatientFile[];
@@ -77,6 +81,7 @@ export function PatientDetail({
   };
   const setTab = (t: (typeof TABS)[number]) => setParam("tab", t);
   const [editOpen, setEditOpen] = React.useState(false);
+  const [combinedOpen, setCombinedOpen] = React.useState(false);
   const [confirmSync, setConfirmSync] = React.useState(false);
   const syncing = useAction();
   // Which case is being viewed; "new" shows an empty create form for a repeat visit.
@@ -168,6 +173,12 @@ export function PatientDetail({
                 </Button>
               </a>
             )}
+            {/* Only worth offering once there's more than one case to combine. */}
+            {cases.length > 1 && (
+              <Button variant="secondary" onClick={() => setCombinedOpen(true)}>
+                <FileDown /> Combined PDF
+              </Button>
+            )}
             {caseCompleted && (
               <Badge tone="green" className="gap-1 px-3 py-1.5">
                 <CheckCircle2 className="size-3.5" /> Completed
@@ -239,6 +250,7 @@ export function PatientDetail({
             patient={patient}
             activeCase={activeCase}
             quoteItemsByCase={quoteItemsByCase}
+            additionalCostsByCase={additionalCostsByCase}
             isAdmin={isAdmin}
             directories={directories}
             onCaseCreated={(id) => setSelectedCaseId(id)}
@@ -266,6 +278,12 @@ export function PatientDetail({
           <FilesTab patient={patient} files={files} currentUserId={currentUserId} />
         )}
       </TabPanel>
+
+      <CombinedPdfDialog
+        open={combinedOpen}
+        onClose={() => setCombinedOpen(false)}
+        cases={cases}
+      />
 
       <PatientFormDialog
         open={editOpen}

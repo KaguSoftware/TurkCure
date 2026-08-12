@@ -169,6 +169,19 @@ export interface QuoteItem {
   sort_order: number;
 }
 
+/**
+ * A per-case extra shown on the PDF under Payment Information. Deliberately
+ * outside `quote_items`: never summed into the package total, never seen by
+ * finance_case_rows(). See 0020.
+ */
+export interface CaseAdditionalCost {
+  id: string;
+  case_id: string;
+  title: string;
+  amount: number;
+  sort_order: number;
+}
+
 export interface Payment {
   id: string;
   case_id: string;

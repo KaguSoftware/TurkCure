@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { createClient, requireProfile } from "@/lib/supabase/server";
-import { getQuoteItemsForPatient } from "@/lib/actions/cases";
+import { getQuoteItemsForPatient, getAdditionalCostsForPatient } from "@/lib/actions/cases";
 import { getDirectories } from "@/lib/data/directory";
 import { PatientDetail } from "@/components/patients/patient-detail";
-import type { Case, Patient, QuoteItem } from "@/lib/types";
+import type { Case, CaseAdditionalCost, Patient, QuoteItem } from "@/lib/types";
 
 export default async function PatientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +20,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     { data: templates },
     { data: files },
     quoteItemsRaw,
+    additionalCostsRaw,
   ] = await Promise.all([
     supabase
       .from("patients")
@@ -37,6 +38,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     supabase.from("instruction_templates").select("id, title").order("title"),
     supabase.from("patient_files").select("*").eq("patient_id", id).order("created_at", { ascending: false }),
     getQuoteItemsForPatient(id),
+    getAdditionalCostsForPatient(id),
   ]);
   if (!patient) notFound();
   const { countries, agents, doctors, hospitals, hotels, drivers, operationTypes } = directories;
@@ -50,12 +52,17 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     .sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
 
   const quoteItemsByCase = quoteItemsRaw as unknown as Record<string, QuoteItem[]>;
+  const additionalCostsByCase = additionalCostsRaw as unknown as Record<
+    string,
+    CaseAdditionalCost[]
+  >;
 
   return (
     <PatientDetail
       patient={patient as Patient}
       cases={(cases ?? []) as Case[]}
       quoteItemsByCase={quoteItemsByCase}
+      additionalCostsByCase={additionalCostsByCase}
       payments={
         profile.role === "admin"
           ? (payments ?? [])

@@ -47,7 +47,42 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-08-07, evening — finance overhaul)
+## Current status (2026-08-12 — additional costs, multi-case PDF, wordmark fix)
+
+Four asks from live use, all on the patient PDF. `npm run build` green, and this session the
+PDFs were **actually rendered and looked at** (Playwright through the app's own auth, then
+rasterized with pdfjs) rather than inferred from the build.
+
+1. **⚠️ Migration `0020_case_additional_costs.sql` is written but NOT APPLIED.** Parsa authorized
+   applying it, but `npx supabase db push --linked` was blocked by the assistant's permission
+   layer (same as `0019` last session) and there is no DB connection string in `.env.local`, so
+   **Parsa must run `npx supabase db push --linked` himself.** Until then the Additional costs
+   card errors on save and the PDF block never appears; nothing else is affected.
+   - **Correction to the note below:** `supabase migration list --linked` on 2026-08-12 shows
+     **`0019` IS applied remotely** (`local 0019 / remote 0019`). The finance page is not
+     degraded. `0020` is the only pending migration.
+2. **Additional costs** — a per-case list of extras (title + amount) that prints on the PDF under
+   Payment Information and is **deliberately inert everywhere else**: not in the package total,
+   not in Finance. New `case_additional_costs` table rather than `quote_items`, because
+   `quote_items.price` feeds the PDF total and both its money columns feed `finance_case_rows()`.
+   Editor sits under the Quote card; the PDF block is hidden entirely when the list is empty.
+3. **Combined multi-case PDF** — "Combined PDF" button on the patient header (shown only when
+   there's >1 case) opens a case-picker dialog. One cover per case, then a single body where
+   Patient Information, the company block and the signature page appear **once**, and each case
+   contributes `2.1`, `3.1`… sections. Selecting one case routes to the existing single-case URL.
+   The 423-line inline document was extracted to `src/lib/pdf/case-doc.tsx` so both routes share it.
+4. **Both PDF wordmarks fixed.** The cover one was off-centre as reported. Screenshotting then
+   revealed a **pre-existing bug**: the blue header wordmark had been clipping "Cure", so every
+   page header in every PDF read just **"Turk"**. Both are now flex text instead of SVG.
+5. **"Medication included"** added to the Package Details bullets.
+
+**Verified in-browser:** single-case PDF unchanged (4 pages, sections 1-7, medication bullet
+present); combined 2-case mixed-currency PDF (6 pages) with correct numbering, per-case
+currencies never summed, and the closing blocks once; `?cases=` spanning two patients → 404,
+empty → 400, duplicate id → rendered once. **Not yet verified:** the Additional costs block
+end-to-end (needs `0020`), and the new dialog on a real phone.
+
+## Previous status (2026-08-07, evening — finance overhaul)
 
 **Second 2026-08-07 session: the Finance section went from "just numbers" to a real
 finance tool.** Everything builds green (`npm run build`), design detector clean, and
@@ -75,6 +110,7 @@ every tab was screenshot-verified at 1440×900 + 390×844 in light AND dark via 
    Parsa hit this twice in one evening and it is now a standing rule).
 
 ## Previous status (2026-08-07, morning)
+
 
 **This session (2026-08-07) — three asks from live use. Migrations `0016` and `0017` were
 applied to the live Supabase project on 2026-08-07** (Parsa said "linked to supabase, feel free
@@ -181,9 +217,14 @@ Turkish characters.
   light + dark (forces theme via `localStorage.theme`), flags real vertical
   scrollbars, horizontal bleed and page micro-overflow. Output gitignored
   (`.finance-audit/`).
-- `supabase/migrations/` — numbered `0001`…`0019`. `0001`–`0015` by hand,
-  `0016`/`0017` via CLI on 2026-08-07, `0018` applied; **`0019` pending — Parsa runs
-  `npx supabase db push --linked`.**
+- `src/lib/pdf/case-doc.tsx` — the whole patient-facing case document: `loadCasesData` (batch,
+  same-patient assertion), `CaseCover`, `PatientInfoSection`, `CaseBody` (per-case, takes
+  `sectionPrefix`), `CompanySection`, `ConfirmationBlock`, `pdfFilenameHeaders`. Both PDF routes
+  are thin shells over this.
+- `src/components/patients/combined-pdf-dialog.tsx` — case picker for the multi-case PDF.
+- `supabase/migrations/` — numbered `0001`…`0020`. `0001`–`0015` by hand, `0016`/`0017` via CLI
+  on 2026-08-07, `0018` and **`0019` applied** (confirmed via `supabase migration list --linked`
+  on 2026-08-12); **`0020` pending — Parsa runs `npx supabase db push --linked`.**
 
 ## Roadmap / next steps
 No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**
@@ -223,7 +264,20 @@ Standing candidates if asked:
 - **`unstable_cache` staleness**: any new cached read needs its tag raised from every writer — the
   classic miss.
 - **PDF routes**: non-ASCII patient names in the `Content-Disposition` filename were the source of
-  past 500s (see the PDF memory) — not the render itself.
+  past 500s (see the PDF memory) — not the render itself. The logic now lives once in
+  `pdfFilenameHeaders` (`lib/pdf/case-doc.tsx`); both routes use it.
+- **`wrap={false}` on a PDF section silently CLIPS anything taller than a page** — no overflow, no
+  error, the content just isn't there. Fine for fixed-height tables; never put it on a section
+  whose length grows with the data. Package Details wraps for exactly this reason, and a combined
+  document stacks several of those on one flowing page.
+- **Additional costs must never reach Finance.** `case_additional_costs` is separate from
+  `quote_items` precisely because `finance_case_rows()` aggregates `quote_items.price`/`cost`. If
+  a future change starts summing these into revenue or the package total, that's a regression,
+  not a feature.
+- **Don't draw text inside `<Svg>` in react-pdf.** Both wordmarks used hardcoded `x` offsets in a
+  fixed viewBox; the offsets were measured against font metrics that don't match what renders, so
+  the blue header wordmark clipped "Cure" entirely and shipped as "Turk" for months. Gradient
+  fills on SVG text don't render either. Plain flex `<Text>` self-sizes and centres correctly.
 - General ExxionOs handoff notes in context do **not** apply here (different repo, i18n/RTL rules,
   migration numbering, etc.).
 

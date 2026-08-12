@@ -7,9 +7,6 @@ import {
   View,
   Text,
   Svg,
-  Defs,
-  LinearGradient,
-  Stop,
   Polygon,
   Line,
 } from "@react-pdf/renderer";
@@ -273,70 +270,65 @@ export const pdfStyles = StyleSheet.create({
 });
 
 /**
- * The TurkCure wordmark, rebuilt in vector to match the brand: "Turk" in solid
- * brand blue, "Cure" filled with a left-to-right blue→cyan→green gradient.
- * Bold, tight tracking, single line. `scale` sizes it (base ≈ 132×26pt).
+ * The TurkCure wordmark on light backgrounds: "Turk" in brand blue, "Cure" in
+ * cyan. Bold, tight tracking, single line.
+ *
+ * Plain flex Text, not an <Svg> — see `WordmarkGold` for the full reasoning.
+ * The SVG version placed "Cure" at a hardcoded x=49 inside a fixed 132-unit
+ * viewBox, measured against a font size that doesn't match what actually
+ * renders: "Cure" fell outside the viewBox and was clipped, so every page
+ * header in every PDF read just "Turk".
+ *
+ * "Cure" was a blue→cyan→green gradient, which never reached the page anyway:
+ * react-pdf doesn't render gradient fills on SVG text (it comes out invisible),
+ * so the mid-stop cyan is the honest, visible version of the same mark.
  */
 export function Wordmark({ scale = 1 }: { scale?: number }) {
-  const w = 132 * scale;
-  const h = 28 * scale;
+  const glyphs = {
+    fontFamily: SANS,
+    fontWeight: 700 as const,
+    fontSize: 24 * scale,
+    letterSpacing: -0.5 * scale,
+    lineHeight: 1,
+  };
   return (
-    <Svg width={w} height={h} viewBox="0 0 132 28">
-      <Defs>
-        <LinearGradient id="cureGrad" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={BLUE} />
-          <Stop offset="0.5" stopColor={CYAN} />
-          <Stop offset="1" stopColor={GREEN} />
-        </LinearGradient>
-      </Defs>
-      <Text
-        x={0}
-        y={21}
-        fill={BLUE}
-        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
-      >
-        Turk
-      </Text>
-      <Text
-        x={49}
-        y={21}
-        fill="url(#cureGrad)"
-        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
-      >
-        Cure
-      </Text>
-    </Svg>
+    <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+      <Text style={{ ...glyphs, color: BLUE }}>Turk</Text>
+      <Text style={{ ...glyphs, color: CYAN }}>Cure</Text>
+    </View>
   );
 }
 
 /**
  * The wordmark on dark backgrounds: "Turk" in warm white, "Cure" in antique
- * gold. Same geometry as `Wordmark`. Gradient fills don't render on SVG text
- * in react-pdf (the text comes out invisible on the dark cover), so "Cure"
- * uses a solid gold fill instead.
+ * gold. Gradient fills don't render on SVG text in react-pdf (the text comes
+ * out invisible on the dark cover), so "Cure" uses a solid gold fill.
+ *
+ * Plain flex Text rather than an <Svg>, unlike `Wordmark`. The SVG version put
+ * the two halves at hardcoded x=0 / x=49 inside a fixed 132-unit viewBox, which
+ * broke twice over: the glyph run was narrower than its own box, so the cover's
+ * `alignItems: "center"` centred the *box* and left the word visibly off-centre;
+ * and the 49pt offset was measured against Source Sans, so whenever FONT_DIR
+ * fails to resolve and SANS falls back to Helvetica the halves overlap. Flex
+ * Text self-sizes to the real advance width, so it centres exactly and survives
+ * the fallback. (react-pdf does honour textAnchor on Svg Text, but that centres
+ * each half on its own anchor — it would make the overlap worse, not better.)
  */
 export function WordmarkGold({ scale = 1 }: { scale?: number }) {
-  const w = 132 * scale;
-  const h = 28 * scale;
+  const glyphs = {
+    fontFamily: SANS,
+    fontWeight: 700 as const,
+    fontSize: 24 * scale,
+    letterSpacing: -0.5 * scale,
+    // The old Svg declared a fixed height; pin the line box so the tagline
+    // below keeps its spacing instead of inheriting the page line-height.
+    lineHeight: 1,
+  };
   return (
-    <Svg width={w} height={h} viewBox="0 0 132 28">
-      <Text
-        x={0}
-        y={21}
-        fill="#f5f1e6"
-        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
-      >
-        Turk
-      </Text>
-      <Text
-        x={49}
-        y={21}
-        fill={GOLD}
-        style={{ fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: -0.5 }}
-      >
-        Cure
-      </Text>
-    </Svg>
+    <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+      <Text style={{ ...glyphs, color: "#f5f1e6" }}>Turk</Text>
+      <Text style={{ ...glyphs, color: GOLD }}>Cure</Text>
+    </View>
   );
 }
 
@@ -458,7 +450,8 @@ export function TableSection({
   children,
   wrap,
 }: {
-  number?: number;
+  /** A plain index, or a dotted string like "2.1" when several cases share a document. */
+  number?: number | string;
   title: string;
   children: React.ReactNode;
   wrap?: boolean;

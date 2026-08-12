@@ -11,10 +11,16 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/toast";
 import { upsertDirectoryRow, type DirectoryTable } from "@/lib/actions/directory";
-import { upsertCase, upsertQuoteItem, deleteQuoteItem } from "@/lib/actions/cases";
+import {
+  upsertCase,
+  upsertQuoteItem,
+  deleteQuoteItem,
+  upsertAdditionalCost,
+  deleteAdditionalCost,
+} from "@/lib/actions/cases";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
-import type { Case, Patient, QuoteItem } from "@/lib/types";
+import type { Case, CaseAdditionalCost, Patient, QuoteItem } from "@/lib/types";
 import type { Directories } from "./patient-detail";
 
 // Common arrival/departure airports for Turkey medical-tourism trips. The
@@ -47,6 +53,7 @@ export function CaseTab({
   patient,
   activeCase,
   quoteItemsByCase,
+  additionalCostsByCase,
   isAdmin,
   directories,
   onCaseCreated,
@@ -54,6 +61,7 @@ export function CaseTab({
   patient: Patient;
   activeCase: Case | null;
   quoteItemsByCase: Record<string, QuoteItem[]>;
+  additionalCostsByCase: Record<string, CaseAdditionalCost[]>;
   isAdmin: boolean;
   directories: Directories;
   onCaseCreated?: (id: string) => void;
@@ -264,13 +272,21 @@ export function CaseTab({
       </Card>
 
       {activeCase ? (
-        <QuoteEditor
-          patientId={patient.id}
-          caseId={activeCase.id}
-          currency={activeCase.currency}
-          items={quoteItemsByCase[activeCase.id] ?? []}
-          isAdmin={isAdmin}
-        />
+        <div className="space-y-5">
+          <QuoteEditor
+            patientId={patient.id}
+            caseId={activeCase.id}
+            currency={activeCase.currency}
+            items={quoteItemsByCase[activeCase.id] ?? []}
+            isAdmin={isAdmin}
+          />
+          <AdditionalCostsEditor
+            patientId={patient.id}
+            caseId={activeCase.id}
+            currency={activeCase.currency}
+            items={additionalCostsByCase[activeCase.id] ?? []}
+          />
+        </div>
       ) : (
         <Card>
           <CardContent className="flex h-full items-center justify-center py-16 text-sm text-muted">
@@ -492,6 +508,171 @@ function QuoteEditor({
                 : "this item"}
             </strong>{" "}
             from the quote? This cannot be undone.
+          </>
+        }
+      />
+    </Card>
+  );
+}
+
+/**
+ * Extras quoted alongside the package but settled separately (0020). They print
+ * on the PDF beneath Payment Information and are deliberately inert everywhere
+ * else — no package total, no finance.
+ *
+ * Deliberately no totals row: a subtotal here invites reconciling these against
+ * the quote total, which is exactly the confusion the separate table exists to
+ * prevent. There's also no isAdmin branching — the table has no cost column, so
+ * agents get the full editor.
+ */
+function AdditionalCostsEditor({
+  patientId,
+  caseId,
+  currency,
+  items: serverItems,
+}: {
+  patientId: string;
+  caseId: string;
+  currency: string;
+  items: CaseAdditionalCost[];
+}) {
+  const { items, mutate, pending } = useOptimisticList<CaseAdditionalCost>(serverItems);
+  const [error, setError] = React.useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = React.useState<CaseAdditionalCost | null>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  async function onDelete(item: CaseAdditionalCost) {
+    setConfirmDelete(null);
+    await mutate({
+      optimistic: (prev) => prev.filter((i) => i.id !== item.id),
+      action: () => deleteAdditionalCost(patientId, item.id),
+      success: "Additional cost deleted.",
+    });
+  }
+
+  async function onAdd(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    const values = {
+      title: String(fd.get("title") ?? "").trim(),
+      amount: Number(fd.get("amount") || 0),
+      sort_order: items.length,
+    };
+    const optimisticRow = {
+      id: tempId(),
+      case_id: caseId,
+      title: values.title,
+      amount: values.amount,
+      sort_order: values.sort_order,
+    } as CaseAdditionalCost;
+    formRef.current?.reset();
+    const { ok, result } = await mutate({
+      optimistic: (prev) => [...prev, optimisticRow],
+      action: () => upsertAdditionalCost(patientId, caseId, values),
+      success: "Additional cost added.",
+      reconcile: (r, prev) =>
+        r?.item
+          ? prev.map((i) =>
+              i.id === optimisticRow.id ? (r.item as unknown as CaseAdditionalCost) : i
+            )
+          : prev,
+    });
+    if (!ok && result?.error) setError(result.error);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Additional costs</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 px-0 pb-5">
+        <p className="mx-5 -mt-1 text-xs text-muted">
+          Shown on the PDF beneath Payment Information. Not included in the package total, and not
+          counted in Finance.
+        </p>
+        <Table className="border-0 shadow-none">
+          <THead>
+            <tr>
+              <Th>Title</Th>
+              <Th className="text-right">Amount</Th>
+              <Th className="w-12" />
+            </tr>
+          </THead>
+          <TBody>
+            {items.length === 0 && (
+              <EmptyRow
+                colSpan={3}
+                message="No additional costs — this section is hidden on the PDF."
+              />
+            )}
+            {items.map((item) => (
+              <Tr key={item.id}>
+                <Td className="font-medium">
+                  {item.title || <span className="text-muted-light">—</span>}
+                </Td>
+                <Td className="text-right font-medium">
+                  {formatMoney(Number(item.amount), currency)}
+                </Td>
+                <Td>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Delete additional cost"
+                    className="hover:text-danger"
+                    onClick={() => setConfirmDelete(item)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+
+        <div className="mx-5 rounded-xl border border-dashed border-border-strong p-4">
+          <p className="mb-3 text-sm font-semibold">Add additional cost</p>
+          <form ref={formRef} onSubmit={onAdd} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Title">
+                <Input name="title" placeholder="e.g. Revision surgery" />
+              </Field>
+              <Field label={`Amount (${currency})`}>
+                <Input name="amount" type="number" step="0.01" min="0" required placeholder="0.00" />
+              </Field>
+            </div>
+            {error && (
+              <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
+            )}
+            <div className="flex items-center gap-3">
+              <Button type="submit" variant="soft" size="sm" pending={pending}>
+                <Plus /> Add cost
+              </Button>
+              <p className="text-xs text-muted-light">
+                Saved instantly — no need to press &ldquo;Save case&rdquo;.
+              </p>
+            </div>
+          </form>
+        </div>
+      </CardContent>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && onDelete(confirmDelete)}
+        pending={false}
+        title="Delete additional cost"
+        description={
+          <>
+            {/* The title is optional, so fall back to the amount rather than
+                rendering an empty <strong>. */}
+            Remove{" "}
+            <strong>
+              {confirmDelete
+                ? confirmDelete.title ||
+                  `this ${formatMoney(Number(confirmDelete.amount), currency)} cost`
+                : "this cost"}
+            </strong>
+            ? This cannot be undone.
           </>
         }
       />

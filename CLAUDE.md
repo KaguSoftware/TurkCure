@@ -461,6 +461,65 @@ until applied, the new page degrades to zero cash/receivables figures, not a cra
   -Encoding utf8` **mojibakes BOM-less UTF-8 source files** (reads them as ANSI).
   Use the agent Edit/Write tools for source edits, never PowerShell regex.
 
+## Recent work — 2026-08-12 additional costs, multi-case PDF, wordmark fix
+
+Four asks from live use, all landing on the patient-facing PDF.
+
+**Additional costs** — `supabase/migrations/0020_case_additional_costs.sql` (⚠️ apply by hand):
+- `case_additional_costs` (`case_id`, `title`, `amount`, `sort_order`). **Deliberately not
+  `quote_items`**: that table's `price` is summed into "Total package price" and *both* its
+  `price` and `cost` feed `finance_case_rows()` (0019), so an extra landed there would silently
+  move the patient's balance *and* reported margin. These rows must do neither — a separate
+  table is the only way to keep both invariants without adding a filter to every consumer.
+- RLS follows the ordinary staff-table convention from `0001` (authenticated read/insert/update,
+  admin-only delete), **not** `quote_items`' admin-only rule — that exists "for cost safety" and
+  there is no cost column here. So the actions use `createClient()`, not `createAdminClient()`.
+- The editor sits under `QuoteEditor` in `case-tab.tsx` and has **no totals row**, on purpose: a
+  subtotal invites reconciling it against the quote total, which is the confusion the separate
+  table exists to prevent.
+- On the PDF the block renders after Payment Information, is **omitted entirely when empty**, and
+  carries a note that it is excluded from the package total — without that, a patient reading a
+  total followed by more prices assumes the total includes them.
+
+**Combined multi-case PDF** — `src/app/api/pdf/combined/route.tsx`:
+- The 423-line inline document moved to **`src/lib/pdf/case-doc.tsx`**, split so patient-level
+  blocks (`PatientInfoSection`, `CompanySection`, `ConfirmationBlock`) are separate from the
+  per-case `CaseBody` — that split is what lets the combined document state them once.
+- `GET /api/pdf/combined?cases=id1,id2` — a GET so the download stays a plain `<a download>`.
+  Structure: a cover per case, then one flowing body. Sections are numbered `2.1`, `3.1`… via
+  `CaseBody`'s `sectionPrefix`; `TableSection`'s `number` prop widened to `number | string`.
+  Single-case keeps plain `1..7` (Company shifts 7→8 only when additional costs exist).
+- **The same-patient assertion is load-bearing**: `loadCasesData` returns null unless every id
+  resolves and they all share one `patient_id`. RLS gates access, but this is what stops a
+  hand-crafted URL splicing two patients' cases under one "Prepared for" name.
+- `.in()` neither preserves order nor errors on missing ids — hence the length check and the
+  chronological re-sort. Cases load in a fixed number of round-trips regardless of count, with
+  **one** `createSignedUrls` call for every image across every case.
+- **Nothing is summed across cases.** Each case prints its own currency; `amount_case` values
+  from different cases are in different units and are not addable (0016).
+- Package Details is now the one section allowed to `wrap` — its bullet list grows with the
+  quote, and a `wrap={false}` block taller than a page is **silently clipped** by react-pdf.
+- The dialog (`combined-pdf-dialog.tsx`) routes a single selection to `/api/pdf/<id>`, so there
+  is only ever one canonical single-case document.
+
+**Both wordmarks rewritten** (`common.tsx`) — SVG → flex `<Text>`:
+- `WordmarkGold` (cover) was visibly off-centre: two `<Text>` at hardcoded `x=0`/`x=49` in a
+  fixed 132-unit viewBox, so `alignItems:"center"` centred the *box*, not the glyph run.
+- Screenshotting the output then exposed a **pre-existing bug the fix predicted**: in `Wordmark`
+  (blue, used by every `PdfHeader`) "Cure" fell outside the viewBox and was clipped — every page
+  header in every PDF had been rendering just **"Turk"**. Flex Text self-sizes to the real
+  advance width, so both centre correctly and survive the Helvetica fallback.
+- "Cure"'s blue→cyan→green gradient is gone: react-pdf never rendered gradient fills on SVG text
+  anyway (`WordmarkGold`'s own comment says so), so solid cyan is the honest version.
+
+**"Medication included"** added to the Package Details bullets.
+
+Verified by rendering the real routes against live data (Playwright + the magic-link trick from
+`scripts/mobile-audit.mjs`) and rasterizing the PDFs with pdfjs to actually look at them: single
+case = 4 pages with sections 1-7 unchanged, combined 2-case = 6 pages with Patient Information
+once, `2.1`-`2.5` / `3.1`-`3.5`, Company as 4 and one signature block. Guard rails exercised:
+two-patient ids → 404, empty param → 400, duplicate id → rendered once.
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this

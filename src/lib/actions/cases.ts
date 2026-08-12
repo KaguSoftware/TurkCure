@@ -307,6 +307,89 @@ export async function getQuoteItemsForPatient(
   return byCase;
 }
 
+const ADDITIONAL_COST_COLUMNS = "id, case_id, title, amount, sort_order";
+
+/**
+ * Additional costs are extras quoted alongside the package and settled
+ * separately: they appear on the PDF beneath Payment Information but are
+ * deliberately excluded from the package total and from finance (0020).
+ *
+ * Unlike quote items these go through the ordinary cookie client — the table
+ * has no cost column, so RLS lets staff write it directly and there is no
+ * reason to reach for the service role.
+ */
+export async function upsertAdditionalCost(
+  patientId: string,
+  caseId: string,
+  values: { title: string; amount: number; sort_order?: number },
+  id?: string
+): Promise<{ error?: string; item?: Record<string, unknown> }> {
+  await requireProfile();
+  const supabase = await createClient();
+
+  // The title is free text and may be empty — trim and cap it, but never
+  // reject a blank one (same stance as the quote labels since 0017).
+  const row = {
+    title: String(values.title ?? "").trim().slice(0, 200),
+    amount: values.amount,
+    sort_order: values.sort_order ?? 0,
+  };
+
+  const { data, error } = id
+    ? await supabase
+        .from("case_additional_costs")
+        .update(row)
+        .eq("id", id)
+        .select(ADDITIONAL_COST_COLUMNS)
+        .single()
+    : await supabase
+        .from("case_additional_costs")
+        .insert({ ...row, case_id: caseId })
+        .select(ADDITIONAL_COST_COLUMNS)
+        .single();
+  if (error) return { error: error.message };
+  revalidateCase(patientId);
+  return { item: data as unknown as Record<string, unknown> };
+}
+
+export async function deleteAdditionalCost(
+  patientId: string,
+  id: string
+): Promise<{ error?: string }> {
+  await requireProfile();
+  const supabase = await createClient();
+  const { error } = await supabase.from("case_additional_costs").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidateCase(patientId);
+  return {};
+}
+
+/**
+ * Additional costs for every case of a patient, grouped by case_id — keyed by
+ * patient so the detail page can fetch them in parallel with the cases query
+ * instead of waiting for case ids.
+ */
+export async function getAdditionalCostsForPatient(
+  patientId: string
+): Promise<Record<string, Record<string, unknown>[]>> {
+  await requireProfile();
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("case_additional_costs")
+    .select(`${ADDITIONAL_COST_COLUMNS}, cases!inner(patient_id)`)
+    .eq("cases.patient_id", patientId)
+    .order("sort_order")
+    .order("created_at");
+
+  const byCase: Record<string, Record<string, unknown>[]> = {};
+  for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+    delete row.cases;
+    const cid = row.case_id as string;
+    (byCase[cid] ??= []).push(row);
+  }
+  return byCase;
+}
+
 export async function attachInstruction(
   patientId: string,
   caseId: string,
