@@ -259,6 +259,13 @@ Standing candidates if asked:
   shipping, at 90%/110% zoom too.
 - **`ComboBox` id vs freeText**: default mode submits the option **id**; `freeText` submits the
   **name/typed text**. The airport fields rely on `freeText`. Don't mix them up when reusing it.
+- **Focusing anything inside a `PopoverLayer` needs a rAF.** The popover mounts in a portal and is
+  positioned in a layout effect while hidden, so a `.focus()` in the same effect that sets
+  `open` is a silent no-op — the element isn't focusable yet. `ComboBox` learned this in
+  2026-07-24; `Select` had the same latent bug (you had to click a field twice before you could
+  type in its search) and was fixed the same way on 2026-08-12: double `requestAnimationFrame`,
+  focus on the first frame, retry on the second. Note `Select` only renders a search box above
+  `SEARCH_THRESHOLD` (7) options, so short lists keep focus on the trigger by design.
 - **Locally-created directory rows** live in the ComboBox's local option state until the next
   `router.refresh()` lands — that's deliberate so the new row shows its name immediately.
 - **Migrations are hand-applied by default.** `0016`/`0017` were pushed via the CLI only because

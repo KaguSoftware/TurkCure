@@ -534,6 +534,11 @@ Four asks from live use, all landing on the patient-facing PDF.
      Fixed by splitting the list into **two explicit non-wrapping columns**.
   Rule of thumb: in react-pdf, prefer one `<Text>` over sibling Texts for stacked type, and never
   rely on the measured height of a wrapped flex container.
+- **`Select` now focuses its search box on open** (`ui/input.tsx`). It always intended to — the
+  `.focus()` call was there — but it ran in the same effect that sets `open`, before the portaled
+  popover exists, so it silently did nothing and the field had to be clicked twice before you
+  could type. Now uses the same double-rAF as `ComboBox`. Anything focused inside a
+  `PopoverLayer` needs this; it is the second time the trap has been hit.
 
 Verified by rendering the real routes against live data (Playwright + the magic-link trick from
 `scripts/mobile-audit.mjs`) and rasterizing the PDFs with pdfjs to actually look at them: single

@@ -183,20 +183,30 @@ export const Select = React.forwardRef<
   }, [open]);
 
   React.useEffect(() => {
-    if (open) {
-      // Reset the query each open, seed the highlight on the current selection,
-      // then focus search or scroll to selection.
-      setQuery("");
-      const sel = options.findIndex((o) => o.value === current);
-      setActive(sel);
-      if (showSearch) {
-        searchRef.current?.focus();
-      } else {
-        listRef.current
-          ?.querySelector("[data-selected=true]")
-          ?.scrollIntoView({ block: "nearest" });
-      }
+    if (!open) return;
+    // Reset the query each open, seed the highlight on the current selection,
+    // then focus search or scroll to selection.
+    setQuery("");
+    const sel = options.findIndex((o) => o.value === current);
+    setActive(sel);
+    if (!showSearch) {
+      listRef.current?.querySelector("[data-selected=true]")?.scrollIntoView({ block: "nearest" });
+      return;
     }
+    // The popover mounts in a portal (positioned in a layout effect, starting
+    // hidden), so the input isn't focusable on this tick — focusing here was a
+    // silent no-op and you had to click the field a second time to type. Focus
+    // on the next frame, retrying once in case layout hasn't settled. Same fix
+    // as ComboBox below.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      if (searchRef.current) searchRef.current.focus();
+      else raf2 = requestAnimationFrame(() => searchRef.current?.focus());
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, showSearch]);
 
