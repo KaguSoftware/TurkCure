@@ -514,6 +514,27 @@ Four asks from live use, all landing on the patient-facing PDF.
 
 **"Medication included"** added to the Package Details bullets.
 
+**Follow-up same day — delete case, one cover, and two react-pdf measurement bugs:**
+- **`deleteCase`** (`lib/actions/cases.ts`) + a red "Delete case" button in the case-form footer,
+  admin-only like every other delete. Every child table cascades from `cases` (0001, 0020) so one
+  delete suffices. `patient-detail.tsx` clears `?case=` afterwards (`clearSelectedCase`) or the URL
+  would point at a case that no longer exists.
+- **The combined PDF is now ONE cover**, not one per case: `CaseCover` takes `others` and lists
+  every treatment on the single cover, and a new **`CaseDivider`** (navy "TREATMENT n OF m" band,
+  `break` so each case starts a fresh page) separates the cases in the body.
+- ⚠️ **Two react-pdf layout traps, both found by rasterizing the output and reading glyph
+  coordinates out of the PDF — neither shows up in a build:**
+  1. **A large `<Text>` followed by a sibling `<Text>` collides.** A 19pt title put the next
+     baseline only 9.7pt below it. `lineHeight`, a fixed-height wrapper View, and `marginBottom`
+     **all failed**. The fix is to make them **one `<Text>` with nested `<Text>` children and a
+     `\n`**, so the text engine does the line breaking.
+  2. **`flexWrap: "wrap"` containers are under-measured** — react-pdf reports roughly one row's
+     height, so the Package Details bullets overflowed their card and collided with the section
+     below. This was **pre-existing** in the single-case PDF, just not obvious with fewer bullets.
+     Fixed by splitting the list into **two explicit non-wrapping columns**.
+  Rule of thumb: in react-pdf, prefer one `<Text>` over sibling Texts for stacked type, and never
+  rely on the measured height of a wrapped flex container.
+
 Verified by rendering the real routes against live data (Playwright + the magic-link trick from
 `scripts/mobile-audit.mjs`) and rasterizing the PDFs with pdfjs to actually look at them: single
 case = 4 pages with sections 1-7 unchanged, combined 2-case = 6 pages with Patient Information

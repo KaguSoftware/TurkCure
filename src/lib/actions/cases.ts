@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath, revalidateTag } from "next/cache";
-import { createClient, createAdminClient, requireProfile } from "@/lib/supabase/server";
+import { createClient, createAdminClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 import { addDays, formatISO } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -153,6 +153,24 @@ export async function upsertCase(
 
   revalidateCase(patientId);
   return { id: caseId };
+}
+
+/**
+ * Delete a case and everything hanging off it. Admin-only, like every other
+ * delete in the app (RLS enforces it too — `cases delete` is `is_admin()`).
+ *
+ * Quote items, payments, reminders, instructions and additional costs all
+ * cascade at the FK level (0001, 0020), so this one delete is enough; there is
+ * no orphan to sweep up. It moves money, so the finance tag has to fall with it
+ * — `revalidateCase` already does that.
+ */
+export async function deleteCase(patientId: string, id: string): Promise<{ error?: string }> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase.from("cases").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidateCase(patientId);
+  return {};
 }
 
 /**

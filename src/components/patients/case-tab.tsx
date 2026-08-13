@@ -17,9 +17,10 @@ import {
   deleteQuoteItem,
   upsertAdditionalCost,
   deleteAdditionalCost,
+  deleteCase,
 } from "@/lib/actions/cases";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
-import { CURRENCIES, formatMoney } from "@/lib/utils";
+import { CURRENCIES, formatDate, formatMoney } from "@/lib/utils";
 import type { Case, CaseAdditionalCost, Patient, QuoteItem } from "@/lib/types";
 import type { Directories } from "./patient-detail";
 
@@ -57,6 +58,7 @@ export function CaseTab({
   isAdmin,
   directories,
   onCaseCreated,
+  onCaseDeleted,
 }: {
   patient: Patient;
   activeCase: Case | null;
@@ -65,10 +67,29 @@ export function CaseTab({
   isAdmin: boolean;
   directories: Directories;
   onCaseCreated?: (id: string) => void;
+  onCaseDeleted?: () => void;
 }) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmDeleteCase, setConfirmDeleteCase] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+
+  async function onDeleteCase() {
+    if (!activeCase) return;
+    setDeleting(true);
+    const result = await deleteCase(patient.id, activeCase.id);
+    setDeleting(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setConfirmDeleteCase(false);
+    toast.success("Case deleted.");
+    // Clear ?case= so the page doesn't try to select the case we just removed.
+    onCaseDeleted?.();
+    React.startTransition(() => router.refresh());
+  }
 
   async function onSaveCase(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -259,9 +280,23 @@ export function CaseTab({
               </p>
             )}
             <div className="sm:col-span-2">
-              <Button type="submit" pending={saving}>
-                {activeCase ? "Save case" : "Create case"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit" pending={saving}>
+                  {activeCase ? "Save case" : "Create case"}
+                </Button>
+                {/* Admin-only, matching every other delete in the app. Sits apart
+                    from Save so it can't be hit by muscle memory. */}
+                {activeCase && isAdmin && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="ml-auto text-danger hover:bg-danger-soft"
+                    onClick={() => setConfirmDeleteCase(true)}
+                  >
+                    <Trash2 /> Delete case
+                  </Button>
+                )}
+              </div>
               <p className="mt-2 text-xs text-muted-light">
                 Saves the case details above and regenerates arrival, operation and aftercare
                 reminders. The quote is saved separately, item by item.
@@ -270,6 +305,24 @@ export function CaseTab({
           </form>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmDeleteCase}
+        onClose={() => setConfirmDeleteCase(false)}
+        onConfirm={onDeleteCase}
+        pending={deleting}
+        title="Delete case"
+        confirmLabel="Delete case"
+        description={
+          <>
+            Delete{" "}
+            <strong>{activeCase?.operation_types?.name ?? "this case"}</strong>
+            {activeCase?.arrival_date ? ` (${formatDate(activeCase.arrival_date)})` : ""}? Its
+            quote, payments, reminders, instructions and additional costs are deleted with it.
+            This cannot be undone.
+          </>
+        }
+      />
 
       {activeCase ? (
         <div className="space-y-5">

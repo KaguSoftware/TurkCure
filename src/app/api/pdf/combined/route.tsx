@@ -7,6 +7,7 @@ import {
   loadCasesData,
   pdfFilenameHeaders,
   CaseCover,
+  CaseDivider,
   PatientInfoSection,
   CaseBody,
   CompanySection,
@@ -50,9 +51,8 @@ export async function GET(request: Request) {
 
   const doc = (
     <Document title={`TurkCure WOF — ${patient.full_name}`}>
-      {cases.map((c) => (
-        <CaseCover key={c.caseId} data={c} patientName={patient.full_name} />
-      ))}
+      {/* One cover for the whole document, listing every treatment it covers. */}
+      <CaseCover data={cases[0]} others={cases.slice(1)} patientName={patient.full_name} />
 
       <Page size="A4" style={s.page}>
         <PdfHeader
@@ -65,12 +65,9 @@ export async function GET(request: Request) {
 
         {cases.map((c, i) => (
           <View key={c.caseId}>
-            {/* Names the case a body section belongs to, mapping it back to its cover. */}
-            <Text style={s.instrHeading} minPresenceAhead={60}>
-              {[c.op || "Treatment", c.arrival_date ? fmtDate(c.arrival_date) : null]
-                .filter(Boolean)
-                .join(" — ")}
-            </Text>
+            {/* Each treatment starts on its own page behind a loud header — with
+                a single cover, this is what separates one case from the next. */}
+            <CaseDivider data={c} index={i + 1} total={cases.length} breakBefore />
             <CaseBody data={c} imageUrls={imageUrls} sectionPrefix={i + 2} />
           </View>
         ))}

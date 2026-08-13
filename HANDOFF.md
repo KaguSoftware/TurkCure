@@ -75,6 +75,15 @@ rasterized with pdfjs) rather than inferred from the build.
    revealed a **pre-existing bug**: the blue header wordmark had been clipping "Cure", so every
    page header in every PDF read just **"Turk"**. Both are now flex text instead of SVG.
 5. **"Medication included"** added to the Package Details bullets.
+6. **Cases can be deleted.** There was no delete path at all before. Red "Delete case" button in
+   the case-form footer, admin-only, with a confirm that spells out what cascades (quote,
+   payments, reminders, instructions, additional costs). Verified in a browser.
+7. **The combined PDF has ONE cover**, not one per case (first cut stacked them back to back).
+   The single cover lists every treatment; a loud navy "TREATMENT n OF m" divider starts each
+   case on a fresh page in the body.
+8. **Two react-pdf layout bugs fixed, one of them pre-existing.** Package Details bullets were
+   overflowing their card into the next section — that bug was already in the live single-case
+   PDF, it just needed more bullets to show. See Gotchas.
 
 **Verified in-browser:** single-case PDF unchanged (4 pages, sections 1-7, medication bullet
 present); combined 2-case mixed-currency PDF (6 pages) with correct numbering, per-case
@@ -274,6 +283,14 @@ Standing candidates if asked:
   `quote_items` precisely because `finance_case_rows()` aggregates `quote_items.price`/`cost`. If
   a future change starts summing these into revenue or the package total, that's a regression,
   not a feature.
+- **react-pdf mismeasures two things; both are invisible to `npm run build`.** Found on
+  2026-08-12 by rasterizing PDFs and reading glyph coordinates back out of them.
+  1. **A big `<Text>` and the `<Text>` under it collide** — a 19pt title left the next baseline
+     9.7pt below it. `lineHeight`, a fixed-height wrapper `View` and `marginBottom` all did
+     nothing. Use **one `<Text>` with nested `<Text>` children and a `\n`** instead of siblings.
+  2. **`flexWrap: "wrap"` containers report ~one row of height**, so their contents spill over
+     whatever follows. Use explicit non-wrapping columns. (This is what made Package Details
+     overlap Payment Information.)
 - **Don't draw text inside `<Svg>` in react-pdf.** Both wordmarks used hardcoded `x` offsets in a
   fixed viewBox; the offsets were measured against font metrics that don't match what renders, so
   the blue header wordmark clipped "Cure" entirely and shipped as "Turk" for months. Gradient

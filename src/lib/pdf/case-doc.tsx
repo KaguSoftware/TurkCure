@@ -313,9 +313,23 @@ export async function loadCaseData(
   return { case: loaded.cases[0], patient: loaded.patient, imageUrls: loaded.imageUrls };
 }
 
-/** Navy cover page — one per case, even in a combined document. */
-export function CaseCover({ data, patientName }: { data: CaseDocData; patientName: string }) {
+/**
+ * The navy cover. One per document, not one per case: `data` is the case whose
+ * ref and dates head the page, and `others` (the remaining cases, when there are
+ * any) turns the operation line into a list so a multi-case document still says
+ * on its face what it contains.
+ */
+export function CaseCover({
+  data,
+  patientName,
+  others = [],
+}: {
+  data: CaseDocData;
+  patientName: string;
+  others?: CaseDocData[];
+}) {
   const issued = fmtDate(new Date().toISOString());
+  const all = [data, ...others];
   return (
     <Page size="A4" style={{ backgroundColor: NAVY, padding: 28, fontFamily: SANS }}>
       <View
@@ -396,30 +410,55 @@ export function CaseCover({ data, patientName }: { data: CaseDocData; patientNam
         >
           {patientName}
         </Text>
-        {data.op ? (
-          <Text
-            style={{
-              fontSize: 13,
-              color: GOLD_LIGHT,
-              fontFamily: SERIF,
-              fontStyle: "italic",
-              marginTop: 8,
-              textAlign: "center",
-            }}
-          >
-            {data.op}
-          </Text>
-        ) : null}
+        {/* One case names its operation; several list them, so the cover states
+            what the document actually contains. */}
+        {others.length === 0 ? (
+          data.op ? (
+            <Text
+              style={{
+                fontSize: 13,
+                color: GOLD_LIGHT,
+                fontFamily: SERIF,
+                fontStyle: "italic",
+                marginTop: 8,
+                textAlign: "center",
+              }}
+            >
+              {data.op}
+            </Text>
+          ) : null
+        ) : (
+          <View style={{ marginTop: 14, alignItems: "center" }}>
+            {all.map((c, i) => (
+              <Text
+                key={c.caseId}
+                style={{
+                  fontSize: 12,
+                  color: GOLD_LIGHT,
+                  fontFamily: SERIF,
+                  fontStyle: "italic",
+                  marginTop: i === 0 ? 0 : 5,
+                  textAlign: "center",
+                }}
+              >
+                {[c.op || "Treatment", c.arrival_date ? fmtDate(c.arrival_date) : null]
+                  .filter(Boolean)
+                  .join("   ·   ")}
+              </Text>
+            ))}
+          </View>
+        )}
 
         <View style={{ flex: 1 }} />
 
-        {/* Basic facts */}
-        {data.coverLine1 ? (
+        {/* Basic facts — the doctor/hospital and date lines belong to a single
+            case, so they're dropped when the cover fronts several. */}
+        {others.length === 0 && data.coverLine1 ? (
           <Text style={{ fontSize: 9.5, color: "#e8ecf5", letterSpacing: 0.5, textAlign: "center" }}>
             {data.coverLine1}
           </Text>
         ) : null}
-        {data.coverLine2 ? (
+        {others.length === 0 && data.coverLine2 ? (
           <Text
             style={{
               fontSize: 9.5,
@@ -436,10 +475,69 @@ export function CaseCover({ data, patientName }: { data: CaseDocData; patientNam
         <View style={{ marginVertical: 22, width: 26, height: 1, backgroundColor: GOLD }} />
 
         <Text style={{ fontSize: 8, color: GOLD_LIGHT, letterSpacing: 1.2, opacity: 0.9 }}>
-          Ref {data.ref}   ·   Issued {issued}   ·   turkcure.com
+          {others.length === 0
+            ? `Ref ${data.ref}`
+            : `${all.length} treatments   ·   Ref ${all.map((c) => c.ref).join(", ")}`}
+          {"   ·   "}Issued {issued}   ·   turkcure.com
         </Text>
       </View>
     </Page>
+  );
+}
+
+/**
+ * The divider between cases in a combined document. Deliberately loud — a navy
+ * band with the case number, operation and dates — because with one cover page
+ * for the whole file this is the only thing telling a reader where one treatment
+ * ends and the next begins. `break` starts each case on a fresh page so the
+ * boundary is never mid-page.
+ */
+export function CaseDivider({
+  data,
+  index,
+  total,
+  breakBefore,
+}: {
+  data: CaseDocData;
+  index: number;
+  total: number;
+  breakBefore?: boolean;
+}) {
+  const dates =
+    data.arrival_date && data.departure_date
+      ? `${fmtDate(data.arrival_date)} — ${fmtDate(data.departure_date)}`
+      : data.arrival_date
+        ? fmtDate(data.arrival_date)
+        : "";
+  return (
+    <View break={breakBefore} wrap={false} style={{ marginTop: 4, marginBottom: 16 }}>
+      <View style={{ height: 2, backgroundColor: GOLD, marginBottom: 10, width: 46 }} />
+      <Text
+        style={{
+          fontSize: 8.5,
+          color: GOLD_DARK,
+          letterSpacing: 2.4,
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}
+      >
+        Treatment {index} of {total}
+      </Text>
+      {/* The title and its meta line are ONE Text with a nested Text, not two
+          siblings. As siblings react-pdf laid the second baseline only ~9.7pt
+          below a 19pt title (measured off the rendered PDF), so the dates ran
+          through the title's descenders; neither lineHeight, a fixed-height
+          wrapper, nor marginBottom moved that. Inside a single Text the line
+          breaking is the text engine's job and the lines can't collide. */}
+      <Text style={{ fontFamily: SERIF, fontWeight: 700, color: NAVY, lineHeight: 1.75 }}>
+        <Text style={{ fontSize: 19 }}>{data.op || "Treatment"}</Text>
+        {"\n"}
+        <Text style={{ fontSize: 9, fontFamily: SANS, fontWeight: 400, color: MUTED }}>
+          {[dates, data.hospital, `Ref ${data.ref}`].filter(Boolean).join("   ·   ")}
+        </Text>
+      </Text>
+      <View style={{ height: 1, backgroundColor: TABLE_LINE, marginTop: 10 }} />
+    </View>
   );
 }
 
@@ -519,22 +617,34 @@ export function CaseBody({
         />
       </TableSection>
 
-      {/* The bullet list grows with the quote, so this one may wrap: a
-          `wrap={false}` block taller than a page is silently clipped, and a
-          combined document stacks several of these on one flowing page. */}
-      <TableSection number={n(4)} title="Package Details">
+      {/* Kept unwrapped like every other section: `tableBody` carries the card
+          border, which react-pdf cannot reflow across a page break — letting it
+          wrap makes the bullets spill over the next section instead of moving.
+          The trade-off is that a very long bullet list is silently clipped, but
+          each case starts on a fresh page (CaseDivider) so there is a full page
+          of room before that bites. */}
+      <TableSection number={n(4)} title="Package Details" wrap={false}>
         <View style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
           <Text style={{ fontWeight: 700, color: INK, marginBottom: 8, fontSize: 10.5 }}>
             Procedure: {data.op || "Treatment package"}
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-            {data.packageBullets.map((b, i) => (
-              <View
-                key={i}
-                style={{ flexDirection: "row", width: "50%", paddingVertical: 3, paddingRight: 12 }}
-              >
-                <Text style={{ color: GOLD, marginRight: 6 }}>•</Text>
-                <Text style={{ flex: 1, color: TEXT }}>{b}</Text>
+          {/* Two explicit columns, NOT one `flexWrap: "wrap"` row. react-pdf
+              under-measures a wrapped flex container — the height it reports is
+              roughly one row's worth — so the bullets used to spill out of this
+              card and collide with the section below. Splitting the list into
+              two non-wrapping columns keeps every container single-line, which
+              it measures correctly. */}
+          <View style={{ flexDirection: "row" }}>
+            {[0, 1].map((col) => (
+              <View key={col} style={{ width: "50%", paddingRight: 12 }}>
+                {data.packageBullets
+                  .filter((_, i) => i % 2 === col)
+                  .map((b, i) => (
+                    <Text key={i} style={{ color: TEXT, lineHeight: 1.4, marginBottom: 4 }}>
+                      <Text style={{ color: GOLD }}>• </Text>
+                      {b}
+                    </Text>
+                  ))}
               </View>
             ))}
           </View>

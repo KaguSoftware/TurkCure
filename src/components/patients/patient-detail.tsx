@@ -91,6 +91,13 @@ export function PatientDetail({
       ? (urlCase as string)
       : cases[0]?.id ?? "new";
   const setSelectedCaseId = (id: string | "new") => setParam("case", id);
+  // After a delete the id in the URL points at a case that no longer exists;
+  // drop the param entirely so the fallback picks the next remaining case.
+  const clearSelectedCase = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("case");
+    router.replace(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
+  };
   const activeCase =
     selectedCaseId === "new" ? null : cases.find((c) => c.id === selectedCaseId) ?? cases[0] ?? null;
   // Payments/instructions shown belong to the case being viewed.
@@ -254,6 +261,7 @@ export function PatientDetail({
             isAdmin={isAdmin}
             directories={directories}
             onCaseCreated={(id) => setSelectedCaseId(id)}
+            onCaseDeleted={clearSelectedCase}
           />
         )}
         {tab === "Payments" && (
