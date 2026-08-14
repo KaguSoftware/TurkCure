@@ -41,8 +41,10 @@ function GhostInput({
       onChange={(e) => onChange(e.target.value)}
       className={cn(
         "w-full rounded bg-transparent px-1 -mx-1 outline-none",
-        "focus:bg-[var(--color-primary-soft)] focus:ring-1 focus:ring-[var(--color-primary)]/30",
-        "placeholder:text-muted-light disabled:cursor-default",
+        // Literal focus colours — see the note in editor.css. A theme token here
+        // paints dark-on-dark in dark mode.
+        "focus:bg-[var(--doc-focus)] focus:ring-1 focus:ring-[var(--doc-focus-ring)]/40",
+        "placeholder:text-[var(--doc-muted-light)] disabled:cursor-default",
         className
       )}
     />
@@ -69,7 +71,7 @@ function RowButton({
       aria-label={label}
       title={label}
       contentEditable={false}
-      className="pressable rounded p-1 text-muted hover:bg-surface-hover hover:text-foreground cursor-pointer"
+      className="pressable rounded p-1 text-[var(--doc-muted)] hover:bg-[var(--doc-hover-bg)] hover:text-[var(--doc-ink)] cursor-pointer"
     >
       {children}
     </button>
@@ -98,14 +100,14 @@ function SectionBand({
         onChange={onNumber}
         disabled={!editable}
         aria-label="Section number"
-        className="w-8 shrink-0 font-serif text-[11px] font-bold text-white focus:bg-white/15"
+        className="w-8 shrink-0 font-serif text-[11px] font-bold text-white focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
       />
       <GhostInput
         value={title}
         onChange={onTitle}
         disabled={!editable}
         aria-label="Section title"
-        className="font-serif text-[11px] font-bold tracking-wide text-white focus:bg-white/15"
+        className="font-serif text-[11px] font-bold tracking-wide text-white focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
       />
     </div>
   );
@@ -140,7 +142,7 @@ function RowList({
               onChange={(v) => patch(i, "label", v)}
               disabled={!editable}
               aria-label="Row label"
-              className="text-[9px] font-semibold uppercase tracking-wider text-muted"
+              className="text-[9px] font-semibold uppercase tracking-wider text-[var(--doc-muted)]"
             />
           </div>
           <div className="flex flex-1 items-center gap-1 px-3.5 py-2">
@@ -166,7 +168,7 @@ function RowList({
           type="button"
           contentEditable={false}
           onClick={() => onChange([...rows, { label: "", value: "" }])}
-          className="pressable flex w-full items-center gap-1.5 border-t border-dashed border-[var(--doc-line)] px-3.5 py-1.5 text-[10px] text-muted hover:text-foreground cursor-pointer"
+          className="pressable flex w-full items-center gap-1.5 border-t border-dashed border-[var(--doc-line)] px-3.5 py-1.5 text-[10px] text-[var(--doc-muted)] hover:text-[var(--doc-ink)] cursor-pointer"
         >
           <Plus className="size-3" /> Add row
         </button>
@@ -187,7 +189,10 @@ function Card({ children }: { children: React.ReactNode }) {
 function Block({ children, selected }: { children: React.ReactNode; selected?: boolean }) {
   return (
     <NodeViewWrapper
-      className={cn("doc-block mb-5", selected && "ring-2 ring-[var(--color-primary)]/40 rounded")}
+      className={cn(
+        "doc-block mb-5",
+        selected && "rounded ring-2 ring-[var(--doc-focus-ring)]/40"
+      )}
     >
       {children}
     </NodeViewWrapper>
@@ -212,14 +217,14 @@ export function CoverBlockView({ node, updateAttributes, editor, selected }: Nod
           onChange={set("title")}
           disabled={!editable}
           aria-label="Cover title"
-          className="text-center font-serif text-xl font-bold text-white focus:bg-white/15"
+          className="text-center font-serif text-xl font-bold text-white focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
         />
         <GhostInput
           value={String(a.titleAccent ?? "")}
           onChange={set("titleAccent")}
           disabled={!editable}
           aria-label="Cover title accent"
-          className="text-center font-serif text-xl font-bold text-[var(--doc-gold)] focus:bg-white/15"
+          className="text-center font-serif text-xl font-bold text-[var(--doc-gold)] focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
         />
         <p className="mt-5 text-[8px] uppercase tracking-[0.25em] text-[var(--doc-gold)]">
           {String(a.preparedForLabel ?? "Prepared for")}
@@ -229,7 +234,7 @@ export function CoverBlockView({ node, updateAttributes, editor, selected }: Nod
           onChange={set("patientName")}
           disabled={!editable}
           aria-label="Patient name"
-          className="mt-1 text-center font-serif text-lg font-bold text-white focus:bg-white/15"
+          className="mt-1 text-center font-serif text-lg font-bold text-white focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
         />
         <div className="mt-3 space-y-1">
           {treatments.map((t, i) => (
@@ -241,7 +246,7 @@ export function CoverBlockView({ node, updateAttributes, editor, selected }: Nod
                 }
                 disabled={!editable}
                 aria-label="Treatment"
-                className="text-center font-serif text-[11px] italic text-[var(--doc-gold-light)] focus:bg-white/15"
+                className="text-center font-serif text-[11px] italic text-[var(--doc-gold-light)] focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
               />
               <RowButton
                 onClick={() =>
@@ -272,7 +277,7 @@ export function CoverBlockView({ node, updateAttributes, editor, selected }: Nod
             disabled={!editable}
             placeholder="Doctor · Hospital"
             aria-label="Cover line 1"
-            className="text-center text-[9px] text-[#e8ecf5] focus:bg-white/15"
+            className="text-center text-[9px] text-[#e8ecf5] focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
           />
           <GhostInput
             value={String(a.line2 ?? "")}
@@ -280,14 +285,14 @@ export function CoverBlockView({ node, updateAttributes, editor, selected }: Nod
             disabled={!editable}
             placeholder="Arrival — Departure"
             aria-label="Cover line 2"
-            className="text-center text-[9px] text-[var(--doc-gold-light)] focus:bg-white/15"
+            className="text-center text-[9px] text-[var(--doc-gold-light)] focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
           />
           <GhostInput
             value={String(a.footer ?? "")}
             onChange={set("footer")}
             disabled={!editable}
             aria-label="Cover footer"
-            className="text-center text-[8px] tracking-wider text-[var(--doc-gold-light)] focus:bg-white/15"
+            className="text-center text-[8px] tracking-wider text-[var(--doc-gold-light)] focus:bg-[var(--doc-focus-dark)] focus:ring-1 focus:ring-white/50"
           />
         </div>
       </div>
@@ -371,7 +376,7 @@ export function PackageBulletsView({ node, updateAttributes, editor, selected }:
               type="button"
               contentEditable={false}
               onClick={() => updateAttributes({ bullets: [...bullets, ""] })}
-              className="pressable mt-2 flex items-center gap-1.5 text-[10px] text-muted hover:text-foreground cursor-pointer"
+              className="pressable mt-2 flex items-center gap-1.5 text-[10px] text-[var(--doc-muted)] hover:text-[var(--doc-ink)] cursor-pointer"
             >
               <Plus className="size-3" /> Add item
             </button>
@@ -433,7 +438,7 @@ export function PaymentSummaryView({ node, updateAttributes, editor, selected }:
         onChange={(v) => updateAttributes({ note: v })}
         disabled={!editable}
         aria-label="Payment note"
-        className="mt-1.5 text-[8.5px] text-muted"
+        className="mt-1.5 text-[8.5px] text-[var(--doc-muted)]"
       />
     </Block>
   );
@@ -471,7 +476,7 @@ export function AdditionalCostsView({ node, updateAttributes, editor, selected }
                 onChange={(v) => patch(i, "title", v)}
                 disabled={!editable}
                 aria-label="Cost title"
-                className="text-[9px] font-semibold uppercase tracking-wider text-muted"
+                className="text-[9px] font-semibold uppercase tracking-wider text-[var(--doc-muted)]"
               />
             </div>
             <div className="flex flex-1 items-center gap-1 px-3.5 py-2">
@@ -497,7 +502,7 @@ export function AdditionalCostsView({ node, updateAttributes, editor, selected }
             type="button"
             contentEditable={false}
             onClick={() => updateAttributes({ rows: [...rows, { title: "", amount: "" }] })}
-            className="pressable flex w-full items-center gap-1.5 border-t border-dashed border-[var(--doc-line)] px-3.5 py-1.5 text-[10px] text-muted hover:text-foreground cursor-pointer"
+            className="pressable flex w-full items-center gap-1.5 border-t border-dashed border-[var(--doc-line)] px-3.5 py-1.5 text-[10px] text-[var(--doc-muted)] hover:text-[var(--doc-ink)] cursor-pointer"
           >
             <Plus className="size-3" /> Add cost
           </button>
@@ -508,7 +513,7 @@ export function AdditionalCostsView({ node, updateAttributes, editor, selected }
         onChange={(v) => updateAttributes({ note: v })}
         disabled={!editable}
         aria-label="Additional costs note"
-        className="mt-1.5 text-[8.5px] text-muted"
+        className="mt-1.5 text-[8.5px] text-[var(--doc-muted)]"
       />
     </Block>
   );
@@ -556,7 +561,7 @@ export function ConfirmationBlockView({ node, updateAttributes, editor, selected
         aria-label="Confirmation body"
         rows={2}
         onChange={(e) => updateAttributes({ body: e.target.value })}
-        className="mt-1 w-full resize-none rounded bg-transparent px-1 -mx-1 text-[11px] leading-relaxed outline-none focus:bg-[var(--color-primary-soft)] focus:ring-1 focus:ring-[var(--color-primary)]/30"
+        className="mt-1 w-full resize-none rounded bg-transparent px-1 -mx-1 text-[11px] leading-relaxed outline-none focus:bg-[var(--doc-focus)] focus:ring-1 focus:ring-[var(--doc-focus-ring)]/40"
       />
       <div className="mt-6 flex gap-8">
         {signers.map((sn, i) => (
@@ -569,7 +574,7 @@ export function ConfirmationBlockView({ node, updateAttributes, editor, selected
               }
               disabled={!editable}
               aria-label="Signer label"
-              className="mt-1 text-[8.5px] text-muted"
+              className="mt-1 text-[8.5px] text-[var(--doc-muted)]"
             />
           </div>
         ))}
@@ -596,12 +601,12 @@ export function InstructionBlockView({ node, updateAttributes, editor, selected 
         aria-label="Instruction body (markdown)"
         rows={4}
         onChange={(e) => updateAttributes({ bodyMd: e.target.value })}
-        className="mt-1 w-full resize-y rounded bg-transparent px-1 -mx-1 font-mono text-[10px] leading-relaxed outline-none focus:bg-[var(--color-primary-soft)] focus:ring-1 focus:ring-[var(--color-primary)]/30"
+        className="mt-1 w-full resize-y rounded bg-transparent px-1 -mx-1 font-mono text-[10px] leading-relaxed outline-none focus:bg-[var(--doc-focus)] focus:ring-1 focus:ring-[var(--doc-focus-ring)]/40"
       />
       {/* Images are re-attached at render time from the live case — signed URLs
           expire, so they are deliberately not stored in the document. */}
       {(a.imageUrls ?? []).length > 0 && (
-        <p className="mt-1 text-[9px] text-muted-light">
+        <p className="mt-1 text-[9px] text-[var(--doc-muted-light)]">
           {(a.imageUrls ?? []).length} image(s) attached from the case
         </p>
       )}

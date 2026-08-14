@@ -123,11 +123,49 @@ export function CaseDocEditor({
     };
   }, [editor, apiRef]);
 
+  // Approximate page-break guides. A4 geometry mirrored from pdfStyles.page:
+  // 842pt tall less 48pt top and 76pt bottom padding = 718pt of content flow,
+  // and the on-screen sheet is 794px wide (≈595pt at 96dpi) so 1pt ≈ 1.333px.
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const [guides, setGuides] = React.useState<number[]>([]);
+  React.useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const PAGE_CONTENT_PX = (842 - 48 - 76) * (794 / 595);
+    const recompute = () => {
+      const height = el.scrollHeight;
+      const next: number[] = [];
+      // Capped: a runaway document should not paint hundreds of lines.
+      for (let y = PAGE_CONTENT_PX; y < height && next.length < 40; y += PAGE_CONTENT_PX) {
+        next.push(Math.round(y));
+      }
+      setGuides((prev) =>
+        prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next
+      );
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [editor]);
+
   return (
     <div className="case-doc-editor">
-      <div className="doc-sheet">
+      <div className="doc-sheet" ref={sheetRef}>
+        {/* Own stable container: the editor mutates DOM inside the sheet, so
+            React must never reconcile a changing sibling list at that level. */}
+        <div aria-hidden className="doc-guides">
+          {guides.map((y, i) => (
+            <div key={i} className="doc-page-guide" style={{ top: y }}>
+              <span>Page {i + 2}</span>
+            </div>
+          ))}
+        </div>
         <EditorContent editor={editor} />
       </div>
+      <p className="doc-guide-note">
+        Page lines are approximate — switch to PDF Preview for the exact layout.
+      </p>
     </div>
   );
 }

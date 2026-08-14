@@ -331,6 +331,11 @@ Standing candidates if asked:
   2. **`flexWrap: "wrap"` containers report ~one row of height**, so their contents spill over
      whatever follows. Use explicit non-wrapping columns. (This is what made Package Details
      overlap Payment Information.)
+- **Never use app theme tokens inside the document editor sheet.** The sheet is a white page in
+  both themes, but `--color-primary-soft`, `text-muted` and `hover:text-foreground` invert in dark
+  mode — which made focused fields dark-on-dark (you couldn't see what you typed) and "Add row"
+  white-on-white on hover. `editor.css` owns literal `--doc-*` colours for everything on the
+  sheet; use those. Check by reading computed styles in **both** themes.
 - **Deep-clone Tiptap's `getJSON()` before it crosses a server action or gets stored.** It returns
   ProseMirror's own node objects; Next's server-action serializer drops what it doesn't recognise
   and **every `attrs` arrives as `{}`** — the document saves with its structure intact and all of

@@ -12,19 +12,68 @@
   --doc-gold-soft: #faf5e8;
   --doc-line: #e5e2da;
   --doc-tint: #faf9f6;
+
+  /* Focus highlights are LITERAL, not app theme tokens. The sheet is always a
+     white page regardless of the app's light/dark setting, and
+     --color-primary-soft resolves to a dark navy in dark mode — which painted a
+     dark background under dark text and made whatever you typed invisible.
+     --doc-focus is for fields on the white page; --doc-focus-dark is for the
+     ones sitting on the navy cover and section bands. */
+  --doc-focus: #dbe7ff;
+  --doc-focus-ring: #2563eb;
+  --doc-focus-dark: rgba(255, 255, 255, 0.28);
+
+  /* Ink and chrome for the sheet, also literal for the same reason: the app's
+     --color-muted / --color-foreground invert in dark mode, so controls on the
+     white page turned white-on-white on hover. */
+  --doc-ink: #1e293b;
+  --doc-muted: #64748b;
+  --doc-muted-light: #94a3b8;
+  --doc-hover-bg: #eef2f7;
 }
 
 /* The A4 sheet itself: 794px ≈ 595pt at 96dpi. */
 .case-doc-editor .doc-sheet {
+  position: relative;
   width: 794px;
   max-width: 100%;
   min-height: 400px;
   margin: 0 auto;
   padding: 48px 50px 60px;
   background: #ffffff;
-  color: #1e293b;
+  color: var(--doc-ink);
   border-radius: 6px;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.08), 0 8px 24px rgb(0 0 0 / 0.06);
+}
+
+/* Approximate page-break guides, positioned from the sheet's own padding box. */
+.case-doc-editor .doc-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.case-doc-editor .doc-page-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #cbd5e1;
+}
+.case-doc-editor .doc-page-guide span {
+  position: absolute;
+  right: 10px;
+  top: -0.75em;
+  background: #ffffff;
+  padding: 0 6px;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--doc-muted-light);
+}
+.case-doc-editor .doc-guide-note {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--doc-muted);
 }
 
 .case-doc-editor .ProseMirror {

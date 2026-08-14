@@ -587,6 +587,15 @@ JSON through **the primitives the generated PDF already uses** (`TableSection`, 
 - **`npm test`** (vitest, 6 tests) now exists — it renders through the real react-pdf renderer and
   guards the resilience contract (unknown node → plain text, malformed node → placeholder, never
   throw) and the fragment-not-View rule that makes `pageBreak` work.
+- ⚠️ **The document sheet must NOT use app theme tokens.** It is a white page in both themes, but
+  `--color-primary-soft`, `text-muted` and `hover:text-foreground` all invert in dark mode — so a
+  focused field painted dark-navy under dark text (invisible typing) and "Add row" went white on
+  white on hover. `editor.css` defines literal `--doc-focus`, `--doc-focus-dark`, `--doc-ink`,
+  `--doc-muted`, `--doc-muted-light`, `--doc-hover-bg` for everything on the sheet. Verified by
+  reading computed styles in both themes, not by eye.
+- The sheet shows **approximate page-break guides** (A4 content flow = 842−48−76pt, scaled by
+  794/595 px-per-pt), capped at 40, recomputed by a `ResizeObserver`, with a note pointing at PDF
+  Preview for the exact layout.
 
 Verified end to end in a browser: seeded document renders **byte-identical to the generated PDF**
 (all 4 pages, every text item at the same y), an edit survives save → reload → into the rendered
