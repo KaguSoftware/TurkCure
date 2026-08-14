@@ -330,6 +330,65 @@ export function CaseCover({
 }) {
   const issued = fmtDate(new Date().toISOString());
   const all = [data, ...others];
+  const treatments =
+    others.length === 0
+      ? data.op
+        ? [data.op]
+        : []
+      : all.map((c) =>
+          [c.op || "Treatment", c.arrival_date ? fmtDate(c.arrival_date) : null]
+            .filter(Boolean)
+            .join("   ·   ")
+        );
+  return (
+    <CoverPage
+      title="Treatment & Reservation"
+      titleAccent="Confirmation"
+      tagline="Health Tourism · Istanbul"
+      preparedForLabel="Prepared for"
+      patientName={patientName}
+      treatments={treatments}
+      // The doctor/hospital and date lines belong to a single case, so they're
+      // dropped when the cover fronts several.
+      line1={others.length === 0 ? data.coverLine1 : ""}
+      line2={others.length === 0 ? data.coverLine2 : ""}
+      footer={
+        (others.length === 0
+          ? `Ref ${data.ref}`
+          : `${all.length} treatments   ·   Ref ${all.map((c) => c.ref).join(", ")}`) +
+        `   ·   Issued ${issued}   ·   turkcure.com`
+      }
+    />
+  );
+}
+
+/**
+ * The cover page rendered from plain values rather than a case record, so the
+ * editable document (whose cover attrs are just strings) and the generated one
+ * share a single implementation. `CaseCover` above is the adapter from case
+ * data onto this.
+ */
+export function CoverPage({
+  title,
+  titleAccent,
+  tagline,
+  preparedForLabel,
+  patientName,
+  treatments,
+  line1,
+  line2,
+  footer,
+}: {
+  title: string;
+  titleAccent: string;
+  tagline: string;
+  preparedForLabel: string;
+  patientName: string;
+  treatments: string[];
+  line1: string;
+  line2: string;
+  footer: string;
+}) {
   return (
     <Page size="A4" style={{ backgroundColor: NAVY, padding: 28, fontFamily: SANS }}>
       <View
@@ -353,7 +412,7 @@ export function CaseCover({
             textTransform: "uppercase",
           }}
         >
-          Health Tourism · Istanbul
+          {tagline}
         </Text>
 
         <View style={{ flex: 1 }} />
@@ -368,7 +427,7 @@ export function CaseCover({
             textAlign: "center",
           }}
         >
-          Treatment &amp; Reservation
+          {title}
         </Text>
         <Text
           style={{
@@ -380,7 +439,7 @@ export function CaseCover({
             marginTop: 6,
           }}
         >
-          Confirmation
+          {titleAccent}
         </Text>
         <View style={{ marginTop: 24 }}>
           <CoverOrnament width={210} />
@@ -396,7 +455,7 @@ export function CaseCover({
             marginTop: 44,
           }}
         >
-          Prepared for
+          {preparedForLabel}
         </Text>
         <Text
           style={{
@@ -412,26 +471,24 @@ export function CaseCover({
         </Text>
         {/* One case names its operation; several list them, so the cover states
             what the document actually contains. */}
-        {others.length === 0 ? (
-          data.op ? (
-            <Text
-              style={{
-                fontSize: 13,
-                color: GOLD_LIGHT,
-                fontFamily: SERIF,
-                fontStyle: "italic",
-                marginTop: 8,
-                textAlign: "center",
-              }}
-            >
-              {data.op}
-            </Text>
-          ) : null
-        ) : (
+        {treatments.length === 1 ? (
+          <Text
+            style={{
+              fontSize: 13,
+              color: GOLD_LIGHT,
+              fontFamily: SERIF,
+              fontStyle: "italic",
+              marginTop: 8,
+              textAlign: "center",
+            }}
+          >
+            {treatments[0]}
+          </Text>
+        ) : treatments.length > 1 ? (
           <View style={{ marginTop: 14, alignItems: "center" }}>
-            {all.map((c, i) => (
+            {treatments.map((t, i) => (
               <Text
-                key={c.caseId}
+                key={i}
                 style={{
                   fontSize: 12,
                   color: GOLD_LIGHT,
@@ -441,24 +498,20 @@ export function CaseCover({
                   textAlign: "center",
                 }}
               >
-                {[c.op || "Treatment", c.arrival_date ? fmtDate(c.arrival_date) : null]
-                  .filter(Boolean)
-                  .join("   ·   ")}
+                {t}
               </Text>
             ))}
           </View>
-        )}
+        ) : null}
 
         <View style={{ flex: 1 }} />
 
-        {/* Basic facts — the doctor/hospital and date lines belong to a single
-            case, so they're dropped when the cover fronts several. */}
-        {others.length === 0 && data.coverLine1 ? (
+        {line1 ? (
           <Text style={{ fontSize: 9.5, color: "#e8ecf5", letterSpacing: 0.5, textAlign: "center" }}>
-            {data.coverLine1}
+            {line1}
           </Text>
         ) : null}
-        {others.length === 0 && data.coverLine2 ? (
+        {line2 ? (
           <Text
             style={{
               fontSize: 9.5,
@@ -468,17 +521,14 @@ export function CaseCover({
               textAlign: "center",
             }}
           >
-            {data.coverLine2}
+            {line2}
           </Text>
         ) : null}
 
         <View style={{ marginVertical: 22, width: 26, height: 1, backgroundColor: GOLD }} />
 
         <Text style={{ fontSize: 8, color: GOLD_LIGHT, letterSpacing: 1.2, opacity: 0.9 }}>
-          {others.length === 0
-            ? `Ref ${data.ref}`
-            : `${all.length} treatments   ·   Ref ${all.map((c) => c.ref).join(", ")}`}
-          {"   ·   "}Issued {issued}   ·   turkcure.com
+          {footer}
         </Text>
       </View>
     </Page>

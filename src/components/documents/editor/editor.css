@@ -1,0 +1,137 @@
+/* Case document editor sheet.
+   The sheet mimics the generated PDF — white A4, document typography —
+   regardless of the app theme, so every rule is scoped to .case-doc-editor.
+   Document colours come in as CSS vars set from the PDF palette so the editor
+   and the printed page never drift apart. */
+
+.case-doc-editor {
+  --doc-navy: #10233f;
+  --doc-gold: #c9a44c;
+  --doc-gold-light: #e3cf9a;
+  --doc-gold-dark: #8a6d24;
+  --doc-gold-soft: #faf5e8;
+  --doc-line: #e5e2da;
+  --doc-tint: #faf9f6;
+}
+
+/* The A4 sheet itself: 794px ≈ 595pt at 96dpi. */
+.case-doc-editor .doc-sheet {
+  width: 794px;
+  max-width: 100%;
+  min-height: 400px;
+  margin: 0 auto;
+  padding: 48px 50px 60px;
+  background: #ffffff;
+  color: #1e293b;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08), 0 8px 24px rgb(0 0 0 / 0.06);
+}
+
+.case-doc-editor .ProseMirror {
+  outline: none;
+  font-size: 11px;
+  line-height: 1.55;
+  caret-color: var(--doc-navy);
+}
+
+.case-doc-editor .ProseMirror h2,
+.case-doc-editor .ProseMirror h3 {
+  font-weight: 700;
+  color: var(--doc-navy);
+  margin: 14px 0 6px;
+}
+.case-doc-editor .ProseMirror h2 { font-size: 15px; }
+.case-doc-editor .ProseMirror h3 { font-size: 13px; }
+
+.case-doc-editor .ProseMirror p { margin: 0 0 8px; }
+
+.case-doc-editor .ProseMirror ul,
+.case-doc-editor .ProseMirror ol {
+  padding-left: 1.4rem;
+  margin: 0 0 10px;
+}
+.case-doc-editor .ProseMirror li { margin-bottom: 3px; }
+
+/* Placeholder on the first empty paragraph. */
+.case-doc-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: #9aa3af;
+}
+
+/* Tables mirror the PDF: navy header band, hairline grid, zebra body. */
+.case-doc-editor .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--doc-line);
+  border-radius: 4px;
+}
+.case-doc-editor .ProseMirror th {
+  background: var(--doc-navy);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 6px 9px;
+}
+.case-doc-editor .ProseMirror td {
+  padding: 6px 9px;
+  font-size: 10px;
+  border-top: 1px solid var(--doc-line);
+  vertical-align: top;
+}
+.case-doc-editor .ProseMirror tbody tr:nth-child(even) td { background: var(--doc-tint); }
+.case-doc-editor .ProseMirror th p,
+.case-doc-editor .ProseMirror td p { margin: 0; }
+.case-doc-editor .ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--doc-navy) 12%, transparent);
+  pointer-events: none;
+}
+
+/* Page break: a dashed rule with a centred label, as in the exported PDF. */
+.case-doc-editor .doc-page-break {
+  position: relative;
+  border-top: 1px dashed var(--doc-line);
+  height: 0;
+}
+.case-doc-editor .doc-page-break::after {
+  content: "Page break";
+  position: absolute;
+  left: 50%;
+  top: -0.65em;
+  transform: translateX(-50%);
+  background: #fff;
+  padding: 0 8px;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9aa3af;
+}
+
+/* Selected atom blocks. */
+.case-doc-editor .doc-block.ProseMirror-selectednode {
+  outline: 2px solid color-mix(in oklab, var(--doc-navy) 35%, transparent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.case-doc-editor .ProseMirror-gapcursor:after {
+  border-top-color: var(--doc-navy);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case-doc-editor * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

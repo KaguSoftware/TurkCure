@@ -47,7 +47,32 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-08-12 — additional costs, multi-case PDF, wordmark fix)
+## Current status (2026-08-14 — editable case document)
+
+The case PDF can now be **edited before download**. "Edit document" on a case opens a Tiptap
+editor that looks like the document itself, with an Edit / PDF Preview toggle, Save, Reset,
+Download and (admin) Finalize. `npm run build` green, `npm test` green (6 tests), and the whole
+loop was driven in a real browser.
+
+- **Migrations `0020` AND `0021` are APPLIED** (2026-08-14, `npx supabase db push --linked`).
+  `0020` turned out to have been applied already; only `0021` was pending. **Nothing is
+  outstanding.** The additional-costs feature is live too.
+- **Architecture**: `src/lib/documents/blocks.ts` is a pure-JSON contract (no Tiptap, no react-pdf)
+  shared by the editor and by `src/lib/pdf/editorDoc.tsx`, which renders that JSON through the
+  primitives the generated PDF already uses. So an edited document and a generated one are one
+  design system, and react-pdf was kept rather than replaced.
+- **Proof it lines up**: the seeded document renders byte-identical to `/api/pdf/<id>` — all 4
+  pages, every text item at the same y-coordinate. That comparison is the regression test to
+  re-run whenever either renderer changes.
+- **Preview is server-rendered** (`POST /api/pdf/draft/<caseId>`), not client-side, because the PDF
+  fonts load from the filesystem. The preview is therefore the download, byte for byte.
+- Nothing regresses for cases nobody edits: the plain "Download PDF" button and `/api/pdf/<id>`
+  are untouched.
+
+⚠️ **Not yet exercised:** Finalize (the DB lock is written and the trigger is applied, but no one
+has finalized a real document), and the editor on a phone.
+
+## Previous status (2026-08-12 — additional costs, multi-case PDF, wordmark fix)
 
 Four asks from live use, all on the patient PDF. `npm run build` green, and this session the
 PDFs were **actually rendered and looked at** (Playwright through the app's own auth, then
@@ -231,9 +256,17 @@ Turkish characters.
   `sectionPrefix`), `CompanySection`, `ConfirmationBlock`, `pdfFilenameHeaders`. Both PDF routes
   are thin shells over this.
 - `src/components/patients/combined-pdf-dialog.tsx` — case picker for the multi-case PDF.
-- `supabase/migrations/` — numbered `0001`…`0020`. `0001`–`0015` by hand, `0016`/`0017` via CLI
-  on 2026-08-07, `0018` and **`0019` applied** (confirmed via `supabase migration list --linked`
-  on 2026-08-12); **`0020` pending — Parsa runs `npx supabase db push --linked`.**
+- `src/lib/documents/` — `blocks.ts` (the JSON contract; **never import Tiptap or react-pdf here**)
+  and `buildCaseDoc.ts` (seeds a document from a case, mirroring `CaseBody`'s sections).
+- `src/lib/pdf/editorDoc.tsx` — document JSON → react-pdf, through the same primitives as the
+  generated PDF. `src/lib/pdf/company.ts` holds `COMPANY` with zero imports so client code can
+  read it without dragging in `node:fs`.
+- `src/components/documents/` — `DocumentEditorPage.tsx` (tab toggle, save/reset/finalize) and
+  `editor/` (`extensions.ts`, `nodes.tsx`, `CaseDocEditor.tsx`, `editor.css`).
+- `src/app/api/pdf/draft/[caseId]/route.tsx` — GET renders the stored draft (seeding if none),
+  POST renders document JSON from the body. The POST backs the editor preview.
+- `supabase/migrations/` — numbered `0001`…`0021`, **all applied** as of 2026-08-14.
+  `0001`–`0015` by hand, the rest via `npx supabase db push --linked`.
 
 ## Roadmap / next steps
 No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**
@@ -298,6 +331,17 @@ Standing candidates if asked:
   2. **`flexWrap: "wrap"` containers report ~one row of height**, so their contents spill over
      whatever follows. Use explicit non-wrapping columns. (This is what made Package Details
      overlap Payment Information.)
+- **Deep-clone Tiptap's `getJSON()` before it crosses a server action or gets stored.** It returns
+  ProseMirror's own node objects; Next's server-action serializer drops what it doesn't recognise
+  and **every `attrs` arrives as `{}`** — the document saves with its structure intact and all of
+  its content gone. Nothing warns: the build passes, the editor looks right, and you only see it
+  by reading the saved row. `JSON.parse(JSON.stringify(doc))` at both boundaries.
+- **Tiptap fires `onUpdate` while it loads content**, so a dirty flag wired straight to it shows
+  "Unsaved changes" on a document nobody has touched. Gate it behind `onCreate` + a rAF.
+- **`lib/pdf/common.tsx` can never be reached from client code** — it imports `node:fs`/`node:path`
+  to resolve the embedded fonts. That is also why the document preview renders on the server
+  instead of using react-pdf's browser `BlobProvider`. Shared constants live in
+  `lib/pdf/company.ts` instead.
 - **Don't draw text inside `<Svg>` in react-pdf.** Both wordmarks used hardcoded `x` offsets in a
   fixed viewBox; the offsets were measured against font metrics that don't match what renders, so
   the blue header wordmark clipped "Cure" entirely and shipped as "Turk" for months. Gradient
@@ -309,6 +353,7 @@ Standing candidates if asked:
 ```bash
 npm run dev      # Turbopack dev server
 npm run build    # production build — the correctness gate (types + lint)
+npm test         # vitest — renders the PDF mapper through the real renderer
 npm run start    # serve the production build
 npm run lint     # eslint
 ```

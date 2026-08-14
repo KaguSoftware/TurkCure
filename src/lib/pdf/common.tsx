@@ -1,6 +1,7 @@
 import React from "react";
 import path from "node:path";
 import fs from "node:fs";
+import { COMPANY } from "./company";
 import {
   StyleSheet,
   Font,
@@ -89,14 +90,10 @@ export const GOLD = "#c9a24b";
 export const GOLD_LIGHT = "#e6c87d";
 export const GOLD_DARK = "#9a7a2e";
 
-export const COMPANY = {
-  name: "Turkcure Health Tourism",
-  whatsapp: "+90 552 112 99 52",
-  website: "Turkcure.com",
-  location: "Skyland, Istanbul",
-  address: "Huzur, Azerbaycan Cd. B Blok No:48, 34475 Sarıyer/İstanbul",
-  url: "https://turkcure.com",
-};
+// Re-exported so every existing `from "@/lib/pdf/common"` import keeps working.
+// The values live in company.ts, which has no imports — this module pulls in
+// node:fs for the fonts and so can never be reached from a client component.
+export { COMPANY };
 
 // Warm hairline + label-column tint used by the table sections.
 export const TABLE_LINE = "#e5e0d4";

@@ -3,7 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, CalendarPlus, CheckCircle2, FileDown, Pencil, PlusCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarPlus,
+  CheckCircle2,
+  FileDown,
+  FileText,
+  Pencil,
+  PlusCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -179,6 +187,16 @@ export function PatientDetail({
                   <FileDown /> Download PDF
                 </Button>
               </a>
+            )}
+            {/* Opens the editable copy. The plain download above keeps working
+                and bypasses the editor entirely, so nothing changes for a case
+                nobody edits. */}
+            {activeCase && (
+              <Link href={`/patients/${patient.id}/document/${activeCase.id}`}>
+                <Button variant="secondary">
+                  <FileText /> Edit document
+                </Button>
+              </Link>
             )}
             {/* Only worth offering once there's more than one case to combine. */}
             {cases.length > 1 && (

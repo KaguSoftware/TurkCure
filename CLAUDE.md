@@ -546,6 +546,52 @@ case = 4 pages with sections 1-7 unchanged, combined 2-case = 6 pages with Patie
 once, `2.1`-`2.5` / `3.1`-`3.5`, Company as 4 and one signature block. Guard rails exercised:
 two-patient ids → 404, empty param → 400, duplicate id → rendered once.
 
+## Recent work — 2026-08-14 editable case document (live edit before download)
+
+The case PDF was generated and immutable, so per-patient wording changes meant editing the case
+record or not making them. Modelled on KaguSoftware/Real-Estate-Manager's document editor.
+
+**The architecture, which is the part worth understanding:** a pure-JSON contract module sits
+between two renderers that never import each other. `src/lib/documents/blocks.ts` defines the node
+vocabulary (**no Tiptap, no react-pdf imports** — that discipline is what keeps them independent);
+a Tiptap editor renders it as React NodeViews, and `src/lib/pdf/editorDoc.tsx` renders the *same*
+JSON through **the primitives the generated PDF already uses** (`TableSection`, `TRow`,
+`CoverPage`). react-pdf is kept, not replaced.
+
+- **`0021_case_documents.sql`** (applied 2026-08-14, along with `0020` which turned out to be
+  already applied): `content` (the editable doc) + `source_data` (frozen seed snapshot, what
+  "reset to template" and corrupt-draft recovery rebuild from). A **DB trigger** enforces the
+  finalized lock, not the UI — this file goes to patients and hospitals.
+- **`buildCaseDoc.ts`** seeds the document from `loadCaseData`, mirroring `CaseBody`'s section
+  order exactly. Money/dates are stored **pre-formatted** — the document is a document, not a data
+  model, and nothing ever parses them back (the reference pays for that choice with a 216-line
+  reverse parser; TurkCure deliberately has none).
+- **Section numbering is a running counter**, not hardcoded: Additional Costs is omitted when
+  empty, which shifts Company 7→8.
+- **`COMPANY` moved to `src/lib/pdf/company.ts`** — `common.tsx` imports `node:fs` for the fonts,
+  so anything client-reachable that pulls from it breaks the build.
+- **The preview renders on the SERVER** (`POST /api/pdf/draft/<caseId>`), unlike the reference's
+  client-side `BlobProvider`. The fonts are registered from the filesystem, so react-pdf cannot run
+  in the browser at all. The upside: the preview *is* the download, byte for byte.
+- **Tab toggle, not a split pane** — the render is a round trip, so it happens once per switch.
+- ⚠️ **`getJSON()` must be deep-cloned before crossing a server-action boundary.** Tiptap returns
+  ProseMirror's own node objects; Next's serializer drops what it doesn't recognise and **every
+  `attrs` arrives as `{}`** — a document that saves with its structure intact and all of its
+  content gone. Found only by inspecting the saved row; the build and the UI both looked fine.
+  `JSON.parse(JSON.stringify(doc))` in `currentJson()` and in the editor's `getJSON`.
+- ⚠️ **Tiptap fires `onUpdate` while loading content** (trailing paragraph, schema defaults), so a
+  freshly opened document showed "Unsaved changes". Gated behind an `onCreate` + rAF flag.
+- The editor schema is **narrowed to exactly what the mapper renders** (`italic: false`,
+  `link: false`, table cells `content: "paragraph+"`) — anything else would show in the editor and
+  vanish from the PDF.
+- **`npm test`** (vitest, 6 tests) now exists — it renders through the real react-pdf renderer and
+  guards the resilience contract (unknown node → plain text, malformed node → placeholder, never
+  throw) and the fragment-not-View rule that makes `pageBreak` work.
+
+Verified end to end in a browser: seeded document renders **byte-identical to the generated PDF**
+(all 4 pages, every text item at the same y), an edit survives save → reload → into the rendered
+PDF, the preview blob is a real 34KB PDF, and the dirty flag stays clean on load.
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this
