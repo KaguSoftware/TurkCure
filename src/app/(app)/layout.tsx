@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getProfile } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
+import { MainScroller } from "@/components/shell/main-scroller";
 import { Toaster } from "@/components/ui/toast";
 import { IntroOverlay, INTRO_COOKIE } from "@/components/shell/intro-overlay";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const introSeen = (await cookies()).has(INTRO_COOKIE);
 
   return (
-    <div data-accent-root className={cn("flex min-h-screen w-full", themeClass)}>
+    // h-dvh + overflow-hidden: the shell itself never scrolls — MainScroller
+    // owns scrolling below the topbar, so the scrollbar no longer runs the full
+    // viewport height through the topbar's edge.
+    <div data-accent-root className={cn("flex h-dvh w-full overflow-hidden", themeClass)}>
       <Sidebar
         isAdmin={profile.role === "admin"}
         userName={profile.name}
@@ -41,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           userName={profile.name}
           avatarUrl={profile.avatar_url}
         />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <MainScroller>{children}</MainScroller>
       </div>
       <Toaster />
       {!introSeen && <IntroOverlay userName={profile.name} />}

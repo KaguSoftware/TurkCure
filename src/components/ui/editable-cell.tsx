@@ -115,8 +115,11 @@ export function EditableCell({
       disabled={disabled}
       onClick={open}
       className={cn(
-        "block h-8 w-full min-w-16 cursor-text rounded-md border border-transparent px-2 text-sm leading-8 transition-colors",
-        !disabled && "hover:border-border-strong hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
+        // Quiet in display mode — the value should read as text, not a control;
+        // a faint hover wash is the whole affordance (the card header says
+        // "click any cell to edit").
+        "block h-8 w-full min-w-16 cursor-text rounded-md px-2 text-sm leading-8 transition-colors",
+        !disabled && "hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
         align === "right" ? "text-right tabular-nums" : "text-left",
         disabled && "cursor-default",
         className

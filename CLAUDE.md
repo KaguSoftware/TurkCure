@@ -652,6 +652,23 @@ cases print exactly as before; balance math is untouched (still Σ `amount_case`
 `loadCasesData` now also selects `amount, currency` from payments. Tests in
 `editorDoc.test.tsx` pin both paths.
 
+**2026-08-20 cleanup pass** (after first live use): the ghost rows read as
+broken data and the 2/3+1/3 layout starved the extras card, so — adding now goes
+through focused **"Add item" / "Add cost" dialogs** (with an "Add & another"
+button for entering a whole quote in one sitting); inline click-to-edit stays
+for quick fixes but quieter (no cell borders; hover wash only); row controls
+(reorder/delete) appear on row hover (always visible below `md`, no hover
+there); the sections stack **full width** (Summary → Quote → Extras →
+Payments); the summary is four cards with the admin cost/margin as a sub-line
+under Quoted. Also: **the app shell no longer scrolls the window** — the shell
+is `h-dvh overflow-hidden` and `MainScroller` (`src/components/shell/`) owns
+scrolling below the topbar, because the window scrollbar ran the full viewport
+height through the sticky topbar's edge. MainScroller resets scroll on pathname
+change (Next's window scroll-to-top is a no-op now); `?tab=`-style param
+updates keep their position. Body-overflow scroll locks in overlays are now
+inert but harmless — a fixed overlay over a non-scrolling body has nothing to
+chain to.
+
 **Finance overview**: the four stat cards are split into two labeled groups —
 "Quoted — by case month" (Revenue + Expected margin) and "Cash — by paid date"
 (Collected, Paid out, Cash margin) — so the two bases can't be read as one; the

@@ -43,9 +43,25 @@ export function MoneySummary({
     </div>
   );
 
+  const margin = totals.quoted - totals.cost;
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-      {stat("Quoted total", formatMoney(totals.quoted, currency))}
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {stat(
+        "Quoted total",
+        formatMoney(totals.quoted, currency),
+        undefined,
+        // Margin rides along under the quoted figure instead of owning a fifth
+        // card — it's derived from the same two numbers the table already shows.
+        isAdmin ? (
+          <p className="mt-0.5 text-xs text-muted-light">
+            Cost {formatMoney(totals.cost, currency)} ·{" "}
+            <span className={margin >= 0 ? "text-success" : "text-danger"}>
+              {formatMoney(margin, currency)} margin
+            </span>
+          </p>
+        ) : null
+      )}
       {stat("Paid by patient", formatMoney(totals.paid, currency), "text-success")}
       {stat(
         "Outstanding",
@@ -67,15 +83,6 @@ export function MoneySummary({
         </p>
         <p className="mt-0.5 text-xs text-muted-light">Billed separately — not in the total</p>
       </div>
-      {isAdmin &&
-        stat(
-          "Margin",
-          formatMoney(totals.quoted - totals.cost, currency),
-          totals.quoted - totals.cost >= 0 ? "text-success" : "text-danger",
-          <p className="mt-0.5 text-xs text-muted-light">
-            Cost {formatMoney(totals.cost, currency)}
-          </p>
-        )}
     </div>
   );
 }

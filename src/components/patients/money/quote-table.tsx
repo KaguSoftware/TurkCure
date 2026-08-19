@@ -1,18 +1,29 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input, Field, ComboBox } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
+import { Dialog } from "@/components/ui/dialog";
+import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditableCell } from "@/components/ui/editable-cell";
 import { formatMoney } from "@/lib/utils";
 import type { QuoteItem } from "@/lib/types";
 
 // Suggested quote-item labels — the fast path only; `kind` is free text (0017)
-// and blank is valid. Lowercase matches the values stored since the pre-0017 enum.
-const KIND_SUGGESTIONS = ["surgery", "hotel", "transfer", "extra"];
+// and blank is valid. `id` is the stored value (lowercase, matching the
+// pre-0017 enum labels).
+const KIND_SUGGESTIONS = [
+  { id: "surgery", name: "Surgery" },
+  { id: "hotel", name: "Hotel" },
+  { id: "transfer", name: "Transfer" },
+  { id: "extra", name: "Extra" },
+];
+
+/** Plain values for the EditableCell datalist. */
+const KIND_NAMES = KIND_SUGGESTIONS.map((k) => k.id);
 
 export type QuoteItemValues = {
   kind: string;
@@ -22,9 +33,10 @@ export type QuoteItemValues = {
 };
 
 /**
- * The quote as a spreadsheet: every cell edits in place, rows reorder with
- * arrows, and the last row is always a ghost — type into it and the item is
- * created the moment it has a price. No forms, no dialogs.
+ * The quote: adding goes through a focused dialog (the one obvious path,
+ * matching "Record payment"), while existing cells stay editable in place for
+ * quick fixes. Row controls (reorder/delete) appear on hover so rows read as
+ * data, not toolbars.
  */
 export function QuoteTable({
   items,
@@ -44,28 +56,10 @@ export function QuoteTable({
   onMove: (index: number, delta: -1 | 1) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = React.useState<QuoteItem | null>(null);
-  // The ghost row's draft, held as strings until a valid price makes it real.
-  const empty = { kind: "", description: "", cost: "", price: "" };
-  const [draft, setDraft] = React.useState(empty);
+  const [addOpen, setAddOpen] = React.useState(false);
 
   const totalPrice = items.reduce((s, i) => s + Number(i.price), 0);
   const totalCost = items.reduce((s, i) => s + Number(i.cost ?? 0), 0);
-
-  function commitDraft(patch: Partial<typeof empty>) {
-    const next = { ...draft, ...patch };
-    const price = Number(next.price);
-    if (next.price !== "" && Number.isFinite(price) && price >= 0) {
-      onAdd({
-        kind: next.kind.trim(),
-        description: next.description.trim(),
-        price,
-        cost: isAdmin && next.cost !== "" ? Number(next.cost) : undefined,
-      });
-      setDraft(empty);
-    } else {
-      setDraft(next);
-    }
-  }
 
   const moneyCommit =
     (item: QuoteItem, key: "price" | "cost") =>
@@ -75,15 +69,16 @@ export function QuoteTable({
       onUpdate(item, { [key]: n });
     };
 
-  const colSpan = isAdmin ? 6 : 5;
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>Quote</CardTitle>
-        <span className="text-xs text-muted">
-          Click any cell to edit — changes save instantly
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-muted sm:inline">Click any cell to edit</span>
+          <Button variant="soft" size="sm" onClick={() => setAddOpen(true)}>
+            <Plus /> Add item
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="px-0 pb-5">
         <Table className="border-0 shadow-none">
@@ -93,20 +88,25 @@ export function QuoteTable({
               <Th>Description</Th>
               {isAdmin && <Th className="w-32 text-right">Cost</Th>}
               <Th className="w-32 text-right">Price</Th>
-              <Th className="w-20" />
-              <Th className="w-12" />
+              <Th className="w-28" />
             </tr>
           </THead>
           <TBody>
+            {items.length === 0 && (
+              <EmptyRow
+                colSpan={isAdmin ? 5 : 4}
+                message="No quote items yet — press “Add item” to start the quote."
+              />
+            )}
             {items.map((item, index) => (
-              <Tr key={item.id}>
+              <Tr key={item.id} className="group">
                 <Td className="py-1.5">
                   <EditableCell
                     value={item.kind}
                     display={
                       item.kind ? <span className="capitalize text-muted">{item.kind}</span> : undefined
                     }
-                    suggestions={KIND_SUGGESTIONS}
+                    suggestions={KIND_NAMES}
                     ariaLabel={`type of row ${index + 1}`}
                     onCommit={(next) => onUpdate(item, { kind: next })}
                   />
@@ -145,87 +145,16 @@ export function QuoteTable({
                   />
                 </Td>
                 <Td className="py-1.5">
-                  <span className="flex justify-end gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Move up"
-                      disabled={index === 0}
-                      onClick={() => onMove(index, -1)}
-                    >
-                      <ArrowUp />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Move down"
-                      disabled={index === items.length - 1}
-                      onClick={() => onMove(index, 1)}
-                    >
-                      <ArrowDown />
-                    </Button>
-                  </span>
-                </Td>
-                <Td className="py-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete item"
-                    className="hover:text-danger"
-                    onClick={() => setConfirmDelete(item)}
-                  >
-                    <Trash2 />
-                  </Button>
+                  <RowControls
+                    index={index}
+                    count={items.length}
+                    onMove={onMove}
+                    onDelete={() => setConfirmDelete(item)}
+                    deleteLabel="Delete item"
+                  />
                 </Td>
               </Tr>
             ))}
-
-            {/* The ghost row: always present, becomes a real item once priced. */}
-            <Tr className="bg-surface-hover/30">
-              <Td className="py-1.5">
-                <EditableCell
-                  value={draft.kind}
-                  placeholder="Type…"
-                  suggestions={KIND_SUGGESTIONS}
-                  ariaLabel="new item type"
-                  onCommit={(next) => commitDraft({ kind: next })}
-                />
-              </Td>
-              <Td className="py-1.5">
-                <EditableCell
-                  value={draft.description}
-                  placeholder="Add an item — e.g. FUE 3500 grafts"
-                  ariaLabel="new item description"
-                  onCommit={(next) => commitDraft({ description: next })}
-                />
-              </Td>
-              {isAdmin && (
-                <Td className="py-1.5">
-                  <EditableCell
-                    type="money"
-                    align="right"
-                    value={draft.cost}
-                    placeholder="0.00"
-                    ariaLabel="new item cost"
-                    onCommit={(next) => commitDraft({ cost: next })}
-                  />
-                </Td>
-              )}
-              <Td className="py-1.5">
-                <EditableCell
-                  type="money"
-                  align="right"
-                  value={draft.price}
-                  placeholder="0.00"
-                  ariaLabel="new item price"
-                  onCommit={(next) => commitDraft({ price: next })}
-                />
-              </Td>
-              <Td colSpan={2} className="py-1.5 text-right text-xs text-muted-light">
-                Set a price to add
-              </Td>
-            </Tr>
-
             {items.length > 0 && (
               <Tr className="bg-surface-hover/40">
                 <Td className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -238,7 +167,7 @@ export function QuoteTable({
                   </Td>
                 )}
                 <Td className="pr-2 text-right font-bold">{formatMoney(totalPrice, currency)}</Td>
-                <Td colSpan={2}>
+                <Td>
                   {isAdmin && (
                     <span
                       className={
@@ -252,16 +181,18 @@ export function QuoteTable({
                 </Td>
               </Tr>
             )}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={colSpan} className="px-4 pb-4 pt-2 text-center text-xs text-muted-light">
-                  No quote items yet — type into the row above to add the first one.
-                </td>
-              </tr>
-            )}
           </TBody>
         </Table>
       </CardContent>
+
+      <QuoteItemDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        currency={currency}
+        isAdmin={isAdmin}
+        onAdd={onAdd}
+      />
+
       <ConfirmDialog
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
@@ -288,5 +219,147 @@ export function QuoteTable({
         }
       />
     </Card>
+  );
+}
+
+/**
+ * Reorder + delete for one row. Hidden until the row is hovered (or a control
+ * inside it is focused) on pointer devices; always visible below md, where
+ * there is no hover.
+ */
+export function RowControls({
+  index,
+  count,
+  onMove,
+  onDelete,
+  deleteLabel,
+}: {
+  index: number;
+  count: number;
+  onMove: (index: number, delta: -1 | 1) => void;
+  onDelete: () => void;
+  deleteLabel: string;
+}) {
+  return (
+    <span className="flex justify-end gap-0.5 transition-opacity md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Move up"
+        disabled={index === 0}
+        onClick={() => onMove(index, -1)}
+      >
+        <ArrowUp />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Move down"
+        disabled={index === count - 1}
+        onClick={() => onMove(index, 1)}
+      >
+        <ArrowDown />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={deleteLabel}
+        className="hover:text-danger"
+        onClick={onDelete}
+      >
+        <Trash2 />
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * Focused add dialog. "Add & another" keeps it open with cleared fields for
+ * the common case of entering a whole quote in one sitting; plain "Add" closes.
+ * Adds are optimistic, so neither button waits on the server.
+ */
+function QuoteItemDialog({
+  open,
+  onClose,
+  currency,
+  isAdmin,
+  onAdd,
+}: {
+  open: boolean;
+  onClose: () => void;
+  currency: string;
+  isAdmin: boolean;
+  onAdd: (values: QuoteItemValues) => void;
+}) {
+  const formRef = React.useRef<HTMLFormElement>(null);
+  // The Type ComboBox keeps its value in React state, so form.reset() can't
+  // clear it — remount the form instead for "Add & another".
+  const [formKey, setFormKey] = React.useState(0);
+
+  function submit(addAnother: boolean) {
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) return;
+    const fd = new FormData(form);
+    onAdd({
+      kind: String(fd.get("kind") ?? "").trim(),
+      description: String(fd.get("description") ?? "").trim(),
+      price: Number(fd.get("price") || 0),
+      cost: isAdmin ? Number(fd.get("cost") || 0) : undefined,
+    });
+    if (addAnother) setFormKey((k) => k + 1);
+    else onClose();
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Add quote item">
+      <form
+        key={formKey}
+        ref={formRef}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit(false);
+        }}
+        className="space-y-4"
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Type">
+            <ComboBox
+              name="kind"
+              freeText
+              options={KIND_SUGGESTIONS}
+              placeholder="Pick, type, or leave blank"
+              createLabel="Use"
+            />
+          </Field>
+          {/* Both label fields are optional — a line can be priced without
+              being named (see 0017). */}
+          <Field label="Description">
+            <Input name="description" placeholder="e.g. FUE 3500 grafts" />
+          </Field>
+          {isAdmin && (
+            <Field label={`Cost (${currency})`}>
+              <Input name="cost" type="number" step="0.01" min="0" placeholder="0.00" />
+            </Field>
+          )}
+          <Field label={`Price (${currency})`}>
+            <Input name="price" type="number" step="0.01" min="0" required placeholder="0.00" />
+          </Field>
+        </div>
+        <p className="text-xs text-muted-light">
+          The description also appears on the PDF as a package bullet.
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="soft" onClick={() => submit(true)}>
+            Add &amp; another
+          </Button>
+          <Button type="submit">
+            <Plus /> Add item
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

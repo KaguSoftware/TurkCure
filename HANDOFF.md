@@ -81,10 +81,22 @@ green (7 tests, 2 new).
 - Decision recorded: quote lines and additional costs are **drafting data — agent-deletable by
   design**; deletes of payments/cases stay admin-only.
 
-⚠️ **Not driven in a browser this session** — build + tests only. Worth spot-checking: the
-inline cell editing feel (Enter/Tab/Esc), ghost-row adds, reorder persisting after refresh,
-a payment save failure keeping the dialog open, an agent deleting an additional cost
-(post-0022), and the Money tab at 390×844.
+**2026-08-20 cleanup after first live use** (Parsa: "messy, format breaks on long titles"):
+adds now go through **"Add item"/"Add cost" dialogs** with an "Add & another" button (ghost
+rows removed — they read as broken data); inline click-to-edit stays for fixes but quieter;
+reorder/delete appear on row hover (always visible below `md`); sections stack full width;
+summary is four cards with admin cost/margin as a sub-line under Quoted. Also **the window no
+longer scrolls in the app shell** — `MainScroller` (`src/components/shell/main-scroller.tsx`)
+scrolls below the topbar (the window scrollbar used to cut through the sticky topbar's edge)
+and resets scroll on pathname change; body-overflow scroll locks in overlays are now inert
+no-ops, deliberately left in place.
+
+⚠️ **Not driven in a browser by the assistant** — build + tests only (Parsa drove the first
+iteration live on 2026-08-20, which prompted the cleanup). Worth spot-checking: the add
+dialogs (incl. "Add & another"), inline edits (Enter/Tab/Esc), reorder persisting after
+refresh, a payment save failure keeping the dialog open, an agent deleting an additional cost
+(post-0022), scrolling on every page now that main owns it (esp. the board takeover and
+mobile drawer), and the Money tab at 390×844.
 
 ## Previous status (2026-08-14 — editable case document)
 

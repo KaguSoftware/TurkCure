@@ -223,27 +223,25 @@ export function MoneyTab({
         payments={paymentsList.items}
         isAdmin={isAdmin}
       />
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <QuoteTable
-            items={quote.items}
-            currency={currency}
-            isAdmin={isAdmin}
-            onUpdate={onQuoteUpdate}
-            onAdd={onQuoteAdd}
-            onDelete={onQuoteDelete}
-            onMove={onQuoteMove}
-          />
-        </div>
-        <AdditionalCostsTable
-          items={extras.items}
-          currency={currency}
-          onUpdate={onExtraUpdate}
-          onAdd={onExtraAdd}
-          onDelete={onExtraDelete}
-          onMove={onExtraMove}
-        />
-      </div>
+      {/* Stacked full width on purpose: the side-by-side split starved the
+          extras card and made long titles wrap into the controls. */}
+      <QuoteTable
+        items={quote.items}
+        currency={currency}
+        isAdmin={isAdmin}
+        onUpdate={onQuoteUpdate}
+        onAdd={onQuoteAdd}
+        onDelete={onQuoteDelete}
+        onMove={onQuoteMove}
+      />
+      <AdditionalCostsTable
+        items={extras.items}
+        currency={currency}
+        onUpdate={onExtraUpdate}
+        onAdd={onExtraAdd}
+        onDelete={onExtraDelete}
+        onMove={onExtraMove}
+      />
       <PaymentsSection
         patient={patient}
         activeCase={activeCase}

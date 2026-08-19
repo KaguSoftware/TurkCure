@@ -1,14 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input, Field } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
+import { Dialog } from "@/components/ui/dialog";
+import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditableCell } from "@/components/ui/editable-cell";
 import { formatMoney } from "@/lib/utils";
 import type { CaseAdditionalCost } from "@/lib/types";
+import { RowControls } from "./quote-table";
 
 export type AdditionalCostValues = { title: string; amount: number };
 
@@ -39,45 +42,38 @@ export function AdditionalCostsTable({
   onMove: (index: number, delta: -1 | 1) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = React.useState<CaseAdditionalCost | null>(null);
-  const empty = { title: "", amount: "" };
-  const [draft, setDraft] = React.useState(empty);
-
-  function commitDraft(patch: Partial<typeof empty>) {
-    const next = { ...draft, ...patch };
-    const amount = Number(next.amount);
-    if (next.amount !== "" && Number.isFinite(amount) && amount >= 0) {
-      onAdd({ title: next.title.trim(), amount });
-      setDraft(empty);
-    } else {
-      setDraft(next);
-    }
-  }
+  const [addOpen, setAddOpen] = React.useState(false);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Additional costs</CardTitle>
-        <span className="text-xs text-muted">On the PDF, outside the package total</span>
+        <Button variant="soft" size="sm" onClick={() => setAddOpen(true)}>
+          <Plus /> Add cost
+        </Button>
       </CardHeader>
       <CardContent className="px-0 pb-5">
         <p className="mx-5 -mt-1 mb-3 text-xs text-muted">
           Shown on the PDF beneath Payment Information. Not included in the package total, and not
           counted in Finance.
         </p>
-        {/* min-w-0: this card can sit in a 1/3-width column; four columns fit
-            without forcing a sideways scroller. */}
-        <Table className="min-w-0 border-0 shadow-none">
+        <Table className="border-0 shadow-none">
           <THead>
             <tr>
               <Th>Title</Th>
               <Th className="w-32 text-right">Amount</Th>
-              <Th className="w-20" />
-              <Th className="w-12" />
+              <Th className="w-28" />
             </tr>
           </THead>
           <TBody>
+            {items.length === 0 && (
+              <EmptyRow
+                colSpan={3}
+                message="No additional costs — this section is hidden on the PDF."
+              />
+            )}
             {items.map((item, index) => (
-              <Tr key={item.id}>
+              <Tr key={item.id} className="group">
                 <Td className="py-1.5 font-medium">
                   <EditableCell
                     value={item.title}
@@ -100,76 +96,27 @@ export function AdditionalCostsTable({
                   />
                 </Td>
                 <Td className="py-1.5">
-                  <span className="flex justify-end gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Move up"
-                      disabled={index === 0}
-                      onClick={() => onMove(index, -1)}
-                    >
-                      <ArrowUp />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Move down"
-                      disabled={index === items.length - 1}
-                      onClick={() => onMove(index, 1)}
-                    >
-                      <ArrowDown />
-                    </Button>
-                  </span>
-                </Td>
-                <Td className="py-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete additional cost"
-                    className="hover:text-danger"
-                    onClick={() => setConfirmDelete(item)}
-                  >
-                    <Trash2 />
-                  </Button>
+                  <RowControls
+                    index={index}
+                    count={items.length}
+                    onMove={onMove}
+                    onDelete={() => setConfirmDelete(item)}
+                    deleteLabel="Delete additional cost"
+                  />
                 </Td>
               </Tr>
             ))}
-
-            {/* Ghost row — becomes a real cost once it has an amount. */}
-            <Tr className="bg-surface-hover/30">
-              <Td className="py-1.5">
-                <EditableCell
-                  value={draft.title}
-                  placeholder="Add a cost — e.g. Revision surgery"
-                  ariaLabel="new cost title"
-                  onCommit={(next) => commitDraft({ title: next })}
-                />
-              </Td>
-              <Td className="py-1.5">
-                <EditableCell
-                  type="money"
-                  align="right"
-                  value={draft.amount}
-                  placeholder="0.00"
-                  ariaLabel="new cost amount"
-                  onCommit={(next) => commitDraft({ amount: next })}
-                />
-              </Td>
-              <Td colSpan={2} className="py-1.5 text-right text-xs text-muted-light">
-                Set an amount to add
-              </Td>
-            </Tr>
-
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 pb-4 pt-2 text-center text-xs text-muted-light">
-                  No additional costs — this section is hidden on the PDF.
-                </td>
-              </tr>
-            )}
           </TBody>
         </Table>
       </CardContent>
+
+      <AdditionalCostDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        currency={currency}
+        onAdd={onAdd}
+      />
+
       <ConfirmDialog
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
@@ -195,5 +142,70 @@ export function AdditionalCostsTable({
         }
       />
     </Card>
+  );
+}
+
+/** Focused add dialog; same two-button pattern as the quote-item dialog. */
+function AdditionalCostDialog({
+  open,
+  onClose,
+  currency,
+  onAdd,
+}: {
+  open: boolean;
+  onClose: () => void;
+  currency: string;
+  onAdd: (values: AdditionalCostValues) => void;
+}) {
+  const formRef = React.useRef<HTMLFormElement>(null);
+  const [formKey, setFormKey] = React.useState(0);
+
+  function submit(addAnother: boolean) {
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) return;
+    const fd = new FormData(form);
+    onAdd({
+      title: String(fd.get("title") ?? "").trim(),
+      amount: Number(fd.get("amount") || 0),
+    });
+    if (addAnother) setFormKey((k) => k + 1);
+    else onClose();
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Add additional cost">
+      <form
+        key={formKey}
+        ref={formRef}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit(false);
+        }}
+        className="space-y-4"
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Title">
+            <Input name="title" placeholder="e.g. Revision surgery" />
+          </Field>
+          <Field label={`Amount (${currency})`}>
+            <Input name="amount" type="number" step="0.01" min="0" required placeholder="0.00" />
+          </Field>
+        </div>
+        <p className="text-xs text-muted-light">
+          Prints on the PDF under Payment Information; never added to the package total.
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="soft" onClick={() => submit(true)}>
+            Add &amp; another
+          </Button>
+          <Button type="submit">
+            <Plus /> Add cost
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
