@@ -80,8 +80,10 @@ export function QuoteTable({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="px-0 pb-5">
-        <Table className="border-0 shadow-none">
+      {/* The table is an inset bordered block, not full-bleed — edge-to-edge
+          rows read as cramped inside an already-bordered card. */}
+      <CardContent className="px-5 pb-5">
+        <Table>
           <THead>
             <tr>
               <Th className="w-36">Type</Th>
@@ -100,7 +102,11 @@ export function QuoteTable({
             )}
             {items.map((item, index) => (
               <Tr key={item.id} className="group">
-                <Td className="py-1.5">
+                {/* px-2 on editable cells: the inner control carries its own
+                    px-2, so text lands at the same 16px inset as the px-4
+                    headers and plain cells — otherwise every column reads
+                    misaligned by 8px. */}
+                <Td className="px-2 py-1.5">
                   <EditableCell
                     value={item.kind}
                     display={
@@ -111,7 +117,7 @@ export function QuoteTable({
                     onCommit={(next) => onUpdate(item, { kind: next })}
                   />
                 </Td>
-                <Td className="py-1.5 font-medium">
+                <Td className="px-2 py-1.5 font-medium">
                   <EditableCell
                     value={item.description}
                     ariaLabel={`description of row ${index + 1}`}
@@ -119,7 +125,7 @@ export function QuoteTable({
                   />
                 </Td>
                 {isAdmin && (
-                  <Td className="py-1.5">
+                  <Td className="px-2 py-1.5">
                     <EditableCell
                       type="money"
                       align="right"
@@ -134,7 +140,7 @@ export function QuoteTable({
                     />
                   </Td>
                 )}
-                <Td className="py-1.5 font-medium">
+                <Td className="px-2 py-1.5 font-medium">
                   <EditableCell
                     type="money"
                     align="right"
@@ -162,11 +168,11 @@ export function QuoteTable({
                 </Td>
                 <Td />
                 {isAdmin && (
-                  <Td className="pr-2 text-right font-semibold text-muted">
+                  <Td className="text-right font-semibold text-muted">
                     {formatMoney(totalCost, currency)}
                   </Td>
                 )}
-                <Td className="pr-2 text-right font-bold">{formatMoney(totalPrice, currency)}</Td>
+                <Td className="text-right font-bold">{formatMoney(totalPrice, currency)}</Td>
                 <Td>
                   {isAdmin && (
                     <span

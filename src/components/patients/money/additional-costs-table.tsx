@@ -52,12 +52,13 @@ export function AdditionalCostsTable({
           <Plus /> Add cost
         </Button>
       </CardHeader>
-      <CardContent className="px-0 pb-5">
-        <p className="mx-5 -mt-1 mb-3 text-xs text-muted">
+      {/* Inset bordered table, matching the Quote card. */}
+      <CardContent className="px-5 pb-5">
+        <p className="-mt-1 mb-3 text-xs text-muted">
           Shown on the PDF beneath Payment Information. Not included in the package total, and not
           counted in Finance.
         </p>
-        <Table className="border-0 shadow-none">
+        <Table>
           <THead>
             <tr>
               <Th>Title</Th>
@@ -74,14 +75,16 @@ export function AdditionalCostsTable({
             )}
             {items.map((item, index) => (
               <Tr key={item.id} className="group">
-                <Td className="py-1.5 font-medium">
+                {/* px-2 + the control's own px-2 = the same 16px inset as the
+                    px-4 headers; see quote-table. */}
+                <Td className="px-2 py-1.5 font-medium">
                   <EditableCell
                     value={item.title}
                     ariaLabel={`title of cost ${index + 1}`}
                     onCommit={(next) => onUpdate(item, { title: next })}
                   />
                 </Td>
-                <Td className="py-1.5 font-medium">
+                <Td className="px-2 py-1.5 font-medium">
                   <EditableCell
                     type="money"
                     align="right"

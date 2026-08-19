@@ -151,8 +151,9 @@ export function PaymentsSection({
           {list.length} payment{list.length === 1 ? "" : "s"}
         </span>
       </CardHeader>
-      <CardContent className="px-0 pb-0">
-        <Table className="min-w-0 border-0 shadow-none sm:min-w-[34rem]">
+      {/* Inset bordered table, matching the Quote and Additional-costs cards. */}
+      <CardContent className="px-5 pb-5">
+        <Table className="min-w-0 sm:min-w-[34rem]">
           <THead>
             <tr>
               {/* Method/Due drop below md — on a phone the row is about who,
