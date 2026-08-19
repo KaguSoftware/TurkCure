@@ -33,7 +33,7 @@ import type {
 import { PatientFormDialog } from "./patient-form";
 import { CombinedPdfDialog } from "./combined-pdf-dialog";
 import { CaseTab } from "./case-tab";
-import { PaymentsTab } from "./payments-tab";
+import { MoneyTab } from "./money/money-tab";
 import { InstructionsTab } from "./instructions-tab";
 import { FilesTab } from "./files-tab";
 
@@ -48,7 +48,14 @@ export interface Directories {
   templates: { id: string; title: string }[];
 }
 
-const TABS = ["Case & Quote", "Payments", "Instructions", "Files"] as const;
+const TABS = ["Case", "Money", "Instructions", "Files"] as const;
+
+// Old deep links keep working: the quote moved from "Case & Quote" into the
+// Money tab (which also absorbed "Payments") in the 2026-08 money rebuild.
+const LEGACY_TABS: Record<string, (typeof TABS)[number]> = {
+  "Case & Quote": "Case",
+  Payments: "Money",
+};
 
 export function PatientDetail({
   patient,
@@ -81,7 +88,7 @@ export function PatientDetail({
   const urlTab = searchParams.get("tab");
   const tab: (typeof TABS)[number] = (TABS as readonly string[]).includes(urlTab ?? "")
     ? (urlTab as (typeof TABS)[number])
-    : "Case & Quote";
+    : LEGACY_TABS[urlTab ?? ""] ?? "Case";
   const setParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set(key, value);
@@ -125,6 +132,12 @@ export function PatientDetail({
         .reduce((s, p) => s + Number(p.amount_case ?? p.amount), 0)
     : 0;
   const outstanding = totalPrice - paidTotal;
+  // Extras are excluded from the quoted/due figures on purpose (0020, and the
+  // PDF's balance works the same way) — but the chip shouldn't hide that they
+  // exist, so they get a muted suffix.
+  const extrasTotal = activeCase
+    ? (additionalCostsByCase[activeCase.id] ?? []).reduce((s, c) => s + Number(c.amount), 0)
+    : 0;
   const caseCompleted = activeCase?.status === "completed";
 
   return (
@@ -155,6 +168,11 @@ export function PatientDetail({
                       ? "Paid in full"
                       : `${formatMoney(outstanding, activeCase.currency)} due`}
                   </span>
+                  {extrasTotal > 0 && (
+                    <span className="text-xs font-normal text-muted-light">
+                      + {formatMoney(extrasTotal, activeCase.currency)} extras
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -270,24 +288,23 @@ export function PatientDetail({
       <TabBar idBase="patient" tabs={TABS} value={tab} onChange={setTab} />
 
       <TabPanel idBase="patient" index={TABS.indexOf(tab)}>
-        {tab === "Case & Quote" && (
+        {tab === "Case" && (
           <CaseTab
             patient={patient}
             activeCase={activeCase}
-            quoteItemsByCase={quoteItemsByCase}
-            additionalCostsByCase={additionalCostsByCase}
             isAdmin={isAdmin}
             directories={directories}
             onCaseCreated={(id) => setSelectedCaseId(id)}
             onCaseDeleted={clearSelectedCase}
           />
         )}
-        {tab === "Payments" && (
-          <PaymentsTab
+        {tab === "Money" && (
+          <MoneyTab
             patient={patient}
-            cases={activeCase ? [activeCase] : []}
+            activeCase={activeCase}
+            quoteItems={activeCase ? quoteItemsByCase[activeCase.id] ?? [] : []}
+            additionalCosts={activeCase ? additionalCostsByCase[activeCase.id] ?? [] : []}
             payments={casePayments}
-            quotedTotal={totalPrice}
             isAdmin={isAdmin}
             directories={directories}
           />

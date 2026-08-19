@@ -156,52 +156,81 @@ export function FinanceOverview({
 
   return (
     <div className="space-y-4 pt-3">
-      {/* 2-up on a phone: one-per-row pushed the chart and table four
-          screen-heights down before anything else was visible. */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat
-          label="Revenue (quoted)"
-          value={cur.rev}
-          displayCurrency={displayCurrency}
-          sub={
-            `Expected margin ${formatMoney(expectedMargin, displayCurrency)}` +
-            (planningCount > 0 ? ` · excl. ${planningCount} planning` : "")
-          }
-          delta={delta(cur.rev, prevT?.rev)}
-        />
-        <Stat
-          label="Collected"
-          value={cur.coll}
-          displayCurrency={displayCurrency}
-          accent="text-success"
-          sub={
-            balance > 0.005
-              ? `${formatMoney(balance, displayCurrency)} outstanding (all time)`
-              : "Fully collected"
-          }
-          delta={delta(cur.coll, prevT?.coll)}
-        />
-        <Stat
-          label="Paid out"
-          value={cur.out}
-          displayCurrency={displayCurrency}
-          sub={`Quoted cost ${formatMoney(cur.cost, displayCurrency)}`}
-          delta={delta(cur.out, prevT?.out)}
-        />
-        <Stat
-          label="Cash margin"
-          value={cashMargin}
-          displayCurrency={displayCurrency}
-          accent={cashMargin >= 0 ? "text-success" : "text-danger"}
-          sub="Collected − paid out"
-          delta={delta(cashMargin, prevT ? prevT.coll - prevT.out : undefined)}
-        />
+      {/* The two bases are labeled and separated on purpose: quoted figures are
+          scoped by case month, cash figures by paid date — adjacent unlabeled
+          cards invited subtracting one from the other. Still 2-up on a phone:
+          one-per-row pushed the chart and table four screen-heights down. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+        <div className="xl:col-span-2">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-light">
+            Quoted — by case month
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Stat
+              label="Revenue (quoted)"
+              value={cur.rev}
+              displayCurrency={displayCurrency}
+              sub={
+                `Quoted cost ${formatMoney(cur.cost, displayCurrency)}` +
+                (planningCount > 0 ? ` · excl. ${planningCount} planning` : "")
+              }
+              delta={delta(cur.rev, prevT?.rev)}
+            />
+            <Stat
+              label="Expected margin"
+              value={expectedMargin}
+              displayCurrency={displayCurrency}
+              accent={expectedMargin >= 0 ? "text-success" : "text-danger"}
+              sub="Revenue − quoted cost"
+              delta={delta(expectedMargin, prevT ? prevT.rev - prevT.cost : undefined)}
+            />
+          </div>
+        </div>
+        <div className="xl:col-span-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-light">
+            Cash — by paid date
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat
+              label="Collected"
+              value={cur.coll}
+              displayCurrency={displayCurrency}
+              accent="text-success"
+              sub={
+                balance > 0.005
+                  ? `${formatMoney(balance, displayCurrency)} outstanding (all time)`
+                  : "Fully collected"
+              }
+              delta={delta(cur.coll, prevT?.coll)}
+            />
+            <Stat
+              label="Paid out"
+              value={cur.out}
+              displayCurrency={displayCurrency}
+              sub="Payouts to providers"
+              delta={delta(cur.out, prevT?.out)}
+            />
+            <Stat
+              label="Cash margin"
+              value={cashMargin}
+              displayCurrency={displayCurrency}
+              accent={cashMargin >= 0 ? "text-success" : "text-danger"}
+              sub="Collected − paid out"
+              delta={delta(cashMargin, prevT ? prevT.coll - prevT.out : undefined)}
+            />
+          </div>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>
             {chartMode === "cash" ? "Monthly cash flow" : "Monthly revenue vs. cost"} ({scopeSuffix})
+            {/* Deliberately not scoped by the Period select (a one-month chart
+                answers nothing) — say so instead of looking broken. */}
+            <span className="ml-1.5 text-xs font-normal text-muted-light">
+              · trailing 12 months
+            </span>
           </CardTitle>
           <div
             role="group"

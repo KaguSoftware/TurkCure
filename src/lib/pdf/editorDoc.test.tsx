@@ -54,6 +54,7 @@ const CASE: CaseDocData = {
   packageBullets: ["Doctor consultation", "Surgical procedure", "Medication included"],
   total: 3200,
   deposit: 1000,
+  depositDisplay: "1,000 Euros",
   additionalCosts: [{ title: "Revision surgery", amount: 500 }],
   instructions: [{ title: "Before surgery", body_md: "Do **not** eat.", image_paths: [] }],
   coverLine1: "Dr Test   ·   Test Hospital",
@@ -157,6 +158,34 @@ describe("editorDoc mapper", () => {
     };
     const buf = await render(doc);
     expect(buf.toString("latin1")).not.toContain("Additional Costs");
+  });
+
+  it("seeds the deposit row from depositDisplay verbatim", () => {
+    // Same-currency path: identical to the pre-rebuild "1,000 Euros" output.
+    const same = buildCaseDoc(CASE, PATIENT);
+    const sameRows = (
+      same.content.find((n) => n.type === BLOCK.paymentSummary)?.attrs as {
+        rows: { label: string; value: string }[];
+      }
+    ).rows;
+    expect(sameRows).toContainEqual({ label: "Deposit paid", value: "1,000 Euros" });
+
+    // Off-currency path: the original payment currency shows alongside the
+    // converted case-currency figure the balance math uses.
+    const mixed = buildCaseDoc(
+      { ...CASE, currency: "USD", depositDisplay: "500 Euros (= 540 USD)", deposit: 540 },
+      PATIENT
+    );
+    const mixedAttrs = mixed.content.find((n) => n.type === BLOCK.paymentSummary)?.attrs as {
+      rows: { label: string; value: string }[];
+      balanceValue: string;
+    };
+    expect(mixedAttrs.rows).toContainEqual({
+      label: "Deposit paid",
+      value: "500 Euros (= 540 USD)",
+    });
+    // Remaining balance stays converted-only, in the case currency.
+    expect(mixedAttrs.balanceValue).toBe("2,660 USD");
   });
 
   it("keeps every seeded section in the output", async () => {

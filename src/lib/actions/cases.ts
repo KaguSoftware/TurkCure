@@ -222,6 +222,11 @@ export async function upsertQuoteItem(
   const profile = await requireProfile();
   const admin = createAdminClient();
 
+  if (!Number.isFinite(values.price) || values.price < 0)
+    return { error: "Price must be zero or more." };
+  if (values.cost !== undefined && (!Number.isFinite(values.cost) || values.cost < 0))
+    return { error: "Cost must be zero or more." };
+
   // Both labels are free text and may be empty (0017) — trim and cap them, but
   // never reject a blank one.
   const label = (s: unknown) => String(s ?? "").trim().slice(0, 200);
@@ -243,11 +248,42 @@ export async function upsertQuoteItem(
   return { item: data as unknown as Record<string, unknown> };
 }
 
+/**
+ * Deliberately agent-deletable (0022): quote lines are drafting data agents
+ * create and edit, so they can remove them too — even though the cost column
+ * they never see travels with the row. Deletes of the financial record proper
+ * (payments, cases) stay admin-only.
+ */
 export async function deleteQuoteItem(patientId: string, id: string): Promise<{ error?: string }> {
   await requireProfile();
   const admin = createAdminClient();
   const { error } = await admin.from("quote_items").delete().eq("id", id);
   if (error) return { error: error.message };
+  revalidateCase(patientId);
+  return {};
+}
+
+/**
+ * Rewrite sort_order = array index for a case's quote items in one round-trip
+ * batch. Service-role client because quote_items RLS is admin-only — same
+ * gating stance as upsert/deleteQuoteItem. The `.eq("case_id")` guard means ids
+ * from another case are simply ignored rather than spliced in.
+ */
+export async function reorderQuoteItems(
+  patientId: string,
+  caseId: string,
+  orderedIds: string[]
+): Promise<{ error?: string }> {
+  await requireProfile();
+  if (orderedIds.length > 200) return { error: "Too many items to reorder." };
+  const admin = createAdminClient();
+  const results = await Promise.all(
+    orderedIds.map((id, i) =>
+      admin.from("quote_items").update({ sort_order: i }).eq("id", id).eq("case_id", caseId)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { error: failed.error.message };
   revalidateCase(patientId);
   return {};
 }
@@ -345,6 +381,9 @@ export async function upsertAdditionalCost(
   await requireProfile();
   const supabase = await createClient();
 
+  if (!Number.isFinite(values.amount) || values.amount < 0)
+    return { error: "Amount must be zero or more." };
+
   // The title is free text and may be empty — trim and cap it, but never
   // reject a blank one (same stance as the quote labels since 0017).
   const row = {
@@ -370,6 +409,11 @@ export async function upsertAdditionalCost(
   return { item: data as unknown as Record<string, unknown> };
 }
 
+/**
+ * Agent-deletable since 0022 (which relaxed the 0020 admin-only delete policy):
+ * extras are drafting data like quote items. Before 0022 an agent's delete
+ * matched zero rows and silently no-opped.
+ */
 export async function deleteAdditionalCost(
   patientId: string,
   id: string
@@ -378,6 +422,31 @@ export async function deleteAdditionalCost(
   const supabase = await createClient();
   const { error } = await supabase.from("case_additional_costs").delete().eq("id", id);
   if (error) return { error: error.message };
+  revalidateCase(patientId);
+  return {};
+}
+
+/** Same as reorderQuoteItems but for extras; the cookie client suffices — RLS
+ *  allows any authenticated staff to update this table. */
+export async function reorderAdditionalCosts(
+  patientId: string,
+  caseId: string,
+  orderedIds: string[]
+): Promise<{ error?: string }> {
+  await requireProfile();
+  if (orderedIds.length > 200) return { error: "Too many items to reorder." };
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, i) =>
+      supabase
+        .from("case_additional_costs")
+        .update({ sort_order: i })
+        .eq("id", id)
+        .eq("case_id", caseId)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { error: failed.error.message };
   revalidateCase(patientId);
   return {};
 }

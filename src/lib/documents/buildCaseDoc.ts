@@ -130,7 +130,9 @@ export function buildCaseDoc(data: CaseDocData, patient: PatientDocData): Editor
       title: "Payment Information",
       rows: [
         { label: "Total package price", value: money(data.total) },
-        { label: "Deposit paid", value: money(data.deposit) },
+        // Preformatted in buildCaseData so it can't drift from the PDF: shows
+        // the original currency when a deposit was paid off-currency.
+        { label: "Deposit paid", value: data.depositDisplay },
       ],
       balanceLabel: "Remaining balance",
       balanceValue: money(Math.max(data.total - data.deposit, 0)),

@@ -601,6 +601,65 @@ Verified end to end in a browser: seeded document renders **byte-identical to th
 (all 4 pages, every text item at the same y), an edit survives save → reload → into the rendered
 PDF, the preview blob is a real 34KB PDF, and the dirty flag stays clean on load.
 
+## Recent work — 2026-08-19 money-UX rebuild
+
+The quote / additional-costs / payments experience was rebuilt around one
+**Money tab** per case. Context: three near-identical "table + add form" cards
+across two tabs, nothing editable in place (typo = delete + re-add, losing the
+row's position), a payment dialog that closed before its save resolved, and a
+finance overview mixing quoted-basis and cash-basis figures unlabeled.
+
+**Tabs**: patient detail is now `Case | Money | Instructions | Files`. The quote
+and extras moved out of "Case & Quote" (now just **Case**, full-width form) and
+merged with the old Payments tab into **Money**. Old `?tab=Case%20%26%20Quote` /
+`?tab=Payments` deep links are remapped via `LEGACY_TABS` in `patient-detail.tsx`.
+The header money chip gained a muted `+ €X extras` suffix (extras stay excluded
+from quoted/due on purpose — same basis as the PDF).
+
+**Money tab** (`src/components/patients/money/`): `money-tab.tsx` owns all three
+optimistic lists (quote items / extras / payments) so `money-summary.tsx` (Quoted
+· Paid · Outstanding · Additional costs "billed separately" · admin Margin)
+reflects in-flight edits; commits are serialized through a promise queue because
+`useOptimisticList`'s snapshot rollback assumes non-overlapping mutations.
+`quote-table.tsx` / `additional-costs-table.tsx` are spreadsheet-style: every
+cell is an `EditableCell` (`src/components/ui/editable-cell.tsx` — click to
+edit, Enter/Tab/blur commit, Esc cancels, native `<datalist>` for suggestions —
+deliberately not ComboBox-in-cell), rows reorder with arrow buttons (DnD stays
+out of scope) via new `reorderQuoteItems`/`reorderAdditionalCosts` actions, and
+the last row is always a **ghost row** that inserts once it has a price/amount.
+`payment-dialog.tsx` stays open until the save resolves (inline errors), stages
+the receipt file locally and uploads only on Save (cancel leaves no orphan;
+replaced receipts are removed after a successful save), and warns when a manual
+FX rate is >3× off the fetched live rate. `payments-section.tsx` adds explicit
+per-row edit buttons. `payments-tab.tsx` was deleted; `case-tab.tsx` shrank to
+the case form alone.
+
+**Migration `0022_money_ux.sql`** (⚠️ apply by hand): relaxes the
+`case_additional_costs` DELETE policy to any authenticated user — before this,
+agent deletes silently no-opped (cookie client vs 0020's admin-only policy) while
+the optimistic UI reported success. Decision recorded in the action comments:
+quote lines and extras are *drafting data*, agent-deletable by design; deletes of
+payments/cases stay admin-only. Also normalizes legacy `'partial'` payment rows
+(status has long been derived paid/pending). `upsertQuoteItem`/
+`upsertAdditionalCost` now validate amounts (finite, ≥ 0).
+
+**PDF — the one permitted output change**: the "Deposit paid" line now shows the
+original currency when a deposit was paid off-currency — `500 Euros (= 540 USD)`
+— via a preformatted `CaseDocData.depositDisplay` computed once in
+`buildCaseData` (case-doc.tsx) and consumed verbatim by both `CaseBody` and
+`buildCaseDoc.ts`, so the PDF and the editor seed cannot drift. Same-currency
+cases print exactly as before; balance math is untouched (still Σ `amount_case`).
+`loadCasesData` now also selects `amount, currency` from payments. Tests in
+`editorDoc.test.tsx` pin both paths.
+
+**Finance overview**: the four stat cards are split into two labeled groups —
+"Quoted — by case month" (Revenue + Expected margin) and "Cash — by paid date"
+(Collected, Paid out, Cash margin) — so the two bases can't be read as one; the
+chart title now says "· trailing 12 months" (it deliberately ignores the Period
+select).
+
+---
+
 _Keep this file current: when you make a materially new decision or change the
 system's shape, update the relevant section (and add a dated note under "Recent
 work") so the next reader stays up to speed. Same rules apply to editing this

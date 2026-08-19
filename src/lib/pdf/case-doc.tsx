@@ -54,6 +54,13 @@ export interface CaseDocData {
   packageBullets: string[];
   total: number;
   deposit: number;
+  /**
+   * The "Deposit paid" line, preformatted. Equals money(deposit) when every
+   * paid deposit is in the case currency; otherwise shows what was actually
+   * handed over, e.g. "500 Euros (= 540 USD)". Computed once here so the PDF
+   * and the editor seed (buildCaseDoc) can never drift apart.
+   */
+  depositDisplay: string;
   additionalCosts: { title: string; amount: number }[];
   instructions: { title: string; body_md: string; image_paths: string[] }[];
   coverLine1: string;
@@ -120,6 +127,28 @@ function buildCaseData(
   // that was too high on this customer-facing document.
   const deposit = paidIn.reduce((sum, p) => sum + Number(p.amount_case), 0);
 
+  // The balance math above runs in the case currency, but a patient who paid
+  // €500 should see the euros on the document, not only the converted figure.
+  // Same word convention as `money()` in CaseBody: "Euros" for EUR, code otherwise.
+  const caseCurrencyCode = caseRow.currency as string;
+  const fmtIn = (v: number, code: string) =>
+    `${v.toLocaleString("en-US")} ${code === "EUR" ? "Euros" : code}`;
+  const byCurrency = new Map<string, number>();
+  for (const p of paidIn) {
+    const code = String(p.currency ?? caseCurrencyCode);
+    byCurrency.set(code, (byCurrency.get(code) ?? 0) + Number(p.amount ?? p.amount_case));
+  }
+  const hasForeign = [...byCurrency.keys()].some((code) => code !== caseCurrencyCode);
+  const depositDisplay = hasForeign
+    ? [...byCurrency.entries()]
+        // Case currency first, then alphabetical, so the order is stable.
+        .sort(([a], [b]) =>
+          a === caseCurrencyCode ? -1 : b === caseCurrencyCode ? 1 : a.localeCompare(b)
+        )
+        .map(([code, amount]) => fmtIn(amount, code))
+        .join(" + ") + ` (= ${fmtIn(deposit, caseCurrencyCode)})`
+    : fmtIn(deposit, caseCurrencyCode);
+
   // The hotel is booked for the whole stay (arrival → departure). Any nights the
   // patient spends in hospital overlap this window; they are reported separately
   // in the Hospital section, not deducted from the hotel booking.
@@ -164,6 +193,7 @@ function buildCaseData(
     packageBullets,
     total,
     deposit,
+    depositDisplay,
     additionalCosts: extras.map((e) => ({
       title: String(e.title ?? ""),
       amount: Number(e.amount ?? 0),
@@ -257,7 +287,9 @@ export async function loadCasesData(
       .order("sort_order"),
     supabase
       .from("payments")
-      .select("case_id, amount_case")
+      // amount + currency feed the deposit's original-currency display; the
+      // balance math still runs on amount_case alone.
+      .select("case_id, amount_case, amount, currency")
       .in("case_id", caseIds)
       .eq("direction", "in")
       .eq("status", "paid"),
@@ -703,7 +735,9 @@ export function CaseBody({
 
       <TableSection number={n(5)} title="Payment Information" wrap={false}>
         <TRow label="Total package price" value={money(data.total)} />
-        <TRow label="Deposit paid" value={money(data.deposit)} />
+        {/* Preformatted: shows the original currency when a deposit was paid
+            off-currency ("500 Euros (= 540 USD)"), plain money() otherwise. */}
+        <TRow label="Deposit paid" value={data.depositDisplay} />
         <View style={[s.tRowLast, { backgroundColor: GOLD_SOFT_BG }]}>
           <Text style={[s.tLabel, { backgroundColor: "transparent", color: GOLD_DARK }]}>
             Remaining balance

@@ -3,8 +3,10 @@
 > Read this first when starting a fresh chat.
 > **The canonical guide is [`CLAUDE.md`](CLAUDE.md)** — the full stack, conventions, architecture,
 > and dated decision log live there. This file is the short "where are we, what's next" layer on
-> top. Read both. There is also a persistent memory index at
-> `C:\Users\p.mansouri\.claude\projects\c--Users-p-mansouri-Desktop-kagu-TurkCure\memory\MEMORY.md`.
+> top. Read both. Claude's persistent memory index lives per machine:
+> `C:\Users\p.mansouri\.claude\projects\c--Users-p-mansouri-Desktop-kagu-TurkCure\memory\MEMORY.md`
+> on the work PC, `C:\Users\MnS\.claude\projects\c--Users-MnS-Kagu-TurkCure\memory\MEMORY.md` on
+> the home PC (may not exist yet where no memories have been saved).
 >
 > ⚠️ Not to be confused with **ExxionOs**, a separate project on the same laptop with its own
 > HANDOFF.md and plan file. Different repo, different rules.
@@ -47,7 +49,44 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-08-14 — editable case document)
+## Current status (2026-08-19 — money-UX rebuild)
+
+The whole money experience was rebuilt around one **Money tab** per case (full detail in
+CLAUDE.md → "Recent work — 2026-08-19 money-UX rebuild"). `npm run build` green, `npm test`
+green (7 tests, 2 new).
+
+- **⚠️ Migration `0022_money_ux.sql` is written but NOT APPLIED — Parsa applies it by hand.**
+  It (a) relaxes the `case_additional_costs` DELETE policy so agent deletes stop silently
+  no-opping (the 0020 policy was admin-only while the action used the cookie client — the
+  optimistic UI reported success and the row came back on refresh), and (b) normalizes legacy
+  `'partial'` payment rows. Until applied, everything works except agent deletes of additional
+  costs — which were already broken.
+- **Tabs renamed**: `Case | Money | Instructions | Files`. The quote + extras moved out of
+  "Case & Quote" (now just **Case**, a full-width form) and merged with the old Payments tab
+  into **Money**. Old `?tab=` deep links are remapped (`LEGACY_TABS` in `patient-detail.tsx`).
+  `payments-tab.tsx` was deleted.
+- **Money tab** (`src/components/patients/money/`): summary cards (Quoted · Paid · Outstanding
+  · extras "billed separately" · admin Margin) fed by the same optimistic lists the tables edit;
+  spreadsheet-style quote + extras tables (inline `EditableCell` editing, arrow-button reorder
+  via new `reorderQuoteItems`/`reorderAdditionalCosts` actions, always-present ghost row that
+  inserts once priced); payments with explicit edit buttons and a rebuilt dialog that stays open
+  until the save resolves, stages the receipt until Save (no orphaned uploads on cancel), and
+  warns on a likely-inverted manual FX rate.
+- **PDF change (deliberate, user-approved)**: the "Deposit paid" line shows the original
+  currency for off-currency deposits — `500 Euros (= 540 USD)` — via preformatted
+  `CaseDocData.depositDisplay`, consumed verbatim by both `CaseBody` and `buildCaseDoc` so they
+  can't drift. Same-currency cases print exactly as before; balance math unchanged.
+- **Finance overview**: stat cards split into two labeled groups ("Quoted — by case month" vs
+  "Cash — by paid date"); chart titled "· trailing 12 months".
+- Decision recorded: quote lines and additional costs are **drafting data — agent-deletable by
+  design**; deletes of payments/cases stay admin-only.
+
+⚠️ **Not driven in a browser this session** — build + tests only. Worth spot-checking: the
+inline cell editing feel (Enter/Tab/Esc), ghost-row adds, reorder persisting after refresh,
+a payment save failure keeping the dialog open, an agent deleting an additional cost
+(post-0022), and the Money tab at 390×844.
+
+## Previous status (2026-08-14 — editable case document)
 
 The case PDF can now be **edited before download**. "Edit document" on a case opens a Tiptap
 editor that looks like the document itself, with an Edit / PDF Preview toggle, Save, Reset,
@@ -225,9 +264,17 @@ Turkish characters.
 - `src/app/globals.css` — all design tokens + motion utilities + the new scrollbar rules.
 - `src/components/ui/input.tsx` — `Input`/`Textarea`/`Select`/**`ComboBox`**/`Field`/`Label` and the
   `PopoverLayer` portal helper. ComboBox has both id-valued and `freeText` modes.
-- `src/components/patients/case-tab.tsx` — the Case & Quote tab; case-detail form (now
-  combobox-driven) + inline quote editor. `AIRPORT_SUGGESTIONS` lives here.
-- `src/components/patients/patient-detail.tsx` — tab shell + `Directories` type.
+- `src/components/patients/case-tab.tsx` — the Case tab: the case form alone (combobox-driven,
+  full width). `AIRPORT_SUGGESTIONS` lives here. The quote editor moved out on 2026-08-19.
+- `src/components/patients/money/` — the Money tab (2026-08-19): `money-tab.tsx` (shell; owns
+  all three optimistic lists + a promise queue that serializes commits), `money-summary.tsx`,
+  `quote-table.tsx` / `additional-costs-table.tsx` (spreadsheet-style, ghost row, arrow
+  reorder), `payments-section.tsx`, `payment-dialog.tsx` (stays open through save; staged
+  receipt upload). `payments-tab.tsx` no longer exists.
+- `src/components/ui/editable-cell.tsx` — click-to-edit table cell (Enter/Tab commit, Esc
+  cancel, native `<datalist>` suggestions — deliberately not ComboBox-in-cell).
+- `src/components/patients/patient-detail.tsx` — tab shell + `Directories` type +
+  `LEGACY_TABS` remap for pre-2026-08-19 `?tab=` links.
 - `src/lib/actions/directory.ts` — `upsertDirectoryRow` / `deleteDirectoryRow` (tables: countries,
   hospitals, doctors, hotels, drivers, operation_types, instruction_templates).
 - `src/lib/actions/cases.ts` — `upsertCase`, quote-item actions. **`upsertCase` does not whitelist
@@ -265,8 +312,9 @@ Turkish characters.
   `editor/` (`extensions.ts`, `nodes.tsx`, `CaseDocEditor.tsx`, `editor.css`).
 - `src/app/api/pdf/draft/[caseId]/route.tsx` — GET renders the stored draft (seeding if none),
   POST renders document JSON from the body. The POST backs the editor preview.
-- `supabase/migrations/` — numbered `0001`…`0021`, **all applied** as of 2026-08-14.
-  `0001`–`0015` by hand, the rest via `npx supabase db push --linked`.
+- `supabase/migrations/` — numbered `0001`…`0022`. `0001`–`0021` applied as of 2026-08-14
+  (`0001`–`0015` by hand, the rest via `npx supabase db push --linked`);
+  **`0022` written 2026-08-19, NOT yet applied.**
 
 ## Roadmap / next steps
 No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**
@@ -319,6 +367,13 @@ Standing candidates if asked:
   error, the content just isn't there. Fine for fixed-height tables; never put it on a section
   whose length grows with the data. Package Details wraps for exactly this reason, and a combined
   document stacks several of those on one flowing page.
+- **`useOptimisticList` rollback assumes non-overlapping mutations.** Inline cell editing makes
+  rapid sequential commits easy, so `money-tab.tsx` serializes every mutate through a promise
+  queue. Any new UI that fires optimistic mutations in quick succession needs the same.
+- **The PDF "Deposit paid" line comes from `CaseDocData.depositDisplay` only** — preformatted
+  once in `buildCaseData` (case-doc.tsx) and printed verbatim by both `CaseBody` and
+  `buildCaseDoc`. Don't re-derive it in either consumer; that split is what the field exists to
+  prevent. Balance math still runs on the numeric `deposit` (Σ `amount_case`).
 - **Additional costs must never reach Finance.** `case_additional_costs` is separate from
   `quote_items` precisely because `finance_case_rows()` aggregates `quote_items.price`/`cost`. If
   a future change starts summing these into revenue or the package total, that's a regression,
