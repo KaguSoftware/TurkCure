@@ -70,11 +70,13 @@ links, patient-page reminder create→DB→delete, palette landing pre-filtered)
   (`?q=`/`&t=`); cron `payment:<uuid>` marker hidden on reminder rows; friendly error page
   + `global-error.tsx` + root `not-found.tsx`; finance CSV BOM; `?view=` persistence; dead
   `"partial"` status removed from TS.
-- **Reminders**: patient-page reminders card (create/edit/done/delete from the patient);
-  shared `components/reminders/reminder-form.tsx`; dashboard Mine|Everyone (Mine default,
-  unassigned always visible), assignee shown, snooze menu (1h/tomorrow/next week), live
-  overdue clock, and a **configurable `?days=` horizon** (7–90) across reminders/arrivals/
-  payments-due with a "+N more beyond" line.
+- **Reminders**: shared `components/reminders/reminder-form.tsx`; dashboard Mine|Everyone
+  (Mine default, unassigned always visible), assignee shown, snooze menu (1h/tomorrow/next
+  week), live overdue clock, and a configurable 7–90 day horizon that **filters locally**
+  over one 90-day fetch (instant, persisted in localStorage) with a "+N more beyond" line.
+  ⚠️ Two same-day reversions on Parsa's feedback: the patient-page reminders card was
+  removed (reminders are dashboard-only by design) and the `?days=` server-refetch horizon
+  became the local one (`dashboard-content.tsx`; `horizon-select.tsx` deleted).
 - **Structural**: true board column totals (RPC), patients table server-side sort
   (`?sort=`/`?dir=`), file previews in-app + 25 MB cap + uploader shown, status nudge chips
   (never automatic).
@@ -318,11 +320,11 @@ Turkish characters.
   document-level click/keyup (popovers are portaled); restore via mount effect + formKey
   remount; `draft.value("name") ?? serverValue` on every field.
 - `src/components/reminders/reminder-form.tsx` — shared reminder dialog form + `TYPE_META`
-  (moved out of reminders-panel); `src/components/patients/patient-reminders.tsx` — the
-  patient-page reminders card.
-- `src/components/dashboard/horizon.ts` (+ `horizon-select.tsx`) — dashboard `?days=`
-  options. The const lives in a plain module because RSC can't read non-component exports
-  of a "use client" file.
+  (moved out of reminders-panel).
+- `src/components/dashboard/dashboard-content.tsx` — client shell for the whole dashboard;
+  owns the 7–90 day period (localStorage) and filters the server's fixed 90-day fetch
+  locally. `dashboard/horizon.ts` holds the options in a plain module because RSC can't
+  read non-component exports of a "use client" file.
 - `src/app/globals.css` — all design tokens + motion utilities + the new scrollbar rules.
 - `src/components/ui/input.tsx` — `Input`/`Textarea`/`Select`/**`ComboBox`**/`Field`/`Label` and the
   `PopoverLayer` portal helper. ComboBox has both id-valued and `freeText` modes.

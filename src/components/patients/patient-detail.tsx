@@ -32,10 +32,8 @@ import type {
   PatientStatus,
   Payment,
   QuoteItem,
-  Reminder,
 } from "@/lib/types";
 import { PatientFormDialog } from "./patient-form";
-import { PatientReminders } from "./patient-reminders";
 import { CombinedPdfDialog } from "./combined-pdf-dialog";
 import { CaseTab } from "./case-tab";
 import { MoneyTab } from "./money/money-tab";
@@ -73,7 +71,6 @@ export function PatientDetail({
   isAdmin,
   currentUserId,
   directories,
-  reminders = [],
 }: {
   patient: Patient;
   cases: Case[];
@@ -85,7 +82,6 @@ export function PatientDetail({
   isAdmin: boolean;
   currentUserId: string;
   directories: Directories;
-  reminders?: Reminder[];
 }) {
   // Tab and selected case live in the URL (?tab=, ?case=) so links, refresh, and
   // the back button all land on the same view.
@@ -399,14 +395,6 @@ export function PatientDetail({
           />
         )}
       </TabPanel>
-
-      {/* Patient-level, so it sits outside the per-case tabs. */}
-      <PatientReminders
-        patientId={patient.id}
-        reminders={reminders}
-        agents={directories.agents}
-        currentUserId={currentUserId}
-      />
 
       <CombinedPdfDialog
         open={combinedOpen}

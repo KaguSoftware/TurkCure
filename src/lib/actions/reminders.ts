@@ -15,9 +15,6 @@ export async function upsertReminder(
     : await supabase.from("reminders").insert(values).select().single();
   if (error) return { error: error.message };
   revalidatePath("/dashboard");
-  // Patient-linked reminders also render on that patient's page.
-  const patientId = (data as Reminder | null)?.patient_id;
-  if (patientId) revalidatePath(`/patients/${patientId}`);
   return { reminder: data as Reminder };
 }
 

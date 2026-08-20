@@ -731,15 +731,19 @@ app-wide `not-found.tsx`; finance CSV got the UTF-8 BOM (Excel/Turkish names); b
 view mode persists in `?view=`; dead `"partial"` removed from `PaymentStatus` + tone map.
 
 **Reminders & visibility**: `ReminderForm`/`TYPE_META`/`toLocalInput` extracted to
-`src/components/reminders/reminder-form.tsx`; new **patient-page reminders card**
-(`patients/patient-reminders.tsx` — open items, create/edit/done/delete, `patient_id` set;
-`upsertReminder` now revalidates `/patients/<id>` too). Dashboard panel: **Mine | Everyone**
+`src/components/reminders/reminder-form.tsx`. Dashboard panel: **Mine | Everyone**
 toggle (Mine default; unassigned rows stay visible under Mine), assignee shown in Everyone
 mode + "Unassigned" flagged always, **snooze menu** (1h / tomorrow 9:00 / next week) replaces
 the fixed +1 day, overdue clock re-evaluates every minute (was frozen at mount). **Dashboard
-horizon is configurable**: `?days=` (7/14/30/60/90, `HorizonSelect` in the PageHeader) drives
-reminders, arrivals and payments-due, with a "+N more due beyond X days" line so far-future
-reminders are never silently invisible.
+horizon is configurable and filters LOCALLY** (Parsa's follow-up, same day): the server
+fetches one fixed 90-day window and `dashboard-content.tsx` (client, owns everything below
+the topbar) filters reminders/arrivals/payments by the selected 7–90 days — switching is
+instant, no server round trip; the choice persists in `localStorage["tc:dashboard-days"]`
+(adopted in an effect — the component is SSR'd, a first-render read would mismatch
+hydration). A "+N more due beyond X days" line keeps far-future reminders from being
+silently invisible. The first cut used `?days=` + server refetch, and also added a
+**patient-page reminders card — both reverted on Parsa's feedback** ("reminders everywhere
+in the patients page — get rid of it"); reminders are dashboard-only again by design.
 
 **Structural**: board column headers show **true per-status totals** (`patient_status_counts`
 RPC; falls back to page counts while filters/search narrow the set); patients table got
