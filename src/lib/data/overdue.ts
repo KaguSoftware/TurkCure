@@ -1,11 +1,20 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { formatMoney } from "@/lib/utils";
 
+// Dedupe lookups go out as a URL `in=(…)` list, so they're chunked — one giant
+// list would blow the request-line limit once several orgs have overdue tails.
+const MARKER_CHUNK = 200;
+
 /**
  * Create dashboard reminders for payments whose due date has passed without
  * being paid. Idempotent: each payment gets at most one reminder, tracked by a
- * `payment:<id>` marker in the reminder note. Runs from the daily cron
- * (/api/cron/overdue-reminders), so it uses the admin client — no cookies.
+ * `payment:<id>` marker in the reminder note (indexed partial on
+ * type='payment'). Runs from the daily cron (/api/cron/overdue-reminders), so
+ * it uses the admin client — no cookies, no RLS. The sweep itself is
+ * deliberately platform-global (every org's payments in one pass); isolation
+ * lives in the org_id stamped onto each inserted reminder from its payment
+ * row. THE LINE: past ~5k overdue rows, replace this read-diff-insert with a
+ * single `insert … select … where not exists` statement in SQL.
  */
 export async function syncOverduePaymentReminders(): Promise<void> {
   const supabase = createAdminClient();
@@ -13,7 +22,7 @@ export async function syncOverduePaymentReminders(): Promise<void> {
 
   const { data: overdue } = await supabase
     .from("payments")
-    .select("id, amount, currency, due_date, case_id, cases(patient_id, patients(full_name, assigned_agent_id))")
+    .select("id, org_id, amount, currency, due_date, case_id, cases(patient_id, patients(full_name, assigned_agent_id))")
     .neq("status", "paid")
     .not("due_date", "is", null)
     .lt("due_date", today);
@@ -22,12 +31,21 @@ export async function syncOverduePaymentReminders(): Promise<void> {
 
   // Which of these already have a reminder?
   const markers = overdue.map((p) => `payment:${p.id}`);
-  const { data: existing } = await supabase
-    .from("reminders")
-    .select("note")
-    .eq("type", "payment")
-    .in("note", markers);
-  const have = new Set((existing ?? []).map((r) => r.note));
+  const have = new Set<string>();
+  const chunks: string[][] = [];
+  for (let i = 0; i < markers.length; i += MARKER_CHUNK) {
+    chunks.push(markers.slice(i, i + MARKER_CHUNK));
+  }
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data: existing } = await supabase
+        .from("reminders")
+        .select("note")
+        .eq("type", "payment")
+        .in("note", chunk);
+      for (const r of existing ?? []) have.add(r.note);
+    })
+  );
 
   const toInsert = overdue
     .filter((p) => !have.has(`payment:${p.id}`))
@@ -38,6 +56,7 @@ export async function syncOverduePaymentReminders(): Promise<void> {
       } | null;
       return {
         type: "payment" as const,
+        org_id: p.org_id,
         case_id: p.case_id,
         patient_id: c?.patient_id ?? null,
         title: `${c?.patients?.full_name ?? "Patient"} — payment overdue (${formatMoney(

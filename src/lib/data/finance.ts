@@ -40,42 +40,45 @@ export interface FinancePaymentRow {
 }
 
 /**
- * Per-case finance rows from the finance_case_rows() aggregate. This is the
- * heaviest query in the app (it scans every non-cancelled case), so it's cached
- * across requests via `unstable_cache`. It's admin-only and tolerant of a few
- * minutes' staleness. Invalidated by the "finance" tag, which the payment and
- * case/quote-item write actions raise; the 5-minute revalidate is a safety net
- * (and covers indirect edits like patient renames). The admin client is used
- * because unstable_cache callbacks can't read cookies — the finance page already
- * gates on an admin profile before calling this.
+ * Per-case finance rows from the finance_case_rows(p_org) aggregate. This is
+ * the heaviest query in the app, so it's cached across requests via
+ * `unstable_cache` — per organization: orgId is in the cache key and the tag is
+ * `finance:<orgId>`, raised by that org's payment and case/quote-item write
+ * actions. The 5-minute revalidate is a safety net (and covers indirect edits
+ * like patient renames). The RPC is SECURITY DEFINER with execute revoked from
+ * user roles, so the org boundary is the p_org argument itself — RLS never
+ * sees this query. The finance page gates on an admin profile and passes its
+ * own profile.org_id.
  */
-const getCachedFinanceRows = unstable_cache(
-  async (): Promise<FinanceRow[]> => {
-    const admin = createAdminClient();
-    const { data } = await admin.rpc("finance_case_rows");
-    return (data ?? []) as FinanceRow[];
-  },
-  ["finance-case-rows"],
-  { tags: ["finance"], revalidate: 300 }
-);
+const cachedFinanceRows = (orgId: string) =>
+  unstable_cache(
+    async (): Promise<FinanceRow[]> => {
+      const admin = createAdminClient();
+      const { data } = await admin.rpc("finance_case_rows", { p_org: orgId });
+      return (data ?? []) as FinanceRow[];
+    },
+    ["finance-case-rows", orgId],
+    { tags: [`finance:${orgId}`], revalidate: 300 }
+  );
 
-export const getFinanceRows = cache(getCachedFinanceRows);
+export const getFinanceRows = cache(async (orgId: string) => cachedFinanceRows(orgId)());
 
 /**
  * Flat per-payment feed (finance_payment_rows): the client derives the
  * cash-basis chart, period totals, receivables aging and payables grouping from
- * this one list. Same caching story as the case rows — the "finance" tag is
- * raised by every payment/case/quote-item/patient write, so both feeds stay in
- * lockstep. Tolerates a not-yet-applied migration by returning [].
+ * this one list. Same per-org caching story as the case rows — one tag keeps
+ * both feeds in lockstep. Tolerates a not-yet-applied migration by
+ * returning [].
  */
-const getCachedFinancePayments = unstable_cache(
-  async (): Promise<FinancePaymentRow[]> => {
-    const admin = createAdminClient();
-    const { data } = await admin.rpc("finance_payment_rows");
-    return (data ?? []) as FinancePaymentRow[];
-  },
-  ["finance-payment-rows"],
-  { tags: ["finance"], revalidate: 300 }
-);
+const cachedFinancePayments = (orgId: string) =>
+  unstable_cache(
+    async (): Promise<FinancePaymentRow[]> => {
+      const admin = createAdminClient();
+      const { data } = await admin.rpc("finance_payment_rows", { p_org: orgId });
+      return (data ?? []) as FinancePaymentRow[];
+    },
+    ["finance-payment-rows", orgId],
+    { tags: [`finance:${orgId}`], revalidate: 300 }
+  );
 
-export const getFinancePayments = cache(getCachedFinancePayments);
+export const getFinancePayments = cache(async (orgId: string) => cachedFinancePayments(orgId)());

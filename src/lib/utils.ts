@@ -38,3 +38,16 @@ export function formatDate(date: string | Date | null | undefined) {
     year: "numeric",
   });
 }
+
+/** URL/file-safe handle from a display name ("Ayşe Clinic" → "ayse-clinic"). */
+export function slugify(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "") // strip combining diacritics left by NFD
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "org"
+  );
+}

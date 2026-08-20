@@ -20,15 +20,17 @@ export async function upsertDirectoryRow(
   values: Record<string, unknown>,
   id?: string
 ): Promise<{ error?: string; row?: Record<string, unknown> }> {
-  await requireProfile();
+  const profile = await requireProfile();
   if (!(table in TABLES)) return { error: "Invalid table" };
+  // Cookie client: RLS scopes reads/updates to the caller's org, and inserts
+  // self-stamp org_id via the column default (0023).
   const supabase = await createClient();
   const query = id
     ? supabase.from(table).update(values).eq("id", id).select("*").single()
     : supabase.from(table).insert(values).select("*").single();
   const { data, error } = await query;
   if (error) return { error: error.message };
-  revalidateTag("directories", "max");
+  revalidateTag(`directories:${profile.org_id}`, "max");
   revalidatePath(TABLES[table]);
   return { row: data as unknown as Record<string, unknown> };
 }
@@ -37,12 +39,12 @@ export async function deleteDirectoryRow(
   table: DirectoryTable,
   id: string
 ): Promise<{ error?: string }> {
-  await requireAdmin();
+  const profile = await requireAdmin();
   if (!(table in TABLES)) return { error: "Invalid table" };
   const supabase = await createClient();
   const { error } = await supabase.from(table).delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidateTag("directories", "max");
+  revalidateTag(`directories:${profile.org_id}`, "max");
   revalidatePath(TABLES[table]);
   return {};
 }

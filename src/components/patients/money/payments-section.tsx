@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { tempId } from "@/lib/use-optimistic-list";
 import { upsertPayment, deletePayment } from "@/lib/actions/payments";
 import { formatMoney, formatDate } from "@/lib/utils";
+import { useOrg } from "@/components/shell/org-context";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
 import type { Directories } from "../patient-detail";
 import { PaymentDialog, type PaymentValues } from "./payment-dialog";
@@ -49,6 +50,7 @@ export function PaymentsSection({
   isAdmin: boolean;
   directories: Directories;
 }) {
+  const org = useOrg();
   const caseCurrency = activeCase.currency;
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Payment | null>(null);
@@ -259,7 +261,7 @@ export function PaymentsSection({
         </p>
       )}
       {section(
-        "Incoming — patient pays TurkCure",
+        `Incoming — patient pays ${org.name}`,
         incoming,
         <ArrowDownLeft className="size-4 text-success" />
       )}

@@ -6,7 +6,8 @@ import { Download } from "lucide-react";
 import { Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TabBar, TabPanel } from "@/components/ui/tabs";
-import { CURRENCIES } from "@/lib/utils";
+import { CURRENCIES, slugify } from "@/lib/utils";
+import { useOrg } from "@/components/shell/org-context";
 import { toUsd } from "@/lib/fx";
 import type { UsdRates } from "@/lib/data/fx";
 import {
@@ -31,6 +32,7 @@ export function FinanceView({
   payments: PaymentFinance[];
   usdRates: UsdRates;
 }) {
+  const org = useOrg();
   // Tab lives in the URL (?tab=) so links, refresh and back land on the same view.
   const router = useRouter();
   const pathname = usePathname();
@@ -134,7 +136,7 @@ export function FinanceView({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => exportCsv(cases, displayCurrency)}
+              onClick={() => exportCsv(cases, displayCurrency, org.name)}
               disabled={cases.length === 0}
             >
               <Download /> Export CSV
@@ -190,7 +192,7 @@ export function FinanceView({
   );
 }
 
-function exportCsv(cases: CaseFinance[], displayCurrency: string) {
+function exportCsv(cases: CaseFinance[], displayCurrency: string, orgName: string) {
   const esc = (v: string | number) => {
     const str = String(v);
     return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
@@ -232,7 +234,7 @@ function exportCsv(cases: CaseFinance[], displayCurrency: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `turkcure-finance-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${slugify(orgName)}-finance-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

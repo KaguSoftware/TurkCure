@@ -26,6 +26,7 @@ export function CaseDocEditor({
   onDirty,
   onInvalidContent,
   apiRef,
+  docVars,
 }: {
   initialDoc: EditorDocJSON;
   editable?: boolean;
@@ -39,6 +40,13 @@ export function CaseDocEditor({
    */
   onInvalidContent?: () => void;
   apiRef?: React.MutableRefObject<CaseDocEditorApi | null>;
+  /**
+   * Org-branded --doc-* overrides (literal hexes from orgToDocVars). Inline so
+   * the sheet chrome tracks the org's PDF colors; the editor.css literals are
+   * the fallback. Never var() references — the sheet stays immune to app
+   * dark-mode tokens by design.
+   */
+  docVars?: Record<string, string>;
 }) {
   // Held in refs so the editor is never re-created when a parent re-renders.
   const onChangeRef = React.useRef(onChangeJson);
@@ -150,7 +158,7 @@ export function CaseDocEditor({
   }, [editor]);
 
   return (
-    <div className="case-doc-editor">
+    <div className="case-doc-editor" style={docVars as React.CSSProperties | undefined}>
       <div className="doc-sheet" ref={sheetRef}>
         {/* Own stable container: the editor mutates DOM inside the sheet, so
             React must never reconcile a changing sibling list at that level. */}

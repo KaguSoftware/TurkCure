@@ -44,6 +44,15 @@ export async function upsertPayment(
   if (counterpartyType !== "patient" && !counterpartyId)
     return { error: `Select which ${counterpartyType} this payment is for.` };
 
+  // counterparty_id has no FK (the target table depends on the type), so the
+  // composite-FK net (0023) can't catch a stale or cross-org id here — check it
+  // against the caller's own directory via RLS instead.
+  if (counterpartyId) {
+    const table = `${counterpartyType}s` as "doctors" | "hospitals" | "hotels" | "drivers";
+    const { data: cp } = await supabase.from(table).select("id").eq("id", counterpartyId).maybeSingle();
+    if (!cp) return { error: `That ${counterpartyType} no longer exists.` };
+  }
+
   const amount = Number(values.amount);
   if (!Number.isFinite(amount) || amount <= 0)
     return { error: "Enter an amount greater than zero." };
@@ -117,18 +126,18 @@ export async function upsertPayment(
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
   revalidatePath("/finance");
-  revalidateTag("finance", "max");
+  revalidateTag(`finance:${profile.org_id}`, "max");
   return { payment: data as unknown as Record<string, unknown> };
 }
 
 export async function deletePayment(patientId: string, id: string): Promise<{ error?: string }> {
-  await requireAdmin();
+  const profile = await requireAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("payments").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
   revalidatePath("/finance");
-  revalidateTag("finance", "max");
+  revalidateTag(`finance:${profile.org_id}`, "max");
   return {};
 }

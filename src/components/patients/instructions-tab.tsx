@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { FileDown, ImagePlus, Plus, Save, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getOrgId } from "@/lib/supabase/client-org";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
@@ -171,7 +172,14 @@ function InstructionCard({
     if (!file) return;
     setUploading(true);
     const supabase = createClient();
-    const path = `instructions/${instruction.id}/${Date.now()}-${file.name}`;
+    const orgId = await getOrgId();
+    if (!orgId) {
+      setUploading(false);
+      toast.error("Could not resolve your organization — sign in again.");
+      return;
+    }
+    // Org prefix first: storage RLS (0025) scopes access to folder 1.
+    const path = `${orgId}/instructions/${instruction.id}/${Date.now()}-${file.name}`;
     const { error } = await supabase.storage.from("patient-files").upload(path, file);
     setUploading(false);
     if (error) {

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { INTRO_COOKIE } from "@/lib/auth/cookies";
+import { useOrg } from "./org-context";
 
 // Re-exported for existing importers; the source of truth is @/lib/auth/cookies.
 export { INTRO_COOKIE };
@@ -20,6 +21,7 @@ function greeting() {
  * server-rendered HTML and covers the very first paint — no flash of the app.
  */
 export function IntroOverlay({ userName }: { userName: string }) {
+  const org = useOrg();
   const [show, setShow] = React.useState(true);
   const [closing, setClosing] = React.useState(false);
 
@@ -53,7 +55,7 @@ export function IntroOverlay({ userName }: { userName: string }) {
     >
       <div className="flex flex-col items-center gap-3">
         <div className="intro-content brand-gradient-text text-5xl font-bold tracking-tight">
-          TurkCure
+          {org.name}
         </div>
         <div className="intro-greeting text-sm text-muted">
           {greeting()}, {userName.split(" ")[0]}

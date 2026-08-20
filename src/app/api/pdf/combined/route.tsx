@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import React from "react";
-import { renderToBuffer, Document, Page, Text, View } from "@react-pdf/renderer";
+import { Document, Page, Text, View } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
-import { pdfStyles as s, fmtDate, PdfHeader, PdfFooter } from "@/lib/pdf/common";
+import { getOrganization } from "@/lib/data/org";
+import { fmtDate, PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf } from "@/lib/pdf/common";
+import { orgToPdfTheme, DEFAULT_PDF_THEME } from "@/lib/pdf/theme";
 import {
   loadCasesData,
   pdfFilenameHeaders,
@@ -43,14 +45,19 @@ export async function GET(request: Request) {
   // Returns null if any id is missing or the ids span more than one patient —
   // RLS gates access, but this is what stops a hand-crafted URL splicing two
   // patients' cases under a single "Prepared for" name.
-  const loaded = await loadCasesData(supabase, caseIds);
+  const [loaded, org] = await Promise.all([
+    loadCasesData(supabase, caseIds),
+    getOrganization(profile.org_id),
+  ]);
   if (!loaded) return new NextResponse("Not found", { status: 404 });
   const { cases, patient, imageUrls } = loaded;
 
+  const ctx = makePdfCtx(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME);
+  const s = ctx.styles;
   const issued = fmtDate(new Date().toISOString());
 
   const doc = (
-    <Document title={`TurkCure WOF — ${patient.full_name}`}>
+    <Document title={`${org?.name ?? "TurkCure"} — ${patient.full_name}`}>
       {/* One cover for the whole document, listing every treatment it covers. */}
       <CaseCover data={cases[0]} others={cases.slice(1)} patientName={patient.full_name} />
 
@@ -81,7 +88,7 @@ export async function GET(request: Request) {
   );
 
   try {
-    const buffer = await renderToBuffer(doc);
+    const buffer = await renderThemedPdf(ctx, doc);
     return new NextResponse(new Uint8Array(buffer), {
       headers: pdfFilenameHeaders(patient.full_name),
     });

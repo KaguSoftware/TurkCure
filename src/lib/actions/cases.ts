@@ -5,11 +5,12 @@ import { createClient, createAdminClient, requireProfile, requireAdmin } from "@
 import { addDays, formatISO } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-function revalidateCase(patientId: string) {
+function revalidateCase(patientId: string, orgId: string) {
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
-  // Case/quote-item edits change revenue/cost; bust the cached finance rows.
-  revalidateTag("finance", "max");
+  // Case/quote-item edits change revenue/cost; bust this org's cached finance
+  // rows (the cache is keyed and tagged per org — see lib/data/finance.ts).
+  revalidateTag(`finance:${orgId}`, "max");
 }
 
 /** The reminder types this function owns — deleted and rebuilt on every run, so
@@ -100,7 +101,7 @@ export async function upsertCase(
   values: Record<string, unknown>,
   id?: string
 ): Promise<{ error?: string; id?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   let caseId = id;
   if (id) {
@@ -151,7 +152,7 @@ export async function upsertCase(
     });
   }
 
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return { id: caseId };
 }
 
@@ -165,11 +166,11 @@ export async function upsertCase(
  * — `revalidateCase` already does that.
  */
 export async function deleteCase(patientId: string, id: string): Promise<{ error?: string }> {
-  await requireAdmin();
+  const profile = await requireAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("cases").delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return {};
 }
 
@@ -188,7 +189,7 @@ export async function syncCaseReminders(
   patientId: string,
   caseId: string
 ): Promise<{ error?: string; count?: number }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   const { data: caseRow, error } = await supabase
     .from("cases")
@@ -204,7 +205,7 @@ export async function syncCaseReminders(
     caseRow as unknown as CaseSchedule
   );
 
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return { count };
 }
 
@@ -240,11 +241,24 @@ export async function upsertQuoteItem(
   if (profile.role === "admin" && values.cost !== undefined) row.cost = values.cost;
 
   const columns = profile.role === "admin" ? QUOTE_COLUMNS_ADMIN : QUOTE_COLUMNS_AGENT;
+  // Service role bypasses RLS: the org fence is explicit. Inserts stamp the
+  // caller's org — if caseId belongs to another org, the composite FK
+  // (case_id, org_id) → cases rejects the row.
   const { data, error } = id
-    ? await admin.from("quote_items").update(row).eq("id", id).select(columns).single()
-    : await admin.from("quote_items").insert({ ...row, case_id: caseId }).select(columns).single();
+    ? await admin
+        .from("quote_items")
+        .update(row)
+        .eq("id", id)
+        .eq("org_id", profile.org_id)
+        .select(columns)
+        .single()
+    : await admin
+        .from("quote_items")
+        .insert({ ...row, case_id: caseId, org_id: profile.org_id })
+        .select(columns)
+        .single();
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return { item: data as unknown as Record<string, unknown> };
 }
 
@@ -255,11 +269,19 @@ export async function upsertQuoteItem(
  * (payments, cases) stay admin-only.
  */
 export async function deleteQuoteItem(patientId: string, id: string): Promise<{ error?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const admin = createAdminClient();
-  const { error } = await admin.from("quote_items").delete().eq("id", id);
+  // .select("id") makes a cross-org (0-row) delete surface as an error instead
+  // of a silent success — same pattern as deleteReminder.
+  const { data, error } = await admin
+    .from("quote_items")
+    .delete()
+    .eq("id", id)
+    .eq("org_id", profile.org_id)
+    .select("id");
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  if (!data?.length) return { error: "Quote item not found." };
+  revalidateCase(patientId, profile.org_id);
   return {};
 }
 
@@ -274,17 +296,22 @@ export async function reorderQuoteItems(
   caseId: string,
   orderedIds: string[]
 ): Promise<{ error?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   if (orderedIds.length > 200) return { error: "Too many items to reorder." };
   const admin = createAdminClient();
   const results = await Promise.all(
     orderedIds.map((id, i) =>
-      admin.from("quote_items").update({ sort_order: i }).eq("id", id).eq("case_id", caseId)
+      admin
+        .from("quote_items")
+        .update({ sort_order: i })
+        .eq("id", id)
+        .eq("case_id", caseId)
+        .eq("org_id", profile.org_id)
     )
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { error: failed.error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return {};
 }
 
@@ -300,6 +327,7 @@ export async function getQuoteItems(caseId: string) {
     .from("quote_items")
     .select(columns)
     .eq("case_id", caseId)
+    .eq("org_id", profile.org_id)
     .order("sort_order")
     .order("created_at");
   return data ?? [];
@@ -324,6 +352,7 @@ export async function getQuoteItemsForCases(
     .from("quote_items")
     .select(columns)
     .in("case_id", caseIds)
+    .eq("org_id", profile.org_id)
     .order("sort_order")
     .order("created_at");
 
@@ -349,6 +378,7 @@ export async function getQuoteItemsForPatient(
     .from("quote_items")
     .select(`${columns}, cases!inner(patient_id)`)
     .eq("cases.patient_id", patientId)
+    .eq("org_id", profile.org_id)
     .order("sort_order")
     .order("created_at");
 
@@ -378,7 +408,7 @@ export async function upsertAdditionalCost(
   values: { title: string; amount: number; sort_order?: number },
   id?: string
 ): Promise<{ error?: string; item?: Record<string, unknown> }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
 
   if (!Number.isFinite(values.amount) || values.amount < 0)
@@ -405,7 +435,7 @@ export async function upsertAdditionalCost(
         .select(ADDITIONAL_COST_COLUMNS)
         .single();
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return { item: data as unknown as Record<string, unknown> };
 }
 
@@ -418,11 +448,11 @@ export async function deleteAdditionalCost(
   patientId: string,
   id: string
 ): Promise<{ error?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   const { error } = await supabase.from("case_additional_costs").delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return {};
 }
 
@@ -433,7 +463,7 @@ export async function reorderAdditionalCosts(
   caseId: string,
   orderedIds: string[]
 ): Promise<{ error?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   if (orderedIds.length > 200) return { error: "Too many items to reorder." };
   const supabase = await createClient();
   const results = await Promise.all(
@@ -447,7 +477,7 @@ export async function reorderAdditionalCosts(
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { error: failed.error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return {};
 }
 
@@ -482,7 +512,7 @@ export async function attachInstruction(
   caseId: string,
   templateId: string
 ): Promise<{ error?: string; instruction?: Record<string, unknown> }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   const { data: template, error: tErr } = await supabase
     .from("instruction_templates")
@@ -501,7 +531,7 @@ export async function attachInstruction(
     .select("*")
     .single();
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return { instruction: data as unknown as Record<string, unknown> };
 }
 
@@ -510,19 +540,19 @@ export async function updateInstruction(
   id: string,
   body_md: string
 ): Promise<{ error?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   const { error } = await supabase.from("case_instructions").update({ body_md }).eq("id", id);
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return {};
 }
 
 export async function removeInstruction(patientId: string, id: string): Promise<{ error?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   const { error } = await supabase.from("case_instructions").delete().eq("id", id);
   if (error) return { error: error.message };
-  revalidateCase(patientId);
+  revalidateCase(patientId, profile.org_id);
   return {};
 }

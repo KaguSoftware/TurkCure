@@ -60,12 +60,12 @@ export async function findDuplicatePatients(
 }
 
 export async function deletePatient(id: string): Promise<{ error?: string }> {
-  await requireAdmin();
+  const profile = await requireAdmin();
   const supabase = await createClient();
   const { error } = await supabase.from("patients").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/patients");
-  revalidateTag("finance", "max"); // cascades to cases → finance rows
+  revalidateTag(`finance:${profile.org_id}`, "max"); // cascades to cases → finance rows
   return {};
 }
 
@@ -121,13 +121,13 @@ export async function bulkUpdatePatients(
 }
 
 export async function bulkDeletePatients(ids: string[]): Promise<{ error?: string; deleted?: number }> {
-  await requireAdmin();
+  const profile = await requireAdmin();
   if (ids.length === 0) return { error: "No patients selected" };
   const supabase = await createClient();
   const { data, error } = await supabase.from("patients").delete().in("id", ids).select("id");
   if (error) return { error: error.message };
   revalidatePath("/patients");
-  revalidateTag("finance", "max"); // cascades to cases → finance rows
+  revalidateTag(`finance:${profile.org_id}`, "max"); // cascades to cases → finance rows
   return { deleted: data?.length ?? 0 };
 }
 

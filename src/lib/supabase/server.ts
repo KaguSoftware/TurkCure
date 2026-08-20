@@ -89,3 +89,25 @@ export async function requireAdmin(): Promise<Profile> {
   if (profile.role !== "admin") throw new Error("Admin access required");
   return profile;
 }
+
+/**
+ * requireProfile plus the caller's org id, for actions/pages that stamp or
+ * filter by org. A profile without one is a platform bug (0023 makes the
+ * column NOT NULL), but fail loudly rather than scope to nothing.
+ */
+export async function requireOrg(): Promise<{ profile: Profile; orgId: string }> {
+  const profile = await requireProfile();
+  if (!profile.org_id) throw new Error("Profile has no organization");
+  return { profile, orgId: profile.org_id };
+}
+
+/**
+ * Platform-owner gate for the /admin surface and org-management actions.
+ * is_super is a boolean on profiles, deliberately not a role: it never appears
+ * in RLS, so super powers exist only behind these service-role code paths.
+ */
+export async function requireSuperAdmin(): Promise<Profile> {
+  const profile = await requireProfile();
+  if (!profile.is_super) throw new Error("Platform admin access required");
+  return profile;
+}

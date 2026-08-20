@@ -3,17 +3,14 @@ import { View, Text, Link, Image } from "@react-pdf/renderer";
 import type { Style } from "@react-pdf/types";
 import { parseMarkdown, type Block, type InlineNode } from "@/lib/markdown/parse";
 import {
-  BLUE,
-  BLUE_DEEP,
-  TEAL,
   INK,
   TEXT,
   HAIRLINE,
   CARD_BG,
-  ACCENT_SOFT,
   TABLE_LINE,
   LABEL_BG,
   SERIF,
+  usePdfTheme,
 } from "@/lib/pdf/common";
 
 /**
@@ -23,6 +20,7 @@ import {
  */
 
 function InlineSpans({ nodes, scale }: { nodes: InlineNode[]; scale: number }) {
+  const { theme } = usePdfTheme();
   return (
     <>
       {nodes.map((n, i) => {
@@ -45,14 +43,14 @@ function InlineSpans({ nodes, scale }: { nodes: InlineNode[]; scale: number }) {
             return (
               <Text
                 key={i}
-                style={{ fontFamily: "Courier", fontSize: 8.5 * scale, color: BLUE_DEEP }}
+                style={{ fontFamily: "Courier", fontSize: 8.5 * scale, color: theme.primaryDeep }}
               >
                 {n.text}
               </Text>
             );
           case "link":
             return (
-              <Link key={i} src={n.href} style={{ color: BLUE, textDecoration: "underline" }}>
+              <Link key={i} src={n.href} style={{ color: theme.primary, textDecoration: "underline" }}>
                 <InlineSpans nodes={n.children} scale={scale} />
               </Link>
             );
@@ -74,13 +72,14 @@ function blockImages(nodes: InlineNode[]): { src: string; alt: string }[] {
 }
 
 function BlockPdf({ block, scale }: { block: Block; scale: number }) {
+  const { theme } = usePdfTheme();
   const base: Style = { fontSize: 10 * scale, lineHeight: 1.5, color: TEXT };
 
   switch (block.type) {
     case "heading": {
       const styles: Record<1 | 2 | 3, Style> = {
-        1: { fontFamily: SERIF, fontWeight: 700, fontSize: 12.5 * scale, color: BLUE_DEEP },
-        2: { fontFamily: SERIF, fontWeight: 700, fontSize: 11 * scale, color: BLUE_DEEP },
+        1: { fontFamily: SERIF, fontWeight: 700, fontSize: 12.5 * scale, color: theme.primaryDeep },
+        2: { fontFamily: SERIF, fontWeight: 700, fontSize: 11 * scale, color: theme.primaryDeep },
         3: { fontWeight: 600, fontSize: 10 * scale, color: INK },
       };
       return (
@@ -159,8 +158,8 @@ function BlockPdf({ block, scale }: { block: Block; scale: number }) {
             block.note
               ? {
                   borderLeftWidth: 2,
-                  borderLeftColor: TEAL,
-                  backgroundColor: ACCENT_SOFT,
+                  borderLeftColor: theme.noteAccent,
+                  backgroundColor: theme.accentSoft,
                   borderRadius: 4,
                   paddingVertical: 6,
                   paddingHorizontal: 8,

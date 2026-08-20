@@ -13,7 +13,7 @@ export async function updateOwnProfile(name: string): Promise<{ error?: string }
   const { error } = await admin.from("profiles").update({ name: trimmed }).eq("id", profile.id);
   if (error) return { error: error.message };
   revalidateTag("profiles", "max");
-  revalidateTag("directories", "max"); // agent lists come from profiles
+  revalidateTag(`directories:${profile.org_id}`, "max"); // agent lists come from profiles
   revalidatePath("/settings"); // sidebar/topbar re-read via the "profiles" tag
   return {};
 }

@@ -74,7 +74,7 @@ export default async function PatientsPage({
 
   const [{ data: patients, count }, directories, { data: statusCounts }] = await Promise.all([
     query,
-    getDirectories(),
+    getDirectories(profile.org_id),
     // True per-status totals for the board columns — the loaded page is capped
     // at 50, so counting the page undercounts every column past page one.
     supabase.rpc("patient_status_counts"),

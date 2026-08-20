@@ -8,7 +8,7 @@
 // Every value is formatted HERE, once, and stored as a string — the editor is
 // WYSIWYG, so staff see and edit the real values, never a placeholder token.
 
-import { COMPANY } from "@/lib/pdf/company";
+import type { PdfCompany } from "@/lib/pdf/theme";
 import type { CaseDocData, PatientDocData } from "@/lib/pdf/case-doc";
 import {
   BLOCK,
@@ -47,8 +47,17 @@ const fmtGender = (g: string | null | undefined) =>
  * Section numbering is computed in a single running counter rather than
  * hardcoded: Additional Costs is omitted when empty, which shifts the company
  * block from 7 to 8. Doing it in one place is what stops the two from drifting.
+ *
+ * `company` is the org's PdfCompany (strings only — colors never enter the
+ * document JSON) and is REQUIRED so no call site can silently seed another
+ * org's identity. This function runs client-side too (the editor's rebuild
+ * paths), which is why the org branding arrives as data, never as an import.
  */
-export function buildCaseDoc(data: CaseDocData, patient: PatientDocData): EditorDocJSON {
+export function buildCaseDoc(
+  data: CaseDocData,
+  patient: PatientDocData,
+  company: PdfCompany
+): EditorDocJSON {
   const money = (v: number) => `${v.toLocaleString("en-US")} ${data.currency}`;
   const issued = fmtDate(new Date().toISOString());
 
@@ -61,13 +70,15 @@ export function buildCaseDoc(data: CaseDocData, patient: PatientDocData): Editor
     coverBlock({
       title: "Treatment & Reservation",
       titleAccent: "Confirmation",
-      tagline: "Health Tourism · Istanbul",
+      tagline: company.tagline,
       preparedForLabel: "Prepared for",
       patientName: patient.full_name,
       treatments: data.op ? [data.op] : [],
       line1: data.coverLine1,
       line2: data.coverLine2,
-      footer: `Ref ${data.ref}   ·   Issued ${issued}   ·   turkcure.com`,
+      footer:
+        `Ref ${data.ref}   ·   Issued ${issued}` +
+        (company.website ? `   ·   ${company.website}` : ""),
     })
   );
 
@@ -173,11 +184,11 @@ export function buildCaseDoc(data: CaseDocData, patient: PatientDocData): Editor
   }
 
   content.push(
-    companyCard(n(), COMPANY.name, [
+    companyCard(n(), company.name, [
       { label: "Patient coordinator", value: orDash(patient.coordinator) },
-      { label: "WhatsApp", value: COMPANY.whatsapp },
-      { label: "Website", value: COMPANY.website },
-      { label: "Location", value: COMPANY.location },
+      { label: "WhatsApp", value: company.whatsapp },
+      { label: "Website", value: company.website },
+      { label: "Location", value: company.location },
     ])
   );
 
@@ -186,7 +197,7 @@ export function buildCaseDoc(data: CaseDocData, patient: PatientDocData): Editor
       title: "Confirmation",
       body:
         "By confirming this document, the patient acknowledges the reservation and treatment " +
-        "plan organized by Turkcure.",
+        `plan organized by ${company.name}.`,
       signers: ["Patient Signature", "Date"],
     })
   );

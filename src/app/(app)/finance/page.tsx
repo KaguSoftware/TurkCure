@@ -12,14 +12,15 @@ export default async function FinancePage() {
   const profile = await getProfile();
   if (!profile || profile.role !== "admin") redirect("/dashboard");
 
-  // Two Postgres aggregates (both exclude cancelled cases, both cached under
-  // the "finance" tag): per-case rows — revenue/cost from quote items, collected
-  // and paid_out from normalized paid payments, month = surgery month falling
-  // back to creation month — and the flat per-payment feed the cash chart and
-  // receivables/payables derive from. USD rates ride the hourly "fx" cache.
+  // Two Postgres aggregates (both exclude cancelled cases, both cached per org
+  // under the `finance:<org>` tag): per-case rows — revenue/cost from quote
+  // items, collected and paid_out from normalized paid payments, month =
+  // surgery month falling back to creation month — and the flat per-payment
+  // feed the cash chart and receivables/payables derive from. USD rates ride
+  // the hourly "fx" cache (genuinely global).
   const [caseData, paymentData, usdRates] = await Promise.all([
-    getFinanceRows(),
-    getFinancePayments(),
+    getFinanceRows(profile.org_id),
+    getFinancePayments(profile.org_id),
     getUsdRates(),
   ]);
 

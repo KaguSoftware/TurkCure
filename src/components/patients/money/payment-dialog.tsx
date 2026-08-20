@@ -10,6 +10,8 @@ import { DraftBanner } from "@/components/ui/draft-banner";
 import { toast } from "@/components/ui/toast";
 import { useFormDraft } from "@/lib/use-form-draft";
 import { createClient } from "@/lib/supabase/client";
+import { getOrgId } from "@/lib/supabase/client-org";
+import { useOrg } from "@/components/shell/org-context";
 import { getLiveRate } from "@/lib/actions/fx";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
@@ -76,6 +78,7 @@ export function PaymentDialog({
   ) => Promise<{ ok: boolean; result?: { error?: string } }>;
   onRequestDelete: (p: Payment) => void;
 }) {
+  const org = useOrg();
   const caseCurrency = activeCase.currency;
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -207,7 +210,14 @@ export function PaymentDialog({
     let uploadedPath: string | null = null;
     const supabase = createClient();
     if (stagedFile) {
-      const path = `${activeCase.id}/${Date.now()}-${stagedFile.name}`;
+      const orgId = await getOrgId();
+      if (!orgId) {
+        setError("Could not resolve your organization — sign in again.");
+        setSaving(false);
+        return;
+      }
+      // Org prefix first: storage RLS (0025) scopes access to folder 1.
+      const path = `${orgId}/${activeCase.id}/${Date.now()}-${stagedFile.name}`;
       const { error: upErr } = await supabase.storage.from("receipts").upload(path, stagedFile);
       if (upErr) {
         setError(`Receipt upload failed: ${upErr.message}`);
@@ -289,8 +299,8 @@ export function PaymentDialog({
             value={direction}
             onChange={(e) => setDirection(e.target.value as "in" | "out")}
           >
-            <option value="in">Incoming — patient pays TurkCure</option>
-            <option value="out">Outgoing — TurkCure pays a provider</option>
+            <option value="in">Incoming — patient pays {org.name}</option>
+            <option value="out">Outgoing — {org.name} pays a provider</option>
           </Select>
         </Field>
         {direction === "in" ? (

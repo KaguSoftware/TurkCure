@@ -15,14 +15,10 @@ import {
   MUTED,
   INK,
   TEXT,
-  NAVY,
-  GOLD,
-  GOLD_DARK,
-  GOLD_SOFT_BG,
   TABLE_LINE,
-  pdfStyles as s,
   TableSection,
   TRow,
+  usePdfTheme,
 } from "./common";
 import { PdfMarkdown } from "./markdown";
 import {
@@ -112,12 +108,13 @@ function rowsOf(value: unknown): TRowItem[] | null {
 }
 
 function ListBlock({ node, ordered }: { node: DocNode; ordered: boolean }) {
+  const { theme } = usePdfTheme();
   const items = node.content ?? [];
   return (
     <View style={{ marginBottom: 10 }}>
       {items.map((li, i) => (
         <View key={i} style={{ flexDirection: "row", marginBottom: 3 }} wrap={false}>
-          <Text style={{ width: 16, color: GOLD }}>{ordered ? `${i + 1}.` : "•"}</Text>
+          <Text style={{ width: 16, color: theme.coverAccent }}>{ordered ? `${i + 1}.` : "•"}</Text>
           <View style={{ flex: 1 }}>
             {(li.content ?? []).map((child, j) => (
               <BlockNode key={j} node={child} />
@@ -130,6 +127,7 @@ function ListBlock({ node, ordered }: { node: DocNode; ordered: boolean }) {
 }
 
 function TableBlock({ node }: { node: DocNode }) {
+  const { theme } = usePdfTheme();
   const rows = (node.content ?? []).filter((r) => r.type === BLOCK.tableRow);
   if (rows.length === 0) return null;
   // Precompute header/zebra metadata (no mutation inside the JSX map).
@@ -148,7 +146,7 @@ function TableBlock({ node }: { node: DocNode }) {
           key={r}
           style={{
             flexDirection: "row",
-            ...(isHeader ? { backgroundColor: NAVY } : {}),
+            ...(isHeader ? { backgroundColor: theme.coverBg } : {}),
             ...(zebra ? { backgroundColor: "#fafaf7" } : {}),
             ...(r === 0 ? {} : { borderTopWidth: 1, borderTopColor: TABLE_LINE }),
           }}
@@ -209,6 +207,7 @@ const HEADING_SIZE: Record<number, number> = { 2: 13, 3: 11 };
 /** One block node. A single switch in a try/catch — no generic walker: each
  *  case decides whether and how to recurse. */
 function BlockNode({ node }: { node: DocNode }): React.ReactElement | null {
+  const { theme, styles: s } = usePdfTheme();
   try {
     switch (node.type) {
       case BLOCK.paragraph: {
@@ -285,7 +284,7 @@ function BlockNode({ node }: { node: DocNode }): React.ReactElement | null {
                       .filter((_, i) => i % 2 === col)
                       .map((b, i) => (
                         <Text key={i} style={{ color: TEXT, lineHeight: 1.4, marginBottom: 4 }}>
-                          <Text style={{ color: GOLD }}>• </Text>
+                          <Text style={{ color: theme.coverAccent }}>• </Text>
                           {b}
                         </Text>
                       ))}
@@ -310,11 +309,11 @@ function BlockNode({ node }: { node: DocNode }): React.ReactElement | null {
               {rows.map((r, i) => (
                 <TRow key={i} label={r.label} value={r.value} />
               ))}
-              <View style={[s.tRowLast, { backgroundColor: GOLD_SOFT_BG }]}>
-                <Text style={[s.tLabel, { backgroundColor: "transparent", color: GOLD_DARK }]}>
+              <View style={[s.tRowLast, { backgroundColor: theme.coverSoftBg }]}>
+                <Text style={[s.tLabel, { backgroundColor: "transparent", color: theme.coverAccentDark }]}>
                   {a?.balanceLabel ?? "Remaining balance"}
                 </Text>
-                <Text style={[s.tValue, { fontSize: 12, fontWeight: 700, color: NAVY }]}>
+                <Text style={[s.tValue, { fontSize: 12, fontWeight: 700, color: theme.coverBg }]}>
                   {a?.balanceValue ?? "—"}
                 </Text>
               </View>

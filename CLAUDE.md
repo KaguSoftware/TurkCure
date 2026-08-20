@@ -35,10 +35,29 @@
 
 ## What this app is
 
-TurkCure is an internal CRM/operations tool for a medical-tourism business:
-patients, their treatment **cases**, quotes, payments, reminders, and the
-directory of hospitals/doctors/hotels/drivers behind them. Admins also get a
-finance view (per-case margins) and can generate patient-facing PDFs.
+TurkCure is a **multi-tenant medical-tourism CRM** (since 2026-08-20): multiple
+companies (organizations) each get an isolated workspace — patients, treatment
+**cases**, quotes, payments, reminders, and the directory of hospitals/doctors/
+hotels/drivers behind them — plus per-company branding (name, logo, colors)
+that flows into the app shell and the patient-facing PDFs. Admins get a finance
+view (per-case margins). Organizations are created ONLY by the platform owner
+(`profiles.is_super`) via `/admin`; org admins invite their own staff. There is
+no public signup, by design.
+
+**Multi-tenancy rules (standing, non-negotiable):**
+- Every tenant table carries `org_id`. Cookie/browser-client writes self-stamp
+  via the column default + RLS `with check`; **service-role (admin client)
+  queries MUST filter/stamp `org_id` explicitly by hand** — RLS does not apply
+  to them. Composite FKs `(fk, org_id)` make parent/child org mismatch
+  unrepresentable.
+- **Cached reads are per-org**: `unstable_cache` keys include the orgId and
+  tags are `directories:<org>` / `finance:<org>` / `org:<org>`. A new cached
+  read that misses the orgId in its key is a cross-tenant leak.
+- **Storage paths lead with the org id** (`<orgId>/…`); policies pin folder 1
+  to `auth_org_id()`. Every new upload path must be org-prefixed.
+- Org identity rides the JWT (`app_metadata.org_id`, server-set only);
+  `auth_org_id()` in Postgres falls back to the profiles row. `is_admin()`
+  stays a live DB lookup on purpose (demotion must bite immediately).
 
 ## Stack
 
@@ -758,6 +777,140 @@ never automatic.
 
 Deferred to next sessions (agreed plan, see the 2026-08-20 plan file): timestamped
 patient notes (`patient_notes` migration), finance-table sorting, reminder notifications.
+
+## Recent work — 2026-08-20 multi-tenant SaaS conversion (organizations, RLS, branding)
+
+The single-company tool became a multi-tenant product in one pass. Decisions
+locked with Parsa: medical-tourism vertical (domain unchanged), owner-created
+orgs (no public signup; super-admin = `parsaa.mansourii@gmail.com`), no billing
+yet (`organizations.plan` placeholder), branding = PDFs + app accent. Platform
+surfaces (login/reset/tab title) stay "TurkCure" for now — naming the platform
+itself is an open question.
+
+**Migrations `0023`–`0025`** (written this session; apply order matters — see
+the runbook in `0023`'s header):
+- **0023_organizations.sql** — `organizations` (slug, plan, active + branding
+  columns: logo_url, company/whatsapp/website/url/location/address/tagline,
+  `brand_primary`/`pdf_cover_bg`/`pdf_cover_accent` with hex checks, TurkCure
+  backfilled from the old `COMPANY` constant); `org_id` on all 17 tenant tables
+  (backfill → not null → `default auth_org_id()`); `auth_org_id()` = JWT
+  app_metadata claim with a COALESCE profiles fallback (the fallback doubles as
+  the column default's data source and covers pre-backfill tokens);
+  `set_org_from_parent()` BEFORE INSERT triggers on the 8 child tables (keeps
+  service-role inserts correct); **composite FKs `(fk, org_id)` → parent
+  `(id, org_id)`** across the whole graph (set-null FKs use the PG15
+  column-list form); per-org uniques on countries/operation_types; index
+  rework (org-leading hot composites; `payments(due_date)` stays global for
+  the cron; new partial `reminders(note) where type='payment'`);
+  `handle_new_user()` now reads role+org from **raw_app_meta_data** (server-set
+  only — the old user_metadata role was forgeable) and rejects org-less users;
+  `profiles.is_super`; `seed_org_defaults(p_org)` (21 countries / 17 op types /
+  3 genericized templates) for new orgs.
+- **0024_org_rls.sql** — every policy rewritten to
+  `org_id = (select auth_org_id())` (+ `with check` on all writes, so a
+  forgotten stamp fails loudly); role-specific deletes preserved (payments
+  admin-only, reminders owner-or-admin, extras any-staff). **quote_items:**
+  org-scoped SELECT for all staff + **column-level grants that revoke `cost`**
+  — this FIXES a real bug (agents got zero quote rows in case PDFs because
+  `quote_items_public` is security_invoker over an admin-only table) and makes
+  cost DB-enforced. Finance RPCs dropped/recreated as
+  `finance_case_rows(p_org)` / `finance_payment_rows(p_org)` with org filters
+  inside the CTEs (SECURITY DEFINER + execute-revoked: the parameter IS the
+  boundary).
+- **0025_storage_org.sql** — storage policies pin `(storage.foldername(name))[1]`
+  to the caller's org for patient-files/receipts (+ instruction-images writes);
+  **adds the missing UPDATE policy** (upsert issues UPDATE; none existed) and
+  relaxes delete to org+(admin OR owner) — fixes 4 silently-no-opping browser
+  deletes that orphaned receipts/files. New public `org-assets` bucket for
+  logos (service-role writes, like avatars).
+
+**Rollout runbook** (state 2026-08-20: code done+green, **migrations NOT yet
+applied — `supabase db push` was classifier-blocked; Parsa runs it**):
+apply 0023-0025 (`npx supabase db push --linked`) → `node
+scripts/backfill-org-claims.mjs` (stamps app_metadata.org_id on existing
+users) → `node scripts/migrate-storage-org-prefix.mjs` (moves objects under
+the org prefix + rewrites DB paths and embedded body_md URLs) → `node
+scripts/org-isolation-audit.mjs` (creates a disposable "Audit Clinic" org and
+asserts real-JWT isolation + storage fencing + the agent-quote fix) → deploy.
+Verify `select count(*) from profiles where is_super` = 1 (the email match is
+a no-op if that auth user doesn't exist yet).
+
+**Code — tenancy core:**
+- `requireOrg()` / `requireSuperAdmin()` in `supabase/server.ts`; `Profile` +=
+  `org_id`, `is_super`; new `Organization` type.
+- **Per-org cache factories** (the pattern for any future cached read):
+  `(orgId) => unstable_cache(fn, ["key", orgId], { tags: ["tag:" + orgId] })`
+  in `lib/data/directory.ts`, `finance.ts`, and new `lib/data/org.ts`
+  (`getOrganization` cached under `org:<id>`, plus `getOrg()`). All admin-client
+  queries inside carry explicit `.eq("org_id", …)`. Only 3 pages call these
+  (patients, patients/[id], finance) and now pass `profile.org_id`.
+- Actions: `revalidateCase(patientId, orgId)` raises `finance:<org>`; the 6
+  service-role quote-item sites stamp/filter org (+ `.select("id")` loud-fail
+  on delete); `inviteUser` sends `app_metadata: { org_id, role }`;
+  `setUserActive`/`setUserRole` org-fence their admin-client updates (and
+  setUserRole's missing directories revalidation is fixed); `upsertPayment`
+  verifies the counterparty exists in-org (counterparty_id has no FK). New
+  `lib/actions/orgs.ts` (createOrganization with rollback-on-failure +
+  setOrganizationActive, both requireSuperAdmin) and `lib/actions/
+  org-branding.ts` (updateOrgBranding — org id ALWAYS from the caller's
+  profile, hex + cover-luminance ≤0.35 guards; updateOrgLogo/removeOrgLogo,
+  PNG/JPG only because react-pdf can't decode WebP/SVG).
+- Cron: CRON_SECRET-unset guard ("Bearer undefined" was accepted); the sweep
+  stamps `org_id` from the payment row and chunks the marker dedupe (200/req).
+- Browser uploads: `lib/supabase/client-org.ts` `getOrgId()` (claim fast path,
+  one profile-read fallback) prefixes all four upload paths.
+
+**Code — branding pipeline:**
+- New pure `lib/branding/color.ts` (mix/lighten/darken/rgba/luminance) — the
+  ONE derivation source for PDF theme, app accent, and settings preview.
+- New client-safe `lib/pdf/theme.ts`: `PdfTheme` + `DEFAULT_PDF_THEME` (today's
+  literal hexes + COMPANY + mark `{text:"TurkCure", splitAt:4}`),
+  `orgToPdfTheme()` with the **defaults-are-literal rule** — a family is
+  derived only when its base column differs from the shipped default, so an
+  untouched org renders byte-identically (proven: rasterized pixel-compare,
+  `renderBaseline.test.tsx` + `scripts/pdf-compare.mjs`). `orgToDocVars()`
+  feeds the editor sheet's `--doc-*` (unifies the drifted editor.css copy).
+- `common.tsx`: `makePdfStyles(theme)` (Map-cached) replaces the module
+  StyleSheet; **one `Mark` component** replaces Wordmark/WordmarkGold (logo
+  `<Image>` in a fixed 120×30 contain box, else text mark with a generalized
+  CamelCase two-tone split); PdfFooter reads theme.company and skips empty
+  lines; dead NAVY_DEEP/Section/KV removed.
+- ⚠️ **React context does NOT exist in route handlers** — Next bundles them
+  under the `react-server` condition, whose React has no
+  createContext/useContext (build error: "createContext is not a function").
+  The theme therefore travels via a module-scoped `currentCtx` +
+  **`renderThemedPdf(ctx, element)`** in common.tsx; safe because react-pdf
+  mounts on a synchronous legacy root, so every component (and every
+  `usePdfTheme()` read) runs before the first await. All 4 PDF routes use it;
+  `usePdfTheme()` keeps the hook-like read API.
+- `buildCaseDoc(data, patient, company)` — third param REQUIRED (client-side
+  rebuilds get it via `sourceData.company`; colors never enter document JSON).
+  Saved/finalized documents keep their seeded strings after a rebrand — by
+  design; module-rendered chrome (footer, mark, colors) follows the current
+  theme. `CaseDocEditor` gained `docVars` (inline literal hexes; the sheet
+  stays app-token-free).
+- App accent: `shell/org-accent-style.tsx` emits a `<style>` tag (light +
+  `.dark` sets — inline style can't express `.dark`), only when the personal
+  `accent_theme === "default"` (relabeled **"Company colors"**) and the org
+  color differs from the default — so the app's own blue (#2563eb ≠ PDF
+  #1d59d6) is untouched until a company actually picks a color.
+  `shell/org-context.tsx` (`OrgProvider`/`useOrg`/`OrgBrand`) supplies the
+  brand slot (sidebar/topbar/drawer/intro) and client copy ("patient pays
+  {org}", CSV filename via new `slugify` in lib/utils).
+- Settings gained an **Organization** tab (admin): logo card, identity +
+  documents form (form-draft `org:<id>`), 3 color pickers with derived-shade
+  chips + mini cover preview. `Field` gained a `hint` prop.
+- **/admin** (super only, finance-page gate pattern): orgs table + "New
+  organization" dialog → createOrganization (insert → seed → first admin via
+  app_metadata; org row rolled back if user creation fails). Sidebar/topbar
+  show a "Platform" nav section for is_super.
+
+**Tests:** vitest is now 15 tests (editorDoc 9 incl. an org-identity seed
+test, theme 4, color 3 — plus the env-gated renderBaseline harness). The
+pixel gate: `PDF_BASELINE_OUT=… npx vitest run renderBaseline` before/after +
+`node scripts/pdf-compare.mjs` — after the whole refactor, only the 2 intended
+string changes differ (confirmation now says the full company name; the cover
+footer prints the website field's casing).
 
 ---
 

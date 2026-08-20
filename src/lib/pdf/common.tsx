@@ -2,14 +2,17 @@ import React from "react";
 import path from "node:path";
 import fs from "node:fs";
 import { COMPANY } from "./company";
+import { DEFAULT_PDF_THEME, type PdfTheme } from "./theme";
 import {
   StyleSheet,
   Font,
   View,
   Text,
+  Image,
   Svg,
   Polygon,
   Line,
+  renderToBuffer,
 } from "@react-pdf/renderer";
 
 // Embedded brand fonts: Playfair Display (display serif) + Source Sans 3 (text).
@@ -69,26 +72,15 @@ export const SANS = FONT_DIR ? "SourceSans" : "Helvetica";
 // Never hyphenate — broken words look terrible on a formal document.
 Font.registerHyphenationCallback((word) => [word]);
 
-// Brand palette — "clean medical": airy white, brand blue, teal→green accent.
-export const BLUE = "#1d59d6";
-export const BLUE_DEEP = "#123a94";
-export const CYAN = "#1aa0c8";
-export const TEAL = "#0ea5a4";
-export const GREEN = "#16b364";
+// Neutral inks and hairlines — deliberately THEME-INVARIANT. Deriving
+// near-neutrals from a brand hue produces garish tints; the brand colors live
+// on PdfTheme (defaults in theme.ts hold the legacy hex values).
 export const INK = "#0f1b2d";
 export const TEXT = "#243244";
 export const MUTED = "#6b7a8d";
 export const FAINT = "#9aa7b6";
 export const HAIRLINE = "#e7ecf2";
 export const CARD_BG = "#fbfcfe";
-export const ACCENT_SOFT = "#eef4ff";
-
-// Premium cover palette — deep navy + antique gold.
-export const NAVY = "#0b1f3f";
-export const NAVY_DEEP = "#071531";
-export const GOLD = "#c9a24b";
-export const GOLD_LIGHT = "#e6c87d";
-export const GOLD_DARK = "#9a7a2e";
 
 // Re-exported so every existing `from "@/lib/pdf/common"` import keeps working.
 // The values live in company.ts, which has no imports — this module pulls in
@@ -98,233 +90,281 @@ export { COMPANY };
 // Warm hairline + label-column tint used by the table sections.
 export const TABLE_LINE = "#e5e0d4";
 export const LABEL_BG = "#faf8f2";
-export const GOLD_SOFT_BG = "#faf3e0";
-
-export const pdfStyles = StyleSheet.create({
-  page: {
-    paddingTop: 48,
-    paddingHorizontal: 50,
-    paddingBottom: 76,
-    fontSize: 10,
-    color: TEXT,
-    fontFamily: SANS,
-    lineHeight: 1.45,
-  },
-  docTitle: { fontSize: 14, color: INK, textAlign: "right", fontFamily: SERIF, fontWeight: 700 },
-  docSub: { fontSize: 8.5, color: MUTED, textAlign: "right", marginTop: 3 },
-
-  // Numbered table section — navy header band + hairline-bordered body.
-  tableSection: {
-    marginBottom: 20,
-  },
-  tableHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: NAVY,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-  },
-  tableHeadRule: {
-    width: 14,
-    height: 1.2,
-    backgroundColor: GOLD,
-    marginRight: 9,
-  },
-  tableHeadTitle: {
-    fontFamily: SERIF,
-    fontWeight: 700,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 0.4,
-  },
-  tableBody: {
-    borderWidth: 1,
-    borderColor: TABLE_LINE,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 4,
-    borderBottomRightRadius: 4,
-    backgroundColor: "#ffffff",
-  },
-  tRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    borderBottomWidth: 1,
-    borderBottomColor: TABLE_LINE,
-  },
-  tRowLast: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-  tLabel: {
-    width: "36%",
-    backgroundColor: LABEL_BG,
-    borderRightWidth: 1,
-    borderRightColor: TABLE_LINE,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    color: MUTED,
-    fontSize: 8.5,
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  tValue: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    color: INK,
-    fontWeight: 600,
-    fontSize: 10,
-  },
-
-  // A light "card" section — no heavy borders, just a hairline frame + soft head.
-  section: {
-    marginBottom: 16,
-  },
-  sectionHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 7,
-  },
-  sectionTick: {
-    width: 3,
-    height: 11,
-    borderRadius: 2,
-    backgroundColor: TEAL,
-    marginRight: 7,
-  },
-  sectionTitle: {
-    fontFamily: SERIF,
-    fontWeight: 700,
-    fontSize: 11,
-    color: BLUE_DEEP,
-    letterSpacing: 0.3,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    borderRadius: 6,
-    backgroundColor: CARD_BG,
-    paddingVertical: 3,
-    paddingHorizontal: 14,
-  },
-  kvRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    borderBottomWidth: 1,
-    borderBottomColor: HAIRLINE,
-    paddingVertical: 6.5,
-  },
-  kvRowLast: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 6.5,
-  },
-  kvLabel: {
-    width: "38%",
-    color: MUTED,
-    fontSize: 9,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  kvValue: { flex: 1, color: INK, fontWeight: 600, fontSize: 10 },
-
-  bold: { fontWeight: 700 },
-  bullet: { width: "50%", paddingVertical: 2.5, paddingRight: 8, color: TEXT },
-
-  footer: {
-    position: "absolute",
-    bottom: 30,
-    left: 50,
-    right: 50,
-    textAlign: "center",
-    color: MUTED,
-    fontSize: 7.5,
-    borderTopWidth: 1,
-    borderTopColor: HAIRLINE,
-    paddingTop: 9,
-  },
-  pageNumber: {
-    position: "absolute",
-    bottom: 15,
-    left: 50,
-    right: 50,
-    textAlign: "center",
-    color: FAINT,
-    fontSize: 7,
-  },
-  instrHeading: {
-    fontFamily: SERIF,
-    fontWeight: 700,
-    fontSize: 11,
-    color: BLUE_DEEP,
-    marginTop: 14,
-    marginBottom: 6,
-  },
-  instrLine: { marginBottom: 3, lineHeight: 1.5, color: TEXT },
-});
 
 /**
- * The TurkCure wordmark on light backgrounds: "Turk" in brand blue, "Cure" in
- * cyan. Bold, tight tracking, single line.
- *
- * Plain flex Text, not an <Svg> — see `WordmarkGold` for the full reasoning.
- * The SVG version placed "Cure" at a hardcoded x=49 inside a fixed 132-unit
- * viewBox, measured against a font size that doesn't match what actually
- * renders: "Cure" fell outside the viewBox and was clipped, so every page
- * header in every PDF read just "Turk".
- *
- * "Cure" was a blue→cyan→green gradient, which never reached the page anyway:
- * react-pdf doesn't render gradient fills on SVG text (it comes out invisible),
- * so the mid-stop cyan is the honest, visible version of the same mark.
+ * The style sheet, parameterized by theme. Only four styles carry brand color
+ * (section band, its small rule, the section-title/instruction-heading ink and
+ * the tick); everything else is neutral. Cached per theme — one theme per
+ * request in practice.
  */
-export function Wordmark({ scale = 1 }: { scale?: number }) {
-  const glyphs = {
-    fontFamily: SANS,
-    fontWeight: 700 as const,
-    fontSize: 24 * scale,
-    letterSpacing: -0.5 * scale,
-    lineHeight: 1,
-  };
-  return (
-    <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-      <Text style={{ ...glyphs, color: BLUE }}>Turk</Text>
-      <Text style={{ ...glyphs, color: CYAN }}>Cure</Text>
-    </View>
-  );
+function buildStyles(theme: PdfTheme) {
+  return StyleSheet.create({
+    page: {
+      paddingTop: 48,
+      paddingHorizontal: 50,
+      paddingBottom: 76,
+      fontSize: 10,
+      color: TEXT,
+      fontFamily: SANS,
+      lineHeight: 1.45,
+    },
+    docTitle: { fontSize: 14, color: INK, textAlign: "right", fontFamily: SERIF, fontWeight: 700 },
+    docSub: { fontSize: 8.5, color: MUTED, textAlign: "right", marginTop: 3 },
+
+    // Numbered table section — cover-colored header band + hairline body.
+    tableSection: {
+      marginBottom: 20,
+    },
+    tableHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.coverBg,
+      borderTopLeftRadius: 4,
+      borderTopRightRadius: 4,
+      paddingVertical: 7,
+      paddingHorizontal: 14,
+    },
+    tableHeadRule: {
+      width: 14,
+      height: 1.2,
+      backgroundColor: theme.coverAccent,
+      marginRight: 9,
+    },
+    tableHeadTitle: {
+      fontFamily: SERIF,
+      fontWeight: 700,
+      fontSize: 11,
+      color: "#ffffff",
+      letterSpacing: 0.4,
+    },
+    tableBody: {
+      borderWidth: 1,
+      borderColor: TABLE_LINE,
+      borderTopWidth: 0,
+      borderBottomLeftRadius: 4,
+      borderBottomRightRadius: 4,
+      backgroundColor: "#ffffff",
+    },
+    tRow: {
+      flexDirection: "row",
+      alignItems: "stretch",
+      borderBottomWidth: 1,
+      borderBottomColor: TABLE_LINE,
+    },
+    tRowLast: {
+      flexDirection: "row",
+      alignItems: "stretch",
+    },
+    tLabel: {
+      width: "36%",
+      backgroundColor: LABEL_BG,
+      borderRightWidth: 1,
+      borderRightColor: TABLE_LINE,
+      paddingVertical: 9,
+      paddingHorizontal: 14,
+      color: MUTED,
+      fontSize: 8.5,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    tValue: {
+      flex: 1,
+      paddingVertical: 9,
+      paddingHorizontal: 14,
+      color: INK,
+      fontWeight: 600,
+      fontSize: 10,
+    },
+
+    // A light "card" section — no heavy borders, just a hairline frame + soft head.
+    section: {
+      marginBottom: 16,
+    },
+    sectionHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 7,
+    },
+    sectionTick: {
+      width: 3,
+      height: 11,
+      borderRadius: 2,
+      backgroundColor: theme.noteAccent,
+      marginRight: 7,
+    },
+    sectionTitle: {
+      fontFamily: SERIF,
+      fontWeight: 700,
+      fontSize: 11,
+      color: theme.primaryDeep,
+      letterSpacing: 0.3,
+    },
+    card: {
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      borderRadius: 6,
+      backgroundColor: CARD_BG,
+      paddingVertical: 3,
+      paddingHorizontal: 14,
+    },
+    kvRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      borderBottomWidth: 1,
+      borderBottomColor: HAIRLINE,
+      paddingVertical: 6.5,
+    },
+    kvRowLast: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      paddingVertical: 6.5,
+    },
+    kvLabel: {
+      width: "38%",
+      color: MUTED,
+      fontSize: 9,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    kvValue: { flex: 1, color: INK, fontWeight: 600, fontSize: 10 },
+
+    bold: { fontWeight: 700 },
+    bullet: { width: "50%", paddingVertical: 2.5, paddingRight: 8, color: TEXT },
+
+    footer: {
+      position: "absolute",
+      bottom: 30,
+      left: 50,
+      right: 50,
+      textAlign: "center",
+      color: MUTED,
+      fontSize: 7.5,
+      borderTopWidth: 1,
+      borderTopColor: HAIRLINE,
+      paddingTop: 9,
+    },
+    pageNumber: {
+      position: "absolute",
+      bottom: 15,
+      left: 50,
+      right: 50,
+      textAlign: "center",
+      color: FAINT,
+      fontSize: 7,
+    },
+    instrHeading: {
+      fontFamily: SERIF,
+      fontWeight: 700,
+      fontSize: 11,
+      color: theme.primaryDeep,
+      marginTop: 14,
+      marginBottom: 6,
+    },
+    instrLine: { marginBottom: 3, lineHeight: 1.5, color: TEXT },
+  });
+}
+
+export type PdfStyles = ReturnType<typeof buildStyles>;
+
+const stylesCache = new Map<PdfTheme, PdfStyles>();
+export function makePdfStyles(theme: PdfTheme): PdfStyles {
+  let styles = stylesCache.get(theme);
+  if (!styles) {
+    styles = buildStyles(theme);
+    stylesCache.set(theme, styles);
+  }
+  return styles;
+}
+
+/** The default-theme styles — what every document rendered before theming. */
+export const pdfStyles = makePdfStyles(DEFAULT_PDF_THEME);
+
+export interface PdfCtx {
+  theme: PdfTheme;
+  styles: PdfStyles;
+}
+
+const DEFAULT_CTX: PdfCtx = { theme: DEFAULT_PDF_THEME, styles: pdfStyles };
+
+/**
+ * The active theme for the render in progress. NOT React context: Next
+ * bundles route handlers under the react-server condition, whose React build
+ * has no createContext/useContext at all (that is what broke the build when
+ * this was a real context). A module global scoped around renderToBuffer is
+ * safe instead because react-pdf mounts on a synchronous legacy root — every
+ * component (and so every usePdfTheme() read) executes before renderToBuffer
+ * hits its first await; only layout/font work is async. Concurrent renders in
+ * one lambda therefore never observe each other's theme. If react-pdf ever
+ * moves to an async-concurrent component phase, revisit this.
+ */
+let currentCtx: PdfCtx = DEFAULT_CTX;
+
+export function usePdfTheme(): PdfCtx {
+  return currentCtx;
+}
+
+export function makePdfCtx(theme: PdfTheme): PdfCtx {
+  return { theme, styles: makePdfStyles(theme) };
+}
+
+/** renderToBuffer with `ctx` active for the component phase. Always restores
+ *  the default so tests and themeless renders keep the legacy output. */
+export async function renderThemedPdf(
+  ctx: PdfCtx,
+  element: Parameters<typeof renderToBuffer>[0]
+): Promise<Buffer> {
+  currentCtx = ctx;
+  try {
+    return await renderToBuffer(element);
+  } finally {
+    currentCtx = DEFAULT_CTX;
+  }
 }
 
 /**
- * The wordmark on dark backgrounds: "Turk" in warm white, "Cure" in antique
- * gold. Gradient fills don't render on SVG text in react-pdf (the text comes
- * out invisible on the dark cover), so "Cure" uses a solid gold fill.
+ * The brand mark. An uploaded logo renders as an image in a fixed bounding box
+ * (react-pdf will not reliably aspect-scale from a single dimension, so both
+ * are pinned and objectFit does the letterboxing). A text mark renders as
+ * plain flex Text — NEVER as <Svg> text: the SVG version placed glyph runs at
+ * hardcoded x offsets measured against font metrics that don't match what
+ * renders, which clipped "Cure" out of every page header for months. Flex Text
+ * self-sizes to the real advance width, so it centres exactly and survives the
+ * Helvetica fallback. Baseline-aligned SIBLINGS in a row are the known-good
+ * pattern (the react-pdf collision trap is stacked siblings, not rows).
  *
- * Plain flex Text rather than an <Svg>, unlike `Wordmark`. The SVG version put
- * the two halves at hardcoded x=0 / x=49 inside a fixed 132-unit viewBox, which
- * broke twice over: the glyph run was narrower than its own box, so the cover's
- * `alignItems: "center"` centred the *box* and left the word visibly off-centre;
- * and the 49pt offset was measured against Source Sans, so whenever FONT_DIR
- * fails to resolve and SANS falls back to Helvetica the halves overlap. Flex
- * Text self-sizes to the real advance width, so it centres exactly and survives
- * the fallback. (react-pdf does honour textAnchor on Svg Text, but that centres
- * each half on its own anchor — it would make the overlap worse, not better.)
+ * `variant` picks the color pair: "inner" (light backgrounds — primary +
+ * markSecondary, the legacy blue/cyan) or "cover" (dark cover ground —
+ * coverFg + coverAccent, the legacy warm-white/gold).
  */
-export function WordmarkGold({ scale = 1 }: { scale?: number }) {
+export function Mark({ scale = 1, variant = "inner" }: { scale?: number; variant?: "inner" | "cover" }) {
+  const { theme } = usePdfTheme();
+  if (theme.mark.kind === "logo") {
+    return (
+      // eslint-disable-next-line jsx-a11y/alt-text
+      <Image
+        src={theme.mark.url}
+        style={{ width: 120 * scale, height: 30 * scale, objectFit: "contain" }}
+      />
+    );
+  }
   const glyphs = {
     fontFamily: SANS,
     fontWeight: 700 as const,
     fontSize: 24 * scale,
     letterSpacing: -0.5 * scale,
-    // The old Svg declared a fixed height; pin the line box so the tagline
-    // below keeps its spacing instead of inheriting the page line-height.
+    // Pin the line box so whatever sits under the mark keeps its spacing
+    // instead of inheriting the page line-height.
     lineHeight: 1,
   };
+  const [first, second] =
+    variant === "cover" ? [theme.coverFg, theme.coverAccent] : [theme.primary, theme.markSecondary];
+  const { text, splitAt } = theme.mark;
+  const split = splitAt != null && splitAt > 0 && splitAt < text.length ? splitAt : null;
   return (
     <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-      <Text style={{ ...glyphs, color: "#f5f1e6" }}>Turk</Text>
-      <Text style={{ ...glyphs, color: GOLD }}>Cure</Text>
+      <Text style={{ ...glyphs, color: first }}>{split ? text.slice(0, split) : text}</Text>
+      {split ? <Text style={{ ...glyphs, color: second }}>{text.slice(split)}</Text> : null}
     </View>
   );
 }
@@ -341,30 +381,32 @@ export function Diamond({
   r: number;
   opacity?: number;
 }) {
+  const { theme } = usePdfTheme();
   return (
     <Polygon
       points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`}
-      fill={GOLD}
+      fill={theme.coverAccent}
       fillOpacity={opacity}
     />
   );
 }
 
-/** Centered gold divider: thin rules flanking a diamond. */
+/** Centered accent divider: thin rules flanking a diamond. */
 export function CoverOrnament({ width = 180 }: { width?: number }) {
+  const { theme } = usePdfTheme();
   const h = 12;
   const mid = h / 2;
   const cx = width / 2;
   return (
     <Svg width={width} height={h}>
-      <Line x1={0} y1={mid} x2={cx - 14} y2={mid} stroke={GOLD} strokeWidth={0.8} />
-      <Line x1={cx + 14} y1={mid} x2={width} y2={mid} stroke={GOLD} strokeWidth={0.8} />
+      <Line x1={0} y1={mid} x2={cx - 14} y2={mid} stroke={theme.coverAccent} strokeWidth={0.8} />
+      <Line x1={cx + 14} y1={mid} x2={width} y2={mid} stroke={theme.coverAccent} strokeWidth={0.8} />
       <Diamond cx={cx} cy={mid} r={4} />
     </Svg>
   );
 }
 
-/** Standard header: wordmark left, title + meta right, hairline divider. */
+/** Standard header: brand mark left, title + meta right, thin accent rule. */
 export function PdfHeader({
   title,
   meta,
@@ -374,7 +416,8 @@ export function PdfHeader({
   meta?: string;
   accent?: "gold" | "brand";
 }) {
-  const ruleColor = accent === "gold" ? GOLD : BLUE;
+  const { theme, styles } = usePdfTheme();
+  const ruleColor = accent === "gold" ? theme.coverAccent : theme.primary;
   return (
     <View>
       <View
@@ -385,10 +428,10 @@ export function PdfHeader({
           marginBottom: 12,
         }}
       >
-        <Wordmark />
+        <Mark />
         <View>
           {title}
-          {meta ? <Text style={pdfStyles.docSub}>{meta}</Text> : null}
+          {meta ? <Text style={styles.docSub}>{meta}</Text> : null}
         </View>
       </View>
       {/* Thin accent rule */}
@@ -404,42 +447,9 @@ export function PdfHeader({
   );
 }
 
-/** Section wrapper: accent-tick title + a light hairline card of rows. */
-export function Section({
-  title,
-  children,
-  wrap,
-  accent,
-}: {
-  title: string;
-  children: React.ReactNode;
-  wrap?: boolean;
-  accent?: string;
-}) {
-  return (
-    <View style={pdfStyles.section} wrap={wrap}>
-      <View style={pdfStyles.sectionHead}>
-        <View style={[pdfStyles.sectionTick, accent ? { backgroundColor: accent } : {}]} />
-        <Text style={pdfStyles.sectionTitle}>{title}</Text>
-      </View>
-      <View style={pdfStyles.card}>{children}</View>
-    </View>
-  );
-}
-
-/** A key/value row inside a Section card. */
-export function KV({ label, value, last }: { label: string; value?: string | null; last?: boolean }) {
-  return (
-    <View style={last ? pdfStyles.kvRowLast : pdfStyles.kvRow}>
-      <Text style={pdfStyles.kvLabel}>{label}</Text>
-      <Text style={pdfStyles.kvValue}>{value ? value : "—"}</Text>
-    </View>
-  );
-}
-
 /**
- * Numbered, table-style section: navy header band ("1. Patient Information")
- * with a small gold rule, above a hairline-bordered white body.
+ * Numbered, table-style section: cover-colored header band ("1. Patient
+ * Information") with a small accent rule, above a hairline-bordered white body.
  */
 export function TableSection({
   number,
@@ -453,40 +463,46 @@ export function TableSection({
   children: React.ReactNode;
   wrap?: boolean;
 }) {
+  const { styles } = usePdfTheme();
   return (
-    <View style={pdfStyles.tableSection} wrap={wrap}>
-      <View style={pdfStyles.tableHead} minPresenceAhead={60}>
-        <View style={pdfStyles.tableHeadRule} />
-        <Text style={pdfStyles.tableHeadTitle}>
+    <View style={styles.tableSection} wrap={wrap}>
+      <View style={styles.tableHead} minPresenceAhead={60}>
+        <View style={styles.tableHeadRule} />
+        <Text style={styles.tableHeadTitle}>
           {number != null ? `${number}. ` : ""}
           {title}
         </Text>
       </View>
-      <View style={pdfStyles.tableBody}>{children}</View>
+      <View style={styles.tableBody}>{children}</View>
     </View>
   );
 }
 
 /** A label/value table row inside a TableSection. */
 export function TRow({ label, value, last }: { label: string; value?: string | null; last?: boolean }) {
+  const { styles } = usePdfTheme();
   return (
-    <View style={last ? pdfStyles.tRowLast : pdfStyles.tRow}>
-      <Text style={pdfStyles.tLabel}>{label}</Text>
-      <Text style={pdfStyles.tValue}>{value ? value : "—"}</Text>
+    <View style={last ? styles.tRowLast : styles.tRow}>
+      <Text style={styles.tLabel}>{label}</Text>
+      <Text style={styles.tValue}>{value ? value : "—"}</Text>
     </View>
   );
 }
 
-/** Fixed footer with address, url and page numbers. */
+/** Fixed footer with the company address, url and page numbers. Empty company
+ *  lines are skipped — a fresh org may not have filled them in yet. */
 export function PdfFooter() {
+  const { theme, styles } = usePdfTheme();
   return (
     <>
-      <View style={pdfStyles.footer} fixed>
-        <Text style={pdfStyles.bold}>{COMPANY.address}</Text>
-        <Text style={{ color: BLUE, marginTop: 2 }}>{COMPANY.url}</Text>
+      <View style={styles.footer} fixed>
+        {theme.company.address ? <Text style={styles.bold}>{theme.company.address}</Text> : null}
+        {theme.company.url ? (
+          <Text style={{ color: theme.primary, marginTop: 2 }}>{theme.company.url}</Text>
+        ) : null}
       </View>
       <Text
-        style={pdfStyles.pageNumber}
+        style={styles.pageNumber}
         fixed
         render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
       />

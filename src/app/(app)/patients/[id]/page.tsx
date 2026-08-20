@@ -34,7 +34,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
       )
       .eq("patient_id", id)
       .order("created_at", { ascending: false }),
-    getDirectories(),
+    getDirectories(profile.org_id),
     supabase.from("instruction_templates").select("id, title").order("title"),
     supabase.from("patient_files").select("*").eq("patient_id", id).order("created_at", { ascending: false }),
     getQuoteItemsForPatient(id),

@@ -45,7 +45,7 @@ export function LoginForm() {
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@turkcure.com"
+              placeholder="you@example.com"
             />
           </Field>
           <Field label="Password">

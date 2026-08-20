@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import React from "react";
-import { renderToBuffer, Document, Page, Text } from "@react-pdf/renderer";
+import { Document, Page, Text } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
-import { pdfStyles as s, fmtDate, PdfHeader, PdfFooter } from "@/lib/pdf/common";
+import { getOrganization } from "@/lib/data/org";
+import { fmtDate, PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf } from "@/lib/pdf/common";
+import { orgToPdfTheme, DEFAULT_PDF_THEME } from "@/lib/pdf/theme";
 import { loadCaseData, pdfFilenameHeaders, CoverPage } from "@/lib/pdf/case-doc";
 import { EditorDocBody, findCoverAttrs } from "@/lib/pdf/editorDoc";
 import { buildCaseDoc } from "@/lib/documents/buildCaseDoc";
@@ -44,15 +46,23 @@ async function render({ caseId }: { caseId: string }, override: EditorDocJSON | 
 
   const supabase = await createClient();
 
-  const loaded = await loadCaseData(supabase, caseId);
+  const [loaded, org] = await Promise.all([
+    loadCaseData(supabase, caseId),
+    getOrganization(profile.org_id),
+  ]);
   if (!loaded) return new NextResponse("Not found", { status: 404 });
   const { case: caseData, patient, imageUrls } = loaded;
+
+  const ctx = makePdfCtx(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME);
+  const s = ctx.styles;
 
   // An explicit document (the editor's live preview) wins; then a stored draft;
   // then a fresh seed.
   const stored = override ? null : await getCaseDocument(caseId);
   const doc =
-    override ?? (stored?.content as EditorDocJSON | undefined) ?? buildCaseDoc(caseData, patient);
+    override ??
+    (stored?.content as EditorDocJSON | undefined) ??
+    buildCaseDoc(caseData, patient, ctx.theme.company);
 
   // Instruction images are signed URLs that expire, so they are never stored in
   // the document — they are re-attached at render time from the live case.
@@ -62,11 +72,11 @@ async function render({ caseId }: { caseId: string }, override: EditorDocJSON | 
   const issued = fmtDate(new Date().toISOString());
 
   const pdf = (
-    <Document title={`TurkCure WOF — ${patient.full_name}`}>
+    <Document title={`${org?.name ?? "TurkCure"} — ${patient.full_name}`}>
       <CoverPage
         title={cover.title ?? "Treatment & Reservation"}
         titleAccent={cover.titleAccent ?? "Confirmation"}
-        tagline={cover.tagline ?? "Health Tourism · Istanbul"}
+        tagline={cover.tagline ?? ctx.theme.company.tagline}
         preparedForLabel={cover.preparedForLabel ?? "Prepared for"}
         patientName={cover.patientName ?? patient.full_name}
         treatments={cover.treatments ?? []}
@@ -88,7 +98,7 @@ async function render({ caseId }: { caseId: string }, override: EditorDocJSON | 
   );
 
   try {
-    const buffer = await renderToBuffer(pdf);
+    const buffer = await renderThemedPdf(ctx, pdf);
     return new NextResponse(new Uint8Array(buffer), {
       headers: pdfFilenameHeaders(patient.full_name),
     });

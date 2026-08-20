@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,6 +10,7 @@ import { useFocusTrap } from "@/lib/use-focus-trap";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { SidebarContent } from "./sidebar";
+import { OrgBrand } from "./org-context";
 import { CommandPalette, SearchTrigger, openCommandPalette } from "./command-palette";
 
 // Route prefix → page title for wayfinding (mainly the mobile top bar, which
@@ -25,6 +25,7 @@ const ROUTE_TITLES: [string, string][] = [
   ["/templates", "Instructions"],
   ["/finance", "Finance"],
   ["/settings", "Settings"],
+  ["/admin", "Organizations"],
 ];
 
 function titleForPath(pathname: string): string {
@@ -37,11 +38,13 @@ function titleForPath(pathname: string): string {
 export function Topbar({
   title,
   isAdmin,
+  isSuper = false,
   userName,
   avatarUrl,
 }: {
   title?: string;
   isAdmin: boolean;
+  isSuper?: boolean;
   userName: string;
   avatarUrl?: string | null;
 }) {
@@ -112,13 +115,7 @@ export function Topbar({
               )}
             >
               <div className="flex h-14 items-center justify-between border-b border-border px-5">
-                <Link
-                  href="/dashboard"
-                  onClick={() => setDrawerOpen(false)}
-                  className="text-lg font-bold tracking-tight"
-                >
-                  <span className="brand-gradient-text">TurkCure</span>
-                </Link>
+                <OrgBrand onClick={() => setDrawerOpen(false)} />
                 <button
                   onClick={() => setDrawerOpen(false)}
                   aria-label="Close menu"
@@ -129,6 +126,7 @@ export function Topbar({
               </div>
               <SidebarContent
                 isAdmin={isAdmin}
+                isSuper={isSuper}
                 userName={userName}
                 avatarUrl={avatarUrl}
                 onNavigate={() => setDrawerOpen(false)}

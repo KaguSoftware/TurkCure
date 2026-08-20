@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import React from "react";
-import { renderToBuffer, Document, Page, Text } from "@react-pdf/renderer";
+import { Document, Page, Text } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
-import { pdfStyles as s, fmtDate, PdfHeader, PdfFooter } from "@/lib/pdf/common";
+import { getOrganization } from "@/lib/data/org";
+import { fmtDate, PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf } from "@/lib/pdf/common";
+import { orgToPdfTheme, DEFAULT_PDF_THEME } from "@/lib/pdf/theme";
 import {
   loadCaseData,
   pdfFilenameHeaders,
@@ -22,9 +24,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
   const { caseId } = await params;
   const supabase = await createClient();
 
-  const loaded = await loadCaseData(supabase, caseId);
+  const [loaded, org] = await Promise.all([
+    loadCaseData(supabase, caseId),
+    getOrganization(profile.org_id),
+  ]);
   if (!loaded) return new NextResponse("Not found", { status: 404 });
   const { case: caseData, patient, imageUrls } = loaded;
+
+  const ctx = makePdfCtx(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME);
+  const s = ctx.styles;
 
   const issued = fmtDate(new Date().toISOString());
   // Company follows the case body, so it lands after Additional Costs when the
@@ -32,7 +40,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
   const companyNumber = caseData.additionalCosts.length > 0 ? 8 : 7;
 
   const doc = (
-    <Document title={`TurkCure WOF — ${patient.full_name}`}>
+    <Document title={`${org?.name ?? "TurkCure"} — ${patient.full_name}`}>
       <CaseCover data={caseData} patientName={patient.full_name} />
 
       <Page size="A4" style={s.page}>
@@ -53,7 +61,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
   );
 
   try {
-    const buffer = await renderToBuffer(doc);
+    const buffer = await renderThemedPdf(ctx, doc);
     return new NextResponse(new Uint8Array(buffer), {
       headers: pdfFilenameHeaders(patient.full_name),
     });

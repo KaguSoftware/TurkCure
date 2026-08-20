@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getProfile } from "@/lib/supabase/server";
+import { getOrganization } from "@/lib/data/org";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { MainScroller } from "@/components/shell/main-scroller";
 import { Toaster } from "@/components/ui/toast";
 import { IntroOverlay, INTRO_COOKIE } from "@/components/shell/intro-overlay";
+import { OrgAccentStyle } from "@/components/shell/org-accent-style";
+import { OrgProvider } from "@/components/shell/org-context";
 import { cn } from "@/lib/utils";
 import type { AccentTheme } from "@/lib/types";
 
@@ -23,6 +26,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // redirecting to /login, which would loop (proxy bounces sessions off /login).
   if (!profile || !profile.active) redirect("/auth/signout");
 
+  // The whole workspace hangs off the org row (branding, active flag). A
+  // disabled org locks its members out the same way a disabled profile does.
+  const org = await getOrganization(profile.org_id);
+  if (!org || !org.active) redirect("/auth/signout");
+
   const themeClass = ACCENT_CLASS[profile.accent_theme];
   // Cookie-gated so the splash is part of the first server-rendered paint
   // (no flash of the app before it appears). The client sets the cookie to
@@ -34,21 +42,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // owns scrolling below the topbar, so the scrollbar no longer runs the full
     // viewport height through the topbar's edge.
     <div data-accent-root className={cn("flex h-dvh w-full overflow-hidden", themeClass)}>
-      <Sidebar
-        isAdmin={profile.role === "admin"}
-        userName={profile.name}
-        avatarUrl={profile.avatar_url}
-      />
-      <div className="flex min-w-0 flex-1 flex-col md:pl-60">
-        <Topbar
+      {/* Org accent applies only while the personal accent is "Company colors" —
+          a chosen .theme-* class stays a personal override with no cascade fight. */}
+      {profile.accent_theme === "default" && <OrgAccentStyle org={org} />}
+      <OrgProvider value={{ name: org.name, logoUrl: org.logo_url }}>
+        <Sidebar
           isAdmin={profile.role === "admin"}
+          isSuper={profile.is_super}
           userName={profile.name}
           avatarUrl={profile.avatar_url}
         />
-        <MainScroller>{children}</MainScroller>
-      </div>
-      <Toaster />
-      {!introSeen && <IntroOverlay userName={profile.name} />}
+        <div className="flex min-w-0 flex-1 flex-col md:pl-60">
+          <Topbar
+            isAdmin={profile.role === "admin"}
+            isSuper={profile.is_super}
+            userName={profile.name}
+            avatarUrl={profile.avatar_url}
+          />
+          <MainScroller>{children}</MainScroller>
+        </div>
+        <Toaster />
+        {!introSeen && <IntroOverlay userName={profile.name} />}
+      </OrgProvider>
     </div>
   );
 }

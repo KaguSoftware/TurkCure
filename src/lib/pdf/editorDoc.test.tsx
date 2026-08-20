@@ -24,6 +24,7 @@ import {
   type EditorDocJSON,
 } from "@/lib/documents/blocks";
 import { buildCaseDoc } from "@/lib/documents/buildCaseDoc";
+import { DEFAULT_PDF_THEME, type PdfCompany } from "./theme";
 import type { CaseDocData, PatientDocData } from "./case-doc";
 
 function render(doc: EditorDocJSON) {
@@ -72,9 +73,13 @@ const PATIENT: PatientDocData = {
   coordinator: "Test Agent",
 };
 
+// The default company = the historical hardcoded identity, so these fixtures
+// keep asserting the pre-multi-tenant output.
+const COMPANY_FIXTURE: PdfCompany = DEFAULT_PDF_THEME.company;
+
 describe("editorDoc mapper", () => {
   it("renders a full seeded case document to a valid PDF", async () => {
-    const buf = await render(buildCaseDoc(CASE, PATIENT));
+    const buf = await render(buildCaseDoc(CASE, PATIENT, COMPANY_FIXTURE));
     expect(buf.subarray(0, 5).toString()).toBe("%PDF-");
     expect(buf.length).toBeGreaterThan(5000);
   });
@@ -162,7 +167,7 @@ describe("editorDoc mapper", () => {
 
   it("seeds the deposit row from depositDisplay verbatim", () => {
     // Same-currency path: identical to the pre-rebuild "1,000 Euros" output.
-    const same = buildCaseDoc(CASE, PATIENT);
+    const same = buildCaseDoc(CASE, PATIENT, COMPANY_FIXTURE);
     const sameRows = (
       same.content.find((n) => n.type === BLOCK.paymentSummary)?.attrs as {
         rows: { label: string; value: string }[];
@@ -174,7 +179,8 @@ describe("editorDoc mapper", () => {
     // converted case-currency figure the balance math uses.
     const mixed = buildCaseDoc(
       { ...CASE, currency: "USD", depositDisplay: "500 Euros (= 540 USD)", deposit: 540 },
-      PATIENT
+      PATIENT,
+      COMPANY_FIXTURE
     );
     const mixedAttrs = mixed.content.find((n) => n.type === BLOCK.paymentSummary)?.attrs as {
       rows: { label: string; value: string }[];
@@ -188,8 +194,40 @@ describe("editorDoc mapper", () => {
     expect(mixedAttrs.balanceValue).toBe("2,660 USD");
   });
 
+  it("seeds the org's company identity, not a hardcoded one", () => {
+    const company: PdfCompany = {
+      name: "MediCare Clinic",
+      whatsapp: "+49 111 222",
+      website: "Medicare.example",
+      location: "Berlin",
+      address: "Somewhere 1, Berlin",
+      url: "https://medicare.example",
+      tagline: "Care · Berlin",
+    };
+    const doc = buildCaseDoc(CASE, PATIENT, company);
+
+    const cover = doc.content.find((n) => n.type === BLOCK.coverBlock)?.attrs as {
+      tagline: string;
+      footer: string;
+    };
+    expect(cover.tagline).toBe("Care · Berlin");
+    expect(cover.footer).toContain("Medicare.example");
+
+    const card = doc.content.find((n) => n.type === BLOCK.companyCard)?.attrs as {
+      title: string;
+      rows: { label: string; value: string }[];
+    };
+    expect(card.title).toBe("MediCare Clinic");
+    expect(card.rows).toContainEqual({ label: "WhatsApp", value: "+49 111 222" });
+
+    const confirmation = doc.content.find((n) => n.type === BLOCK.confirmationBlock)?.attrs as {
+      body: string;
+    };
+    expect(confirmation.body).toContain("organized by MediCare Clinic.");
+  });
+
   it("keeps every seeded section in the output", async () => {
-    const doc = buildCaseDoc(CASE, PATIENT);
+    const doc = buildCaseDoc(CASE, PATIENT, COMPANY_FIXTURE);
     const types = doc.content.map((n) => n.type);
     expect(types).toContain(BLOCK.coverBlock);
     expect(types).toContain(BLOCK.tableSection);

@@ -11,10 +11,12 @@ import {
   Wallet,
   Settings,
   ClipboardList,
+  Globe2,
   Loader2,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { OrgBrand } from "./org-context";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -27,6 +29,9 @@ const NAV = [
 ];
 
 const ADMIN_NAV = [{ href: "/finance", label: "Finance", icon: Wallet }];
+
+// Platform owner only (is_super): manage the companies on this deployment.
+const SUPER_NAV = [{ href: "/admin", label: "Organizations", icon: Globe2 }];
 
 /** Shows the nav icon, swapping in a spinner while this link's navigation is pending. */
 function NavIcon({ Icon }: { Icon: (typeof NAV)[number]["icon"] }) {
@@ -41,11 +46,13 @@ function NavIcon({ Icon }: { Icon: (typeof NAV)[number]["icon"] }) {
 /** Nav links + user footer, shared by the fixed sidebar and the mobile drawer. */
 export function SidebarContent({
   isAdmin,
+  isSuper = false,
   userName,
   avatarUrl,
   onNavigate,
 }: {
   isAdmin: boolean;
+  isSuper?: boolean;
   userName: string;
   avatarUrl?: string | null;
   onNavigate?: () => void;
@@ -85,6 +92,14 @@ export function SidebarContent({
             {ADMIN_NAV.map(link)}
           </>
         )}
+        {isSuper && (
+          <>
+            <div className="pt-4 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-light">
+              Platform
+            </div>
+            {SUPER_NAV.map(link)}
+          </>
+        )}
       </nav>
       <div className="border-t border-border p-4">
         <div className="flex items-center gap-3">
@@ -122,21 +137,21 @@ export function SidebarContent({
 
 export function Sidebar({
   isAdmin,
+  isSuper = false,
   userName,
   avatarUrl,
 }: {
   isAdmin: boolean;
+  isSuper?: boolean;
   userName: string;
   avatarUrl?: string | null;
 }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface md:flex">
       <div className="flex h-14 items-center border-b border-border px-5">
-        <Link href="/dashboard" className="text-lg font-bold tracking-tight">
-          <span className="brand-gradient-text">TurkCure</span>
-        </Link>
+        <OrgBrand />
       </div>
-      <SidebarContent isAdmin={isAdmin} userName={userName} avatarUrl={avatarUrl} />
+      <SidebarContent isAdmin={isAdmin} isSuper={isSuper} userName={userName} avatarUrl={avatarUrl} />
     </aside>
   );
 }

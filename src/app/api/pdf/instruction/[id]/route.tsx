@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import React from "react";
-import { renderToBuffer, Document, Page, Text, View, Image } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
-import { pdfStyles as s, PdfHeader, PdfFooter } from "@/lib/pdf/common";
+import { getOrganization } from "@/lib/data/org";
+import { PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf } from "@/lib/pdf/common";
+import { orgToPdfTheme, DEFAULT_PDF_THEME } from "@/lib/pdf/theme";
 import { PdfMarkdown } from "@/lib/pdf/markdown";
+import { slugify } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -14,11 +17,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: ins } = await supabase
-    .from("case_instructions")
-    .select("title, body_md, image_paths, cases(patients(full_name))")
-    .eq("id", id)
-    .single();
+  const [{ data: ins }, org] = await Promise.all([
+    supabase
+      .from("case_instructions")
+      .select("title, body_md, image_paths, cases(patients(full_name))")
+      .eq("id", id)
+      .single(),
+    getOrganization(profile.org_id),
+  ]);
   if (!ins) return new NextResponse("Not found", { status: 404 });
 
   const patientName =
@@ -36,8 +42,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     });
   }
 
+  const ctx = makePdfCtx(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME);
+  const s = ctx.styles;
+
   const doc = (
-    <Document title={`TurkCure — ${ins.title}`}>
+    <Document title={`${org?.name ?? "TurkCure"} — ${ins.title}`}>
       <Page size="A4" style={s.page}>
         <PdfHeader
           title={<Text style={s.docTitle}>{ins.title ?? ""}</Text>}
@@ -62,7 +71,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   let buffer: Buffer;
   try {
-    buffer = await renderToBuffer(doc);
+    buffer = await renderThemedPdf(ctx, doc);
   } catch (err) {
     console.error("PDF render failed for instruction", id, err);
     return new NextResponse("Failed to generate PDF", { status: 500 });
@@ -70,7 +79,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="turkcure-instructions.pdf"`,
+      "Content-Disposition": `attachment; filename="${slugify(org?.name ?? "turkcure")}-instructions.pdf"`,
     },
   });
 }

@@ -2,27 +2,21 @@ import React from "react";
 import { Page, Text, View, Image } from "@react-pdf/renderer";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  COMPANY,
   MUTED,
   INK,
   TEXT,
-  NAVY,
-  GOLD,
-  GOLD_LIGHT,
-  GOLD_DARK,
-  GOLD_SOFT_BG,
   TABLE_LINE,
   SANS,
   SERIF,
-  pdfStyles as s,
   fmtDate,
   fmtGender,
   nightsBetween,
   PdfFooter,
   TableSection,
   TRow,
-  WordmarkGold,
+  Mark,
   CoverOrnament,
+  usePdfTheme,
 } from "@/lib/pdf/common";
 import { PdfMarkdown } from "@/lib/pdf/markdown";
 
@@ -360,6 +354,7 @@ export function CaseCover({
   patientName: string;
   others?: CaseDocData[];
 }) {
+  const { theme } = usePdfTheme();
   const issued = fmtDate(new Date().toISOString());
   const all = [data, ...others];
   const treatments =
@@ -376,7 +371,7 @@ export function CaseCover({
     <CoverPage
       title="Treatment & Reservation"
       titleAccent="Confirmation"
-      tagline="Health Tourism · Istanbul"
+      tagline={theme.company.tagline}
       preparedForLabel="Prepared for"
       patientName={patientName}
       treatments={treatments}
@@ -388,7 +383,8 @@ export function CaseCover({
         (others.length === 0
           ? `Ref ${data.ref}`
           : `${all.length} treatments   ·   Ref ${all.map((c) => c.ref).join(", ")}`) +
-        `   ·   Issued ${issued}   ·   turkcure.com`
+        `   ·   Issued ${issued}` +
+        (theme.company.website ? `   ·   ${theme.company.website}` : "")
       }
     />
   );
@@ -421,24 +417,25 @@ export function CoverPage({
   line2: string;
   footer: string;
 }) {
+  const { theme } = usePdfTheme();
   return (
-    <Page size="A4" style={{ backgroundColor: NAVY, padding: 28, fontFamily: SANS }}>
+    <Page size="A4" style={{ backgroundColor: theme.coverBg, padding: 28, fontFamily: SANS }}>
       <View
         style={{
           flex: 1,
           borderWidth: 1,
-          borderColor: GOLD,
+          borderColor: theme.coverAccent,
           alignItems: "center",
           paddingVertical: 64,
           paddingHorizontal: 48,
         }}
       >
         {/* Brand */}
-        <WordmarkGold scale={1.7} />
+        <Mark scale={1.7} variant="cover" />
         <Text
           style={{
             fontSize: 8.5,
-            color: GOLD_LIGHT,
+            color: theme.coverAccentLight,
             letterSpacing: 3.5,
             marginTop: 10,
             textTransform: "uppercase",
@@ -464,7 +461,7 @@ export function CoverPage({
         <Text
           style={{
             fontSize: 30,
-            color: GOLD,
+            color: theme.coverAccent,
             fontFamily: SERIF,
             fontWeight: 700,
             textAlign: "center",
@@ -481,7 +478,7 @@ export function CoverPage({
         <Text
           style={{
             fontSize: 9,
-            color: GOLD,
+            color: theme.coverAccent,
             letterSpacing: 3,
             textTransform: "uppercase",
             marginTop: 44,
@@ -507,7 +504,7 @@ export function CoverPage({
           <Text
             style={{
               fontSize: 13,
-              color: GOLD_LIGHT,
+              color: theme.coverAccentLight,
               fontFamily: SERIF,
               fontStyle: "italic",
               marginTop: 8,
@@ -523,7 +520,7 @@ export function CoverPage({
                 key={i}
                 style={{
                   fontSize: 12,
-                  color: GOLD_LIGHT,
+                  color: theme.coverAccentLight,
                   fontFamily: SERIF,
                   fontStyle: "italic",
                   marginTop: i === 0 ? 0 : 5,
@@ -547,7 +544,7 @@ export function CoverPage({
           <Text
             style={{
               fontSize: 9.5,
-              color: GOLD_LIGHT,
+              color: theme.coverAccentLight,
               letterSpacing: 0.8,
               marginTop: 6,
               textAlign: "center",
@@ -557,9 +554,9 @@ export function CoverPage({
           </Text>
         ) : null}
 
-        <View style={{ marginVertical: 22, width: 26, height: 1, backgroundColor: GOLD }} />
+        <View style={{ marginVertical: 22, width: 26, height: 1, backgroundColor: theme.coverAccent }} />
 
-        <Text style={{ fontSize: 8, color: GOLD_LIGHT, letterSpacing: 1.2, opacity: 0.9 }}>
+        <Text style={{ fontSize: 8, color: theme.coverAccentLight, letterSpacing: 1.2, opacity: 0.9 }}>
           {footer}
         </Text>
       </View>
@@ -585,6 +582,7 @@ export function CaseDivider({
   total: number;
   breakBefore?: boolean;
 }) {
+  const { theme } = usePdfTheme();
   const dates =
     data.arrival_date && data.departure_date
       ? `${fmtDate(data.arrival_date)} — ${fmtDate(data.departure_date)}`
@@ -593,11 +591,11 @@ export function CaseDivider({
         : "";
   return (
     <View break={breakBefore} wrap={false} style={{ marginTop: 4, marginBottom: 16 }}>
-      <View style={{ height: 2, backgroundColor: GOLD, marginBottom: 10, width: 46 }} />
+      <View style={{ height: 2, backgroundColor: theme.coverAccent, marginBottom: 10, width: 46 }} />
       <Text
         style={{
           fontSize: 8.5,
-          color: GOLD_DARK,
+          color: theme.coverAccentDark,
           letterSpacing: 2.4,
           textTransform: "uppercase",
           marginBottom: 4,
@@ -611,7 +609,7 @@ export function CaseDivider({
           through the title's descenders; neither lineHeight, a fixed-height
           wrapper, nor marginBottom moved that. Inside a single Text the line
           breaking is the text engine's job and the lines can't collide. */}
-      <Text style={{ fontFamily: SERIF, fontWeight: 700, color: NAVY, lineHeight: 1.75 }}>
+      <Text style={{ fontFamily: SERIF, fontWeight: 700, color: theme.coverBg, lineHeight: 1.75 }}>
         <Text style={{ fontSize: 19 }}>{data.op || "Treatment"}</Text>
         {"\n"}
         <Text style={{ fontSize: 9, fontFamily: SANS, fontWeight: 400, color: MUTED }}>
@@ -661,6 +659,7 @@ export function CaseBody({
   imageUrls: Record<string, string>;
   sectionPrefix?: number | string;
 }) {
+  const { theme, styles: s } = usePdfTheme();
   const n = (i: number) => (sectionPrefix == null ? String(i + 1) : `${sectionPrefix}.${i}`);
   const money = (v: number) => `${v.toLocaleString("en-US")} ${data.currency}`;
 
@@ -723,7 +722,7 @@ export function CaseBody({
                   .filter((_, i) => i % 2 === col)
                   .map((b, i) => (
                     <Text key={i} style={{ color: TEXT, lineHeight: 1.4, marginBottom: 4 }}>
-                      <Text style={{ color: GOLD }}>• </Text>
+                      <Text style={{ color: theme.coverAccent }}>• </Text>
                       {b}
                     </Text>
                   ))}
@@ -738,11 +737,11 @@ export function CaseBody({
         {/* Preformatted: shows the original currency when a deposit was paid
             off-currency ("500 Euros (= 540 USD)"), plain money() otherwise. */}
         <TRow label="Deposit paid" value={data.depositDisplay} />
-        <View style={[s.tRowLast, { backgroundColor: GOLD_SOFT_BG }]}>
-          <Text style={[s.tLabel, { backgroundColor: "transparent", color: GOLD_DARK }]}>
+        <View style={[s.tRowLast, { backgroundColor: theme.coverSoftBg }]}>
+          <Text style={[s.tLabel, { backgroundColor: "transparent", color: theme.coverAccentDark }]}>
             Remaining balance
           </Text>
-          <Text style={[s.tValue, { fontSize: 12, fontWeight: 700, color: NAVY }]}>
+          <Text style={[s.tValue, { fontSize: 12, fontWeight: 700, color: theme.coverBg }]}>
             {money(Math.max(data.total - data.deposit, 0))}
           </Text>
         </View>
@@ -806,13 +805,14 @@ export function CompanySection({
   patient: PatientDocData;
   number: number | string;
 }) {
+  const { theme } = usePdfTheme();
   return (
     <View style={{ marginTop: 20 }}>
-      <TableSection number={number} title={COMPANY.name} wrap={false}>
+      <TableSection number={number} title={theme.company.name} wrap={false}>
         <TRow label="Patient coordinator" value={patient.coordinator} />
-        <TRow label="WhatsApp" value={COMPANY.whatsapp} />
-        <TRow label="Website" value={COMPANY.website} />
-        <TRow label="Location" value={COMPANY.location} last />
+        <TRow label="WhatsApp" value={theme.company.whatsapp} />
+        <TRow label="Website" value={theme.company.website} />
+        <TRow label="Location" value={theme.company.location} last />
       </TableSection>
     </View>
   );
@@ -820,12 +820,13 @@ export function CompanySection({
 
 /** Closing acknowledgement + two-column signature block — once per document. */
 export function ConfirmationBlock() {
+  const { theme, styles: s } = usePdfTheme();
   return (
     <View wrap={false} style={{ marginTop: 4 }}>
       <Text style={s.instrHeading}>Confirmation</Text>
       <Text style={{ marginBottom: 26, lineHeight: 1.5, color: TEXT }}>
         By confirming this document, the patient acknowledges the reservation and treatment plan
-        organized by Turkcure.
+        organized by {theme.company.name}.
       </Text>
       <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 34 }}>
         <View style={{ flex: 1 }}>

@@ -10,6 +10,7 @@ import { Input, Field } from "@/components/ui/input";
 import { TabBar, TabPanel } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { UsersManager } from "@/components/settings/users-manager";
+import { OrgBrandingTab } from "@/components/settings/org-branding";
 import {
   updateOwnProfile,
   updateOwnAccentTheme,
@@ -17,12 +18,13 @@ import {
   updateOwnAvatar,
   removeOwnAvatar,
 } from "@/lib/actions/account";
-import { ACCENT_THEMES, type AccentTheme, type Profile } from "@/lib/types";
+import { ACCENT_THEMES, type AccentTheme, type Organization, type Profile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// Swatch colors per accent; default shows the brand blue → green gradient.
+// Swatch colors per accent; "Company colors" reads the live brand vars so the
+// chip tracks whatever the organization has picked.
 const SWATCH: Record<AccentTheme, string> = {
-  default: "linear-gradient(135deg, #2563eb, #10b981)",
+  default: "linear-gradient(135deg, var(--brand-blue), var(--brand-green))",
   violet: "linear-gradient(135deg, #7c3aed, #a78bfa)",
   emerald: "linear-gradient(135deg, #059669, #34d399)",
   amber: "linear-gradient(135deg, #d97706, #fbbf24)",
@@ -44,10 +46,18 @@ function applyAccentClass(value: AccentTheme) {
   if (next) root.classList.add(next);
 }
 
-export function SettingsView({ profile, users }: { profile: Profile; users: Profile[] | null }) {
+export function SettingsView({
+  profile,
+  users,
+  org,
+}: {
+  profile: Profile;
+  users: Profile[] | null;
+  org: Organization | null;
+}) {
   const isAdmin = profile.role === "admin";
-  const tabs: readonly ("Profile" | "Appearance" | "Team")[] = isAdmin
-    ? ["Profile", "Appearance", "Team"]
+  const tabs: readonly ("Profile" | "Appearance" | "Organization" | "Team")[] = isAdmin
+    ? ["Profile", "Appearance", "Organization", "Team"]
     : ["Profile", "Appearance"];
   // Active tab lives in the URL (?tab=) so it's linkable and survives refresh.
   const router = useRouter();
@@ -68,6 +78,7 @@ export function SettingsView({ profile, users }: { profile: Profile; users: Prof
       <TabPanel idBase="settings" index={tabIndex}>
         {tab === "Profile" && <ProfileTab profile={profile} />}
         {tab === "Appearance" && <AppearanceTab profile={profile} />}
+        {tab === "Organization" && isAdmin && org && <OrgBrandingTab org={org} />}
         {tab === "Team" && isAdmin && users && (
           <UsersManager users={users} currentUserId={profile.id} />
         )}

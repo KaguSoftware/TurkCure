@@ -18,6 +18,7 @@ import {
 import { buildCaseDoc } from "@/lib/documents/buildCaseDoc";
 import type { EditorDocJSON } from "@/lib/documents/blocks";
 import type { CaseDocData, PatientDocData } from "@/lib/pdf/case-doc";
+import type { PdfCompany } from "@/lib/pdf/theme";
 import type { CaseDocEditorApi } from "./editor/CaseDocEditor";
 
 // Tiptap stays out of the SSR bundle and off every other route.
@@ -42,6 +43,7 @@ export function DocumentEditorPage({
   caseId,
   initialDoc,
   sourceData,
+  docVars,
   status,
   isAdmin,
 }: {
@@ -49,7 +51,12 @@ export function DocumentEditorPage({
   patientName: string;
   caseId: string;
   initialDoc: EditorDocJSON;
-  sourceData: { case: CaseDocData; patient: PatientDocData };
+  /** `company` rides along so the client-side rebuild paths (reset, corrupt
+   *  draft) can re-seed with the org's identity — buildCaseDoc runs in the
+   *  browser here, so the branding must arrive as serialized data. */
+  sourceData: { case: CaseDocData; patient: PatientDocData; company: PdfCompany };
+  /** Org-branded --doc-* sheet overrides (orgToDocVars). */
+  docVars?: Record<string, string>;
   status: "draft" | "finalized";
   isAdmin: boolean;
 }) {
@@ -180,7 +187,7 @@ export function DocumentEditorPage({
   async function onReset() {
     setConfirmReset(false);
     setBusy("reset");
-    const rebuilt = buildCaseDoc(sourceData.case, sourceData.patient);
+    const rebuilt = buildCaseDoc(sourceData.case, sourceData.patient, sourceData.company);
     const r = await resetCaseDocument(patientId, caseId, rebuilt);
     setBusy(null);
     if (r.error) return toast.error(r.error);
@@ -283,13 +290,14 @@ export function DocumentEditorPage({
             initialDoc={liveContent ?? initialDoc}
             editable={editable}
             apiRef={editorApi}
+            docVars={docVars}
             onDirty={() => setDirty(true)}
             onChangeJson={(doc) => setLiveContent(doc)}
             onInvalidContent={() => {
               // A corrupt or outdated draft: rebuild from the frozen snapshot
               // rather than letting Tiptap fall back to an empty document that
               // the next save would persist over the real one.
-              const rebuilt = buildCaseDoc(sourceData.case, sourceData.patient);
+              const rebuilt = buildCaseDoc(sourceData.case, sourceData.patient, sourceData.company);
               editorApi.current?.setContent(rebuilt);
               setLiveContent(rebuilt);
               setDirty(true);

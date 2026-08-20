@@ -22,10 +22,13 @@
   say what was and wasn't driven in a browser.
 
 ## What this is
-Internal CRM / operations tool for a medical-tourism business: patients, their treatment **cases**,
-quotes, payments, reminders, and a directory of hospitals/doctors/hotels/drivers. Admins get a
-finance view (per-case margins) and can generate patient-facing PDFs. Two-ish internal users; no
-public signup (invite-only). See CLAUDE.md → "What this app is".
+A **multi-tenant medical-tourism CRM** (since 2026-08-20): companies (organizations) each get an
+isolated workspace — patients, treatment **cases**, quotes, payments, reminders, directories —
+plus per-company branding (name, logo, 3 colors) flowing into the app shell and the
+patient-facing PDFs. Orgs are created only by the platform owner (`profiles.is_super`) via
+`/admin`; org admins invite staff. No public signup, by design. See CLAUDE.md → "What this app
+is" for the standing multi-tenancy rules (org_id stamping, per-org cache tags, storage
+prefixes).
 
 ## Stack & environment
 - **Next.js 16.2.10** (App Router, Turbopack, `staleTimes`), **React 19.2.4**, TypeScript strict.
@@ -49,7 +52,54 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-08-20 — form drafts + UX sweep)
+## Current status (2026-08-20, second session — MULTI-TENANT SAAS CONVERSION)
+
+The whole system became multi-tenant in one pass (plan file:
+`~/.claude/plans/i-want-to-scale-humming-magpie.md`; the full technical record is CLAUDE.md →
+"Recent work — 2026-08-20 multi-tenant SaaS conversion"). Decisions locked with Parsa:
+medical-tourism vertical kept, **owner-created orgs** (no public signup; super-admin login =
+`parsaa.mansourii@gmail.com`), no billing yet, branding = PDFs + app accent, platform surfaces
+stay "TurkCure" for now.
+
+**Where it stands — code COMPLETE and green, database migration PENDING:**
+- `npm run build` green; `npm test` green (**15 tests** — editorDoc 9, theme 4, color 3).
+- The PDF theming refactor is **pixel-proven**: `renderBaseline.test.tsx` +
+  `scripts/pdf-compare.mjs` rasterize before/after — only the 2 intended string changes differ
+  (confirmation prints the full company name; cover footer prints the website field).
+- ⚠️ **Migrations `0023`–`0025` are WRITTEN but NOT APPLIED.** `npx supabase db push --linked`
+  was blocked by the assistant's permission classifier (third time this has happened — 0019,
+  0020 previously). Remote history confirmed in sync at 0022. **Parsa must run:**
+  1. `npx supabase db push --linked` (applies 0023 → 0024 → 0025)
+  2. `node scripts/backfill-org-claims.mjs` (stamps `app_metadata.org_id` on existing users)
+  3. `node scripts/migrate-storage-org-prefix.mjs` (moves objects under org prefixes, rewrites
+     DB paths + embedded markdown URLs)
+  4. `node scripts/org-isolation-audit.mjs` (two-org isolation proof; creates a disposable
+     disabled "Audit Clinic" org — exit 0 = all checks pass)
+  **Until step 1 runs, the deployed/local app is BROKEN on the new code** (profiles have no
+  org_id → layout signs everyone out). The OLD deployed build keeps working after 0023/0024
+  (degraded finance until the new code deploys) — the safe order is migrate, then deploy.
+- ⚠️ **`parsaa.mansourii@gmail.com` may not exist in auth.users yet** (the existing admin is
+  `parsaxavier@gmail.com`). 0023's is_super seed is a no-op then — verify
+  `select count(*) from profiles where is_super` = 1; if 0, create/invite that account and
+  re-run the one `update` from 0023 §11 (or point it at the real login email).
+- ⚠️ **NOT yet browser-verified** (blocked on the migrations): org creation via /admin, the
+  Organization settings tab round-trip, org-branded PDFs with a logo, the accent <style> in
+  dark mode, drafts on the new branding form. The isolation audit script covers the RLS/storage
+  layer API-side; the UI pass is the first thing to do after migration.
+
+What shipped (headlines — details in CLAUDE.md):
+- **Tenancy core**: `organizations` (+ branding columns), org_id everywhere with backfill,
+  `auth_org_id()` JWT-claim helper, derive triggers + composite FKs, org-scoped RLS rewrite,
+  `finance_*_rows(p_org)`, quote_items column-grant fix (also fixes agents' empty PDF quotes),
+  storage org-prefix policies (+ missing UPDATE policy, owner-deletes), per-org
+  `unstable_cache` factories, org-fenced service-role actions, org-stamped cron.
+- **Branding**: `lib/pdf/theme.ts` (defaults-are-literal), `Mark` (logo or split text),
+  `renderThemedPdf` (module-scoped theme — **React context does not exist in route handlers**,
+  the react-server React build has no createContext), `buildCaseDoc(…, company)` required third
+  arg, org accent `<style>` emitter + `useOrg()`/`OrgBrand`, Settings → Organization tab
+  (logo/identity/colors + live preview), `/admin` orgs manager, copy sweep.
+
+## Previous status (2026-08-20 — form drafts + UX sweep)
 
 Client ask ("cache unsaved form input for 30 minutes") plus a full UX audit, executed in
 four phases (full detail in CLAUDE.md → "Recent work — 2026-08-20"). `npm run build` green,
@@ -376,12 +426,27 @@ Turkish characters.
   `editor/` (`extensions.ts`, `nodes.tsx`, `CaseDocEditor.tsx`, `editor.css`).
 - `src/app/api/pdf/draft/[caseId]/route.tsx` — GET renders the stored draft (seeding if none),
   POST renders document JSON from the body. The POST backs the editor preview.
-- `supabase/migrations/` — numbered `0001`…`0022`, **all applied** (`0001`–`0015` by hand,
-  `0016`–`0021` via `npx supabase db push --linked`, `0022` by hand on 2026-08-20).
+- `supabase/migrations/` — numbered `0001`…`0025`. `0001`–`0022` applied;
+  **`0023`–`0025` (multi-tenancy) written 2026-08-20, NOT yet applied** — see Current status
+  for the exact runbook. `0023`'s header comment carries the full apply-order reasoning.
+- `src/lib/pdf/theme.ts` + `src/lib/branding/color.ts` — the client-safe PDF/brand theme and
+  the single shade-derivation source. `renderThemedPdf` in `lib/pdf/common.tsx` is how a theme
+  reaches a render (module-scoped, NOT React context — route handlers have no createContext).
+- `src/lib/data/org.ts` — cached org row (`org:<id>` tag) + `getOrg()`; `lib/actions/orgs.ts`
+  (super-admin org CRUD) + `lib/actions/org-branding.ts` (branding/logo writes).
+- `src/components/shell/org-context.tsx` / `org-accent-style.tsx` — `useOrg()`/`OrgBrand` and
+  the org-accent `<style>` emitter; `components/settings/org-branding.tsx` (Organization tab);
+  `components/admin/orgs-manager.tsx` + `app/(app)/admin/` (platform surface).
+- `scripts/backfill-org-claims.mjs`, `scripts/migrate-storage-org-prefix.mjs`,
+  `scripts/org-isolation-audit.mjs`, `scripts/pdf-compare.mjs` — rollout + verification
+  tooling (all idempotent; the last pairs with `src/lib/pdf/renderBaseline.test.tsx`).
 
 ## Roadmap / next steps
-**← next: whatever Parsa reports from live use of the 2026-08-20 UX sweep.** Then, from the
-approved plan (deferred items):
+**← next: apply `0023`–`0025` + run the three rollout scripts (see Current status), then a
+browser pass over /admin, the Organization tab, and an org-branded PDF.** After that, the
+multi-tenant roadmap (deferred by agreement): billing (Stripe), branded auth emails (custom
+SMTP), audit log / created_by columns, per-org locale defaults, platform rename, self-serve
+signup if ever wanted. Older deferred items from the UX sweep:
 1. Timestamped patient notes — append-only `patient_notes` table (migration, hand-applied)
    replacing the single overwritable textarea; keep the old column as a legacy note.
 2. Finance per-case table sorting (client-side; data is already loaded).

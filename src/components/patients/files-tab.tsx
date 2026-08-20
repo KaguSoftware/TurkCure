@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Download, FileText, Image as ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getOrgId } from "@/lib/supabase/client-org";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -79,7 +80,10 @@ export function FilesTab({
       optimistic: (prev) => [temp, ...prev],
       action: async () => {
         const supabase = createClient();
-        const path = `${patient.id}/${Date.now()}-${file.name}`;
+        const orgId = await getOrgId();
+        if (!orgId) return { error: "Could not resolve your organization — sign in again." };
+        // Org prefix first: storage RLS (0025) scopes access to folder 1.
+        const path = `${orgId}/${patient.id}/${Date.now()}-${file.name}`;
         const { error: upErr } = await supabase.storage.from("patient-files").upload(path, file);
         if (upErr) return { error: `Upload failed: ${upErr.message}` };
         const { data, error: dbErr } = await supabase

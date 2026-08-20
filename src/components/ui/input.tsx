@@ -647,10 +647,13 @@ export function Field({
   label,
   children,
   className,
+  hint,
 }: {
   label: string;
   children: React.ReactNode;
   className?: string;
+  /** Small muted helper line under the control. */
+  hint?: string;
 }) {
   const generatedId = React.useId();
   // Associate the label with its control: clone the single child to give it an
@@ -671,6 +674,7 @@ export function Field({
     <div className={className}>
       <Label htmlFor={htmlFor}>{label}</Label>
       {control}
+      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
     </div>
   );
 }

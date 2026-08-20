@@ -42,7 +42,7 @@ export const FILE_CATEGORIES: { value: FileCategory; label: string; hint: string
 export type AccentTheme = "default" | "violet" | "emerald" | "amber";
 
 export const ACCENT_THEMES: { value: AccentTheme; label: string }[] = [
-  { value: "default", label: "TurkCure Blue" },
+  { value: "default", label: "Company colors" },
   { value: "violet", label: "Violet" },
   { value: "emerald", label: "Emerald" },
   { value: "amber", label: "Amber" },
@@ -55,8 +55,38 @@ export interface Profile {
   active: boolean;
   accent_theme: AccentTheme;
   avatar_url: string | null;
+  /** The organization this user belongs to — exactly one, set at creation (0023). */
+  org_id: string;
+  /** Platform owner flag: unlocks /admin. NOT an org role — RLS never reads it. */
+  is_super: boolean;
   /** Auth email; attached by getProfile(), not a profiles column. */
   email?: string;
+}
+
+/** One tenant company (0023). Branding drives the app accent and the PDFs. */
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  active: boolean;
+  created_at: string;
+  logo_url: string | null;
+  /** Printed company name on PDFs; may differ from the display name. */
+  company_name: string;
+  whatsapp: string;
+  /** Display form, e.g. "Turkcure.com". */
+  website: string;
+  /** Link form, e.g. "https://turkcure.com". */
+  url: string;
+  location: string;
+  /** PDF footer postal address. */
+  address: string;
+  /** Cover tagline. */
+  tagline: string;
+  brand_primary: string;
+  pdf_cover_bg: string;
+  pdf_cover_accent: string;
 }
 
 export interface Country {

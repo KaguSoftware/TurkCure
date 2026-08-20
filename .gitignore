@@ -51,3 +51,6 @@ next-env.d.ts
 
 # finance audit screenshots (scripts/finance-audit.mjs output)
 /.finance-audit
+
+# PDF layout-regression renders (renderBaseline.test.tsx + scripts/pdf-compare.mjs)
+/.pdf-baseline
