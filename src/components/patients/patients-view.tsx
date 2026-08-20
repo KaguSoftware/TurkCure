@@ -4,6 +4,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -51,6 +53,9 @@ export function PatientsView({
   currentUserId,
   caseDirectories,
   isAdmin = false,
+  boardCounts = {},
+  sort = "created",
+  dir = "desc",
 }: {
   patients: Patient[];
   total: number;
@@ -61,6 +66,10 @@ export function PatientsView({
   currentUserId: string;
   caseDirectories: import("./patient-form").CaseDirectories;
   isAdmin?: boolean;
+  /** True per-status totals (RPC) — the loaded page alone undercounts columns. */
+  boardCounts?: Record<string, number>;
+  sort?: "created" | "name" | "status";
+  dir?: "asc" | "desc";
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -77,9 +86,15 @@ export function PatientsView({
   const [statusOverrides, setStatusOverrides] = React.useState<Record<string, PatientStatus>>({});
   // Patient ids with an in-flight status change, so the card select shows it's saving.
   const [statusPending, setStatusPending] = React.useState<ReadonlySet<string>>(new Set());
-  // View mode is a UI preference, not content — keep it as local state so the
-  // toggle is instant (no URL change, no server round-trip).
-  const [mode, setMode] = React.useState<"board" | "table">("board");
+  // View mode lives in local state for an instant toggle, mirrored into ?view=
+  // so it survives navigation/refresh and can be deep-linked.
+  const urlView: "board" | "table" = searchParams.get("view") === "table" ? "table" : "board";
+  const [mode, setMode] = React.useState<"board" | "table">(urlView);
+  const [seenUrlView, setSeenUrlView] = React.useState(urlView);
+  if (seenUrlView !== urlView) {
+    setSeenUrlView(urlView);
+    setMode(urlView);
+  }
   // "Maximize" a board column is local state (no URL) that plays a screen-takeover
   // animation growing from the clicked column, then fetches that status's full set.
   const [maximized, setMaximized] = React.useState<PatientStatus | null>(null);
@@ -102,6 +117,33 @@ export function PatientsView({
   const [exportPending, setExportPending] = React.useState(false);
   const filtersPanel = usePresence(showFilters, 160);
   const bulkBar = usePresence(selected.size > 0, 160);
+
+  // Sortable table headers. The default (created desc) keeps a clean URL; any
+  // other order rides ?sort= / ?dir= so it survives refresh and paging.
+  function onSort(key: "created" | "name" | "status") {
+    const active = sort === key;
+    const nextDir = active ? (dir === "asc" ? "desc" : "asc") : key === "created" ? "desc" : "asc";
+    if (key === "created" && nextDir === "desc") setParams({ sort: null, dir: null }, false);
+    else setParams({ sort: key, dir: nextDir }, false);
+  }
+  function sortHeader(label: string, key: "created" | "name" | "status") {
+    const active = sort === key;
+    return (
+      <button
+        type="button"
+        onClick={() => onSort(key)}
+        aria-label={`Sort by ${label.toLowerCase()}`}
+        className={cn(
+          "inline-flex cursor-pointer items-center gap-1 hover:text-foreground",
+          active && "text-foreground"
+        )}
+      >
+        {label}
+        {active &&
+          (dir === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
+      </button>
+    );
+  }
 
   function setParams(updates: Record<string, string | null>, resetPage = true) {
     const params = new URLSearchParams(searchParams.toString());
@@ -341,7 +383,10 @@ export function PatientsView({
           </Button>
           <div className="flex rounded-lg border border-border bg-surface p-0.5 shadow-card">
             <button
-              onClick={() => setMode("board")}
+              onClick={() => {
+                setMode("board");
+                setParams({ view: null }, false);
+              }}
               className={cn(
                 "pressable flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium cursor-pointer",
                 mode === "board" ? "bg-primary-soft text-primary" : "text-muted"
@@ -350,7 +395,10 @@ export function PatientsView({
               <Kanban className="size-3.5" /> Board
             </button>
             <button
-              onClick={() => setMode("table")}
+              onClick={() => {
+                setMode("table");
+                setParams({ view: "table" }, false);
+              }}
               className={cn(
                 "pressable flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium cursor-pointer",
                 mode === "table" ? "bg-primary-soft text-primary" : "text-muted"
@@ -499,8 +547,10 @@ export function PatientsView({
                       <ChevronDown className="size-3.5 text-muted-light" />
                     )}
                     <Badge tone={PATIENT_STATUS_TONE[status]}>{PATIENT_STATUS_LABEL[status]}</Badge>
+                    {/* Real total (RPC) unless a filter/search narrows the set —
+                        the loaded 50-row page undercounts big columns. */}
                     <span className="ml-auto text-xs font-medium text-muted-light">
-                      {col.length}
+                      {filtersActive || urlQuery ? col.length : boardCounts[status] ?? col.length}
                     </span>
                   </button>
                   <button
@@ -538,6 +588,36 @@ export function PatientsView({
                       <p className="mt-0.5 truncate text-xs text-muted">
                         {p.countries?.name ?? "—"} · {p.profiles?.name ?? "Unassigned"}
                       </p>
+                      {(p.phone || p.email) && (
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                          {p.phone ? (
+                            <a
+                              href={`tel:${p.phone.replace(/[^\d+]/g, "")}`}
+                              className="truncate hover:text-foreground hover:underline"
+                            >
+                              {p.phone}
+                            </a>
+                          ) : (
+                            <a
+                              href={`mailto:${p.email}`}
+                              className="truncate hover:text-foreground hover:underline"
+                            >
+                              {p.email}
+                            </a>
+                          )}
+                          {waLink(p.phone) && (
+                            <a
+                              href={waLink(p.phone)!}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label="Message on WhatsApp"
+                              className="shrink-0 text-success hover:opacity-70"
+                            >
+                              <MessageCircle className="size-3.5" />
+                            </a>
+                          )}
+                        </p>
+                      )}
                       <div className="relative mt-2">
                         <Select
                           className="h-7 text-xs shadow-none"
@@ -585,13 +665,13 @@ export function PatientsView({
               {/* Secondary columns drop out below lg rather than being clipped
                   off the right edge of a phone. Name/Status/Contact are what a
                   phone user is actually scanning for. */}
-              <Th>Name</Th>
-              <Th>Status</Th>
+              <Th>{sortHeader("Name", "name")}</Th>
+              <Th>{sortHeader("Status", "status")}</Th>
               <Th className="hidden sm:table-cell">Country</Th>
               <Th>Contact</Th>
               <Th className="hidden lg:table-cell">Source</Th>
               <Th className="hidden lg:table-cell">Agent</Th>
-              <Th className="hidden md:table-cell">Created</Th>
+              <Th className="hidden md:table-cell">{sortHeader("Created", "created")}</Th>
             </tr>
           </THead>
           <TBody>
@@ -618,7 +698,20 @@ export function PatientsView({
                 <Td className="hidden text-muted sm:table-cell">{p.countries?.name ?? "—"}</Td>
                 <Td className="text-muted">
                   <span className="inline-flex items-center gap-1.5">
-                    {p.email || p.phone || "—"}
+                    {p.email ? (
+                      <a href={`mailto:${p.email}`} className="hover:text-foreground hover:underline">
+                        {p.email}
+                      </a>
+                    ) : p.phone ? (
+                      <a
+                        href={`tel:${p.phone.replace(/[^\d+]/g, "")}`}
+                        className="hover:text-foreground hover:underline"
+                      >
+                        {p.phone}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
                     {waLink(p.phone) && (
                       <a
                         href={waLink(p.phone)!}
@@ -758,6 +851,36 @@ export function PatientsView({
                       <p className="mt-0.5 truncate text-xs text-muted">
                         {p.countries?.name ?? "—"} · {p.profiles?.name ?? "Unassigned"}
                       </p>
+                      {(p.phone || p.email) && (
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                          {p.phone ? (
+                            <a
+                              href={`tel:${p.phone.replace(/[^\d+]/g, "")}`}
+                              className="truncate hover:text-foreground hover:underline"
+                            >
+                              {p.phone}
+                            </a>
+                          ) : (
+                            <a
+                              href={`mailto:${p.email}`}
+                              className="truncate hover:text-foreground hover:underline"
+                            >
+                              {p.email}
+                            </a>
+                          )}
+                          {waLink(p.phone) && (
+                            <a
+                              href={waLink(p.phone)!}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label="Message on WhatsApp"
+                              className="shrink-0 text-success hover:opacity-70"
+                            >
+                              <MessageCircle className="size-3.5" />
+                            </a>
+                          )}
+                        </p>
+                      )}
                       <div className="relative mt-2">
                         <Select
                           className="h-7 text-xs shadow-none"

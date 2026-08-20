@@ -634,7 +634,7 @@ FX rate is >3× off the fetched live rate. `payments-section.tsx` adds explicit
 per-row edit buttons. `payments-tab.tsx` was deleted; `case-tab.tsx` shrank to
 the case form alone.
 
-**Migration `0022_money_ux.sql`** (⚠️ apply by hand): relaxes the
+**Migration `0022_money_ux.sql`** (applied 2026-08-20): relaxes the
 `case_additional_costs` DELETE policy to any authenticated user — before this,
 agent deletes silently no-opped (cookie client vs 0020's admin-only policy) while
 the optimistic UI reported success. Decision recorded in the action comments:
@@ -674,6 +674,86 @@ chain to.
 (Collected, Paid out, Cash margin) — so the two bases can't be read as one; the
 chart title now says "· trailing 12 months" (it deliberately ignores the Period
 select).
+
+## Recent work — 2026-08-20 form drafts + UX sweep (quick wins, reminders, structural)
+
+Driven by client feedback ("unsaved form input should survive navigation, cache it 30
+minutes") plus a full UX audit. Four phases, all built green and browser-verified via
+Playwright scripts (19 draft checks + a Phase-2/3/4 sweep, all passing).
+
+**Form drafts (the client ask)** — `src/lib/form-drafts.ts` (storage: `tc:draft:<key>`,
+TTL 30 min, purge-on-read/load, versioned payload, best-effort try/catch) +
+`src/lib/use-form-draft.ts` (the hook) + `ui/draft-banner.tsx`:
+- **Capture**: debounced `new FormData(form)` snapshot after any interaction. ComboBox/
+  Select/DatePicker commit into named hidden inputs so the snapshot needs **no changes to
+  the input primitives** — but their option clicks land in **portaled popovers outside the
+  form**, so the click/keyup listeners sit on `document`, filtered to the form or any
+  `[data-popover-layer]`. A **final snapshot runs in the ref-detach on unmount**, which is
+  what makes tab switches / dialog closes / case switches lossless without touching
+  `Dialog` or the tab shell.
+- **Restore is silent** (Parsa's choice): fields come back pre-filled; a banner offers
+  Discard. Restore happens in a **mount effect + `formKey` remount**, never in the first
+  render — the case form is SSR'd and a synchronous localStorage read would mismatch
+  hydration. Every field reads `draft.value("name") ?? serverValue`; controlled state goes
+  through `onRestore`/`onDiscard`. ⚠️ **Non-component exports of a "use client" module
+  arrive in RSC as client-reference proxies** — `HORIZON_OPTIONS.includes` threw until the
+  const moved to plain `dashboard/horizon.ts`. Same trap applies to anything a server page
+  imports from a client file.
+- Snapshot rules: an attachment that restored a draft always rewrites it (refreshes TTL);
+  a pristine one writes only when differing from its mount baseline and clears when the
+  user types-then-undoes. `clear()` (successful save / explicit Cancel) resets the baseline
+  so post-save editing keeps capturing; `discard()` disarms before its remount so the
+  outgoing form can't re-write the draft. Late-mounting fields (the lazy markdown editor)
+  adopt their first-seen value into the baseline.
+- **Integrated**: case form (`case:<id>` / `case:new:<patientId>`), patient dialog
+  (`patient:<id|new>`, DOB via callbacks; body moved into a per-open inner component —
+  **Dialog unmounts children, so any form whose hook must re-read per open needs the hook
+  in a child of Dialog**, same restructure in directory-manager/quote/extras dialogs),
+  payment dialog (provider/currency/fx ride `extra`; staged File + receipt pointer never
+  cached), directory rows incl. the Tiptap template body, reminder dialog, quote/extras
+  add dialogs (cleared on every successful add so "Add & another" stays blank). Excluded
+  by design: auth/invite (credentials), csv-importer, files, EditableCell, the document
+  editor (has a server draft), settings profile (only cacheable field is the display name).
+  Esc/backdrop keep the draft; **Cancel is the explicit discard**. PII note: drafts hold
+  patient data in localStorage bounded by the TTL; sign-out (hard GET) can't clear them.
+- **Dirty-close confirm on Dialog deliberately NOT built** — drafts make accidental
+  discard recoverable; a confirm would tax every intentional close.
+
+**Quick wins**: patient email/phone are real `mailto:`/`tel:` links (detail header, table
+Contact cell, board cards + WhatsApp chip); **duplicate-patient warning** on create
+(`findDuplicatePatients` — email case-insensitive, phone by digit suffix, compared in JS
+over a bounded fetch; advisory, never blocks); palette directory hits land **pre-filtered**
+(`/hospitals?q=<name>&t=doctors` — `&t=` because that page hosts two managers; the manager
+adopts `?q=` via the adjust-during-render pattern); the cron's `payment:<uuid>` marker is
+stripped from reminder rows (regex at render; the column keeps it for dedupe); `(app)/error.tsx`
+no longer prints raw Postgres text (digest code instead) + new root `global-error.tsx` and
+app-wide `not-found.tsx`; finance CSV got the UTF-8 BOM (Excel/Turkish names); board/table
+view mode persists in `?view=`; dead `"partial"` removed from `PaymentStatus` + tone map.
+
+**Reminders & visibility**: `ReminderForm`/`TYPE_META`/`toLocalInput` extracted to
+`src/components/reminders/reminder-form.tsx`; new **patient-page reminders card**
+(`patients/patient-reminders.tsx` — open items, create/edit/done/delete, `patient_id` set;
+`upsertReminder` now revalidates `/patients/<id>` too). Dashboard panel: **Mine | Everyone**
+toggle (Mine default; unassigned rows stay visible under Mine), assignee shown in Everyone
+mode + "Unassigned" flagged always, **snooze menu** (1h / tomorrow 9:00 / next week) replaces
+the fixed +1 day, overdue clock re-evaluates every minute (was frozen at mount). **Dashboard
+horizon is configurable**: `?days=` (7/14/30/60/90, `HorizonSelect` in the PageHeader) drives
+reminders, arrivals and payments-due, with a "+N more due beyond X days" line so far-future
+reminders are never silently invisible.
+
+**Structural**: board column headers show **true per-status totals** (`patient_status_counts`
+RPC; falls back to page counts while filters/search narrow the set); patients table got
+**server-side sorting** (`?sort=name|status|created` + `?dir=`, clickable headers, stable
+`created_at` tiebreaker, default kept clean-URL); files tab: **in-app preview** (images
+`<img>`, PDFs `<iframe>`, signed URL in a Dialog; non-renderable types fall back to
+download), **25 MB upload cap**, and rows now show the uploader's name (+ `uploaded_by`
+added to the `PatientFile` type — column existed since 0001, was never displayed);
+**status nudge chips** on the patient header (case completed → "move to Treated?", paid
+incoming payment on a lead → "move to Booked?") — one-click suggestions, dismissible,
+never automatic.
+
+Deferred to next sessions (agreed plan, see the 2026-08-20 plan file): timestamped
+patient notes (`patient_notes` migration), finance-table sorting, reminder notifications.
 
 ---
 

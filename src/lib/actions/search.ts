@@ -63,33 +63,36 @@ export async function globalSearch(query: string): Promise<{ results: SearchResu
         subtitle: [p.status, p.email || p.phone].filter(Boolean).join(" · "),
         href: `/patients/${p.id}`,
       })),
+    // Directory hits carry ?q= (+ &t= naming the table on pages that host two
+    // managers) so the landing page opens already filtered to the result,
+    // instead of dumping the user on an unfiltered list.
     ...(hospitals.data ?? []).map((h) => ({
       kind: "hospital" as const,
       id: h.id,
       title: h.name,
       subtitle: h.city || "Hospital",
-      href: "/hospitals",
+      href: `/hospitals?q=${encodeURIComponent(h.name)}&t=hospitals`,
     })),
     ...(doctors.data ?? []).map((d) => ({
       kind: "doctor" as const,
       id: d.id,
       title: d.name,
       subtitle: d.specialty || "Doctor",
-      href: "/hospitals",
+      href: `/hospitals?q=${encodeURIComponent(d.name)}&t=doctors`,
     })),
     ...(hotels.data ?? []).map((h) => ({
       kind: "hotel" as const,
       id: h.id,
       title: h.name,
       subtitle: h.city || "Hotel",
-      href: "/hotels",
+      href: `/hotels?q=${encodeURIComponent(h.name)}`,
     })),
     ...(drivers.data ?? []).map((d) => ({
       kind: "driver" as const,
       id: d.id,
       title: d.name,
       subtitle: d.phone || "Driver",
-      href: "/drivers",
+      href: `/drivers?q=${encodeURIComponent(d.name)}`,
     })),
   ];
 

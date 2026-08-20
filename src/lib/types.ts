@@ -8,7 +8,9 @@ export type CaseStatus = "planning" | "confirmed" | "in_progress" | "completed" 
 export type QuoteItemKind = string;
 export type PaymentDirection = "in" | "out";
 export type CounterpartyType = "patient" | "hotel" | "doctor" | "hospital" | "driver";
-export type PaymentStatus = "pending" | "partial" | "paid";
+// "partial" still exists in the DB enum but nothing can produce it since 0022
+// normalized the legacy rows — status is derived paid/pending from paid_at.
+export type PaymentStatus = "pending" | "paid";
 export type ReminderType =
   | "follow_up"
   | "arrival"
@@ -222,6 +224,7 @@ export interface PatientFile {
   storage_path: string;
   label: string;
   category: FileCategory;
+  uploaded_by: string | null;
   created_at: string;
 }
 

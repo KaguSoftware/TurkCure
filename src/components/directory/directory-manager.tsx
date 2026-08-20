@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Field } from "@/components/ui/input";
@@ -8,6 +9,9 @@ import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { uploadInstructionImage } from "@/lib/upload-instruction-image";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftBanner } from "@/components/ui/draft-banner";
+import { useFormDraft } from "@/lib/use-form-draft";
+import { clearDraft as clearFormDraft } from "@/lib/form-drafts";
 import { StarRating } from "@/components/ui/star-rating";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
@@ -92,7 +96,19 @@ export function DirectoryManager({
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Record<string, unknown> | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
-  const [query, setQuery] = React.useState("");
+  // A command-palette hit arrives as ?q= (+ &t=<table> on pages hosting two
+  // managers) so the list opens pre-filtered to the searched row. Adopted via
+  // the adjust-during-render pattern so a palette jump while already on the
+  // page also lands filtered; typing in the box afterwards takes over.
+  const searchParams = useSearchParams();
+  const urlT = searchParams.get("t");
+  const urlQ = urlT && urlT !== table ? null : searchParams.get("q");
+  const [query, setQuery] = React.useState(urlQ ?? "");
+  const [seenUrlQ, setSeenUrlQ] = React.useState(urlQ);
+  if (seenUrlQ !== urlQ) {
+    setSeenUrlQ(urlQ);
+    if (urlQ !== null) setQuery(urlQ);
+  }
   const { items, mutate, pending } = useOptimisticList<Record<string, unknown> & { id: string }>(
     rows as (Record<string, unknown> & { id: string })[]
   );
@@ -112,6 +128,11 @@ export function DirectoryManager({
   function openEdit(row: Record<string, unknown>) {
     setEditing(row);
     setOpen(true);
+  }
+
+  /** localStorage key for the dialog form's unsaved-input draft. */
+  function draftKey(editingId: string | undefined) {
+    return `directory:${table}:${editingId ?? "new"}`;
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -138,7 +159,7 @@ export function DirectoryManager({
       ? { ...(editing as Record<string, unknown>), ...values, id: editingId }
       : { ...values, id: tempId() };
     setOpen(false);
-    await mutate({
+    const { ok } = await mutate({
       optimistic: (prev) =>
         editingId
           ? prev.map((r) => (r.id === editingId ? (optimisticRow as typeof r) : r))
@@ -152,16 +173,20 @@ export function DirectoryManager({
             )
           : prev,
     });
+    // The form unmounted when the dialog closed (its unmount snapshot wrote a
+    // draft); once the save lands, that draft has served its purpose.
+    if (ok) clearFormDraft(draftKey(editingId));
   }
 
   async function onDelete(id: string) {
     // Keep the confirm dialog open (with a spinner) until the delete resolves,
     // then close — so double-clicks can't fire a second delete.
-    await mutate({
+    const { ok } = await mutate({
       optimistic: (prev) => prev.filter((r) => r.id !== id),
       action: () => deleteDirectoryRow(table, id),
       success: `${entityName} deleted.`,
     });
+    if (ok) clearFormDraft(draftKey(id));
     setConfirmDelete(null);
   }
 
@@ -297,77 +322,18 @@ export function DirectoryManager({
         title={editing ? `Edit ${entityName}` : `Add ${entityName}`}
         wide={fields.some((f) => f.type === "markdown")}
       >
-        <form onSubmit={onSubmit} className="space-y-4">
-          {fields.map((f) => (
-            <Field key={f.key} label={f.label}>
-              {f.type === "markdown" ? (
-                <MarkdownField
-                  key={(editing?.id as string) ?? "new"}
-                  name={f.key}
-                  defaultValue={(editing?.[f.key] as string) ?? ""}
-                />
-              ) : f.type === "textarea" ? (
-                <Textarea
-                  name={f.key}
-                  defaultValue={(editing?.[f.key] as string) ?? ""}
-                  rows={f.key === "body_md" ? 12 : 3}
-                />
-              ) : f.type === "select" ? (
-                <Select name={f.key} defaultValue={(editing?.[f.key] as string) ?? ""}>
-                  <option value="">—</option>
-                  {f.options?.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-              ) : f.type === "list" ? (
-                <ListField
-                  key={(editing?.id as string) ?? "new"}
-                  name={f.key}
-                  label={f.label.replace(/s$/, "")}
-                  defaultValue={(editing?.[f.key] as string[]) ?? []}
-                />
-              ) : f.type === "stars" ? (
-                <StarRating
-                  key={(editing?.id as string) ?? "new"}
-                  name={f.key}
-                  defaultValue={Number(editing?.[f.key] ?? 0)}
-                />
-              ) : (
-                <Input
-                  name={f.key}
-                  type={f.type ?? "text"}
-                  inputMode={f.type === "tel" ? "tel" : f.type === "email" ? "email" : undefined}
-                  required={f.required}
-                  defaultValue={(editing?.[f.key] as string) ?? ""}
-                />
-              )}
-            </Field>
-          ))}
-          <div className="flex items-center justify-between gap-2 pt-2">
-            <div>
-              {editing && isAdmin && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-danger hover:bg-danger-soft"
-                  onClick={() => setConfirmDelete(editing.id as string)}
-                >
-                  <Trash2 /> Delete
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" pending={pending}>
-                Save
-              </Button>
-            </div>
-          </div>
-        </form>
+        {/* Dialog unmounts its children when closed, so the form — and its
+            draft state — mounts fresh on every open. */}
+        <DirectoryRowForm
+          draftKey={draftKey(editing?.id as string | undefined)}
+          fields={fields}
+          editing={editing}
+          isAdmin={isAdmin}
+          pending={pending}
+          onSubmit={onSubmit}
+          onCancel={() => setOpen(false)}
+          onRequestDelete={() => editing && setConfirmDelete(editing.id as string)}
+        />
       </Dialog>
 
       <ConfirmDialog
@@ -384,5 +350,115 @@ export function DirectoryManager({
         }
       />
     </div>
+  );
+}
+
+/**
+ * The add/edit dialog form, as its own component so useFormDraft mounts fresh
+ * per dialog open. Unsaved input (including a long template markdown body)
+ * survives an accidental Esc/backdrop close for 30 minutes; Cancel discards.
+ */
+function DirectoryRowForm({
+  draftKey,
+  fields,
+  editing,
+  isAdmin,
+  pending,
+  onSubmit,
+  onCancel,
+  onRequestDelete,
+}: {
+  draftKey: string;
+  fields: FieldDef[];
+  editing: Record<string, unknown> | null;
+  isAdmin: boolean;
+  pending: boolean;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+  onRequestDelete: () => void;
+}) {
+  const draft = useFormDraft(draftKey);
+  const rowKey = `${(editing?.id as string) ?? "new"}:${draft.formKey}`;
+  return (
+    <form key={draft.formKey} ref={draft.formRef} onSubmit={onSubmit} className="space-y-4">
+      <DraftBanner draft={draft} />
+      {fields.map((f) => (
+        <Field key={f.key} label={f.label}>
+          {f.type === "markdown" ? (
+            <MarkdownField
+              key={rowKey}
+              name={f.key}
+              defaultValue={draft.value(f.key) ?? (editing?.[f.key] as string) ?? ""}
+            />
+          ) : f.type === "textarea" ? (
+            <Textarea
+              name={f.key}
+              defaultValue={draft.value(f.key) ?? (editing?.[f.key] as string) ?? ""}
+              rows={f.key === "body_md" ? 12 : 3}
+            />
+          ) : f.type === "select" ? (
+            <Select name={f.key} defaultValue={draft.value(f.key) ?? (editing?.[f.key] as string) ?? ""}>
+              <option value="">—</option>
+              {f.options?.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          ) : f.type === "list" ? (
+            <ListField
+              key={rowKey}
+              name={f.key}
+              label={f.label.replace(/s$/, "")}
+              defaultValue={draft.valueList(f.key) ?? (editing?.[f.key] as string[]) ?? []}
+            />
+          ) : f.type === "stars" ? (
+            <StarRating
+              key={rowKey}
+              name={f.key}
+              defaultValue={Number(draft.value(f.key) ?? editing?.[f.key] ?? 0)}
+            />
+          ) : (
+            <Input
+              name={f.key}
+              type={f.type ?? "text"}
+              inputMode={f.type === "tel" ? "tel" : f.type === "email" ? "email" : undefined}
+              required={f.required}
+              defaultValue={draft.value(f.key) ?? (editing?.[f.key] as string) ?? ""}
+            />
+          )}
+        </Field>
+      ))}
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <div>
+          {editing && isAdmin && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-danger hover:bg-danger-soft"
+              onClick={onRequestDelete}
+            >
+              <Trash2 /> Delete
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          {/* Cancel is an explicit discard — Esc/backdrop keep the draft. */}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              draft.clear();
+              onCancel();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" pending={pending}>
+            Save
+          </Button>
+        </div>
+      </div>
+    </form>
   );
 }

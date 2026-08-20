@@ -226,6 +226,7 @@ export function MoneyTab({
       {/* Stacked full width on purpose: the side-by-side split starved the
           extras card and made long titles wrap into the controls. */}
       <QuoteTable
+        caseId={activeCase.id}
         items={quote.items}
         currency={currency}
         isAdmin={isAdmin}
@@ -235,6 +236,7 @@ export function MoneyTab({
         onMove={onQuoteMove}
       />
       <AdditionalCostsTable
+        caseId={activeCase.id}
         items={extras.items}
         currency={currency}
         onUpdate={onExtraUpdate}

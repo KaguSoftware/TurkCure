@@ -17,10 +17,26 @@ const PATIENTS_PAGE_SIZE = 50;
 const PATIENT_LIST_COLUMNS =
   "id, full_name, email, phone, source, status, country_id, assigned_agent_id, created_at, date_of_birth, gender, passport_number, notes, countries(name), profiles(name)";
 
+// Table-mode sort options (?sort= / ?dir=). Board mode ignores them.
+const SORT_COLUMNS = {
+  created: "created_at",
+  name: "full_name",
+  status: "status",
+} as const;
+export type PatientSortKey = keyof typeof SORT_COLUMNS;
+
 export default async function PatientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; agent?: string; country?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    agent?: string;
+    country?: string;
+    page?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").trim();
@@ -28,6 +44,15 @@ export default async function PatientsPage({
     ? (params.status as PatientStatus)
     : null;
   const page = Math.max(1, Number(params.page) || 1);
+  const sort: PatientSortKey = params.sort && params.sort in SORT_COLUMNS
+    ? (params.sort as PatientSortKey)
+    : "created";
+  const dir: "asc" | "desc" =
+    params.dir === "asc" || params.dir === "desc"
+      ? params.dir
+      : sort === "created"
+        ? "desc"
+        : "asc";
 
   const profile = await requireProfile();
   const supabase = await createClient();
@@ -35,8 +60,10 @@ export default async function PatientsPage({
   let query = supabase
     .from("patients")
     .select(PATIENT_LIST_COLUMNS, { count: "exact" })
-    .order("created_at", { ascending: false })
+    .order(SORT_COLUMNS[sort], { ascending: dir === "asc" })
     .range((page - 1) * PATIENTS_PAGE_SIZE, page * PATIENTS_PAGE_SIZE - 1);
+  // Stable tiebreaker so equal sort values keep a deterministic page split.
+  if (sort !== "created") query = query.order("created_at", { ascending: false });
   if (q) {
     const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
     query = query.or(`full_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`);
@@ -45,8 +72,17 @@ export default async function PatientsPage({
   if (params.agent) query = query.eq("assigned_agent_id", params.agent);
   if (params.country) query = query.eq("country_id", params.country);
 
-  const [{ data: patients, count }, directories] = await Promise.all([query, getDirectories()]);
+  const [{ data: patients, count }, directories, { data: statusCounts }] = await Promise.all([
+    query,
+    getDirectories(),
+    // True per-status totals for the board columns — the loaded page is capped
+    // at 50, so counting the page undercounts every column past page one.
+    supabase.rpc("patient_status_counts"),
+  ]);
   const { countries, agents, doctors, hospitals, hotels, drivers, operationTypes } = directories;
+  const boardCounts: Record<string, number> = {};
+  for (const row of (statusCounts ?? []) as { status: string; count: number }[])
+    boardCounts[row.status] = Number(row.count);
 
   return (
     <>
@@ -62,6 +98,9 @@ export default async function PatientsPage({
         total={count ?? 0}
         page={page}
         pageSize={PATIENTS_PAGE_SIZE}
+        boardCounts={boardCounts}
+        sort={sort}
+        dir={dir}
         countries={countries ?? []}
         agents={agents ?? []}
         currentUserId={profile.id}

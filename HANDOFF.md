@@ -49,13 +49,53 @@ public signup (invite-only). See CLAUDE.md → "What this app is".
 - i18n/RTL discipline and logical CSS properties (from the sibling ExxionOs playbook) are NOT
   enforced here — TurkCure is English-only. Match the surrounding code.
 
-## Current status (2026-08-19 — money-UX rebuild)
+## Current status (2026-08-20 — form drafts + UX sweep)
+
+Client ask ("cache unsaved form input for 30 minutes") plus a full UX audit, executed in
+four phases (full detail in CLAUDE.md → "Recent work — 2026-08-20"). `npm run build` green,
+`npm test` green (7), and **browser-verified**: 19/19 draft checks (capture incl. portaled
+popover picks, tab-switch/dialog-close/reload restore, TTL purge, discard, pristine-no-write,
+Esc-keeps / Cancel-clears on the reminder dialog) + a Phase-2/3/4 Playwright sweep (horizon
+select, Mine/Everyone, 3-option snooze, table sort order, ?view= persistence, tel/mailto
+links, patient-page reminder create→DB→delete, palette landing pre-filtered).
+
+- **Form drafts**: `lib/form-drafts.ts` + `lib/use-form-draft.ts` + `ui/draft-banner.tsx`.
+  Silent restore + Discard banner (Parsa's pick). Wired into: case form, patient dialog,
+  payment dialog, directory rows (incl. template markdown), reminder dialog, quote/extras
+  add dialogs. Esc/backdrop keep the draft; Cancel discards; save clears. Dialog forms
+  needed their bodies extracted into per-open inner components (Dialog unmounts children).
+  Deliberately no dirty-close confirm on Dialog.
+- **Quick wins**: clickable patient email/phone everywhere + WhatsApp on board cards;
+  duplicate-patient warning on create (advisory); palette directory hits land pre-filtered
+  (`?q=`/`&t=`); cron `payment:<uuid>` marker hidden on reminder rows; friendly error page
+  + `global-error.tsx` + root `not-found.tsx`; finance CSV BOM; `?view=` persistence; dead
+  `"partial"` status removed from TS.
+- **Reminders**: patient-page reminders card (create/edit/done/delete from the patient);
+  shared `components/reminders/reminder-form.tsx`; dashboard Mine|Everyone (Mine default,
+  unassigned always visible), assignee shown, snooze menu (1h/tomorrow/next week), live
+  overdue clock, and a **configurable `?days=` horizon** (7–90) across reminders/arrivals/
+  payments-due with a "+N more beyond" line.
+- **Structural**: true board column totals (RPC), patients table server-side sort
+  (`?sort=`/`?dir=`), file previews in-app + 25 MB cap + uploader shown, status nudge chips
+  (never automatic).
+- **No new migrations.** `0022_money_ux.sql` was applied by Parsa on 2026-08-20 —
+  **nothing is pending.**
+- Deferred (next sessions): timestamped patient notes (needs a migration), finance-table
+  sorting, reminder notifications. Plan file:
+  `~/.claude/plans/throughout-the-entire-system-compressed-metcalfe.md`.
+
+⚠️ Worth spot-checking live: drafts on a real phone, the payment dialog draft (verified by
+code path, not driven), duplicate warning copy, and the Mine-default not hiding anything
+the team expected to see.
+
+## Previous status (2026-08-19 — money-UX rebuild)
 
 The whole money experience was rebuilt around one **Money tab** per case (full detail in
 CLAUDE.md → "Recent work — 2026-08-19 money-UX rebuild"). `npm run build` green, `npm test`
 green (7 tests, 2 new).
 
-- **⚠️ Migration `0022_money_ux.sql` is written but NOT APPLIED — Parsa applies it by hand.**
+- **Migration `0022_money_ux.sql` — applied by Parsa on 2026-08-20** (was pending when this
+  section was written).
   It (a) relaxes the `case_additional_costs` DELETE policy so agent deletes stop silently
   no-opping (the 0020 policy was admin-only while the action used the cookie client — the
   optimistic UI reported success and the row came back on refresh), and (b) normalizes legacy
@@ -273,6 +313,16 @@ the PDF, and is findable in Ctrl+K; and the PDF downloads as the patient's name 
 Turkish characters.
 
 ## File map (key files) — see CLAUDE.md for the fuller list
+- `src/lib/form-drafts.ts` / `src/lib/use-form-draft.ts` / `src/components/ui/draft-banner.tsx`
+  — the 30-minute unsaved-input cache (2026-08-20). Capture via FormData snapshots +
+  document-level click/keyup (popovers are portaled); restore via mount effect + formKey
+  remount; `draft.value("name") ?? serverValue` on every field.
+- `src/components/reminders/reminder-form.tsx` — shared reminder dialog form + `TYPE_META`
+  (moved out of reminders-panel); `src/components/patients/patient-reminders.tsx` — the
+  patient-page reminders card.
+- `src/components/dashboard/horizon.ts` (+ `horizon-select.tsx`) — dashboard `?days=`
+  options. The const lives in a plain module because RSC can't read non-component exports
+  of a "use client" file.
 - `src/app/globals.css` — all design tokens + motion utilities + the new scrollbar rules.
 - `src/components/ui/input.tsx` — `Input`/`Textarea`/`Select`/**`ComboBox`**/`Field`/`Label` and the
   `PopoverLayer` portal helper. ComboBox has both id-valued and `freeText` modes.
@@ -324,12 +374,16 @@ Turkish characters.
   `editor/` (`extensions.ts`, `nodes.tsx`, `CaseDocEditor.tsx`, `editor.css`).
 - `src/app/api/pdf/draft/[caseId]/route.tsx` — GET renders the stored draft (seeding if none),
   POST renders document JSON from the body. The POST backs the editor preview.
-- `supabase/migrations/` — numbered `0001`…`0022`. `0001`–`0021` applied as of 2026-08-14
-  (`0001`–`0015` by hand, the rest via `npx supabase db push --linked`);
-  **`0022` written 2026-08-19, NOT yet applied.**
+- `supabase/migrations/` — numbered `0001`…`0022`, **all applied** (`0001`–`0015` by hand,
+  `0016`–`0021` via `npx supabase db push --linked`, `0022` by hand on 2026-08-20).
 
 ## Roadmap / next steps
-No fixed phase plan — this is reshape-on-use. **← next: whatever Parsa reports from live usage.**
+**← next: whatever Parsa reports from live use of the 2026-08-20 UX sweep.** Then, from the
+approved plan (deferred items):
+1. Timestamped patient notes — append-only `patient_notes` table (migration, hand-applied)
+   replacing the single overwritable textarea; keep the old column as a legacy note.
+2. Finance per-case table sorting (client-side; data is already loaded).
+3. Reminder notifications (email/push) — biggest missing feature, needs an infra decision.
 Standing candidates if asked:
 - Turn airports into a real `airports` directory table (migration) if free-text isn't enough.
 - Continue the pagination lever for perceived slowness (see the Perf memory).
@@ -342,6 +396,18 @@ Standing candidates if asked:
 | Custom scrollbars | WebKit + Firefox, token-coloured, gutter reserved on `html` | — | Done |
 
 ## Gotchas / open issues
+- **Form drafts (2026-08-20)**: any NEW form that should survive navigation must wire
+  `useFormDraft` — form `ref={draft.formRef}`, `key` composed with `draft.formKey`, every
+  `defaultValue` wrapped `draft.value("name") ?? server`, `draft.clear()` on save/Cancel,
+  `<DraftBanner draft={draft} />` at the top. Dialog-hosted forms need the hook in a
+  component rendered INSIDE `<Dialog>` (children unmount on close; a hook outside reads a
+  stale draft on reopen). Never cache passwords/Files (the hook drops them, but don't rely
+  on it for new sensitive fields — use `exclude`). Drafts hold patient PII in localStorage,
+  bounded only by the 30-min TTL.
+- **RSC + "use client" exports**: a server component importing a non-component export
+  (array/const) from a client module gets a client-reference proxy — `.includes` throws at
+  runtime, the build stays green. Keep shared constants in plain modules
+  (`dashboard/horizon.ts` is the example).
 - **NO VERTICAL SCROLLBARS on horizontal scrollers — standing rule from Parsa.**
   Any `overflow-x-auto` element (tab bars, table wrappers, chip rows, anything that
   scrolls sideways) MUST also set `overflow-y-hidden`. When overflow-x is

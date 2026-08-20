@@ -3,7 +3,7 @@ import { createClient, requireProfile } from "@/lib/supabase/server";
 import { getQuoteItemsForPatient, getAdditionalCostsForPatient } from "@/lib/actions/cases";
 import { getDirectories } from "@/lib/data/directory";
 import { PatientDetail } from "@/components/patients/patient-detail";
-import type { Case, CaseAdditionalCost, Patient, QuoteItem } from "@/lib/types";
+import type { Case, CaseAdditionalCost, Patient, QuoteItem, Reminder } from "@/lib/types";
 
 export default async function PatientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,6 +21,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     { data: files },
     quoteItemsRaw,
     additionalCostsRaw,
+    { data: reminders },
   ] = await Promise.all([
     supabase
       .from("patients")
@@ -39,6 +40,13 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
     supabase.from("patient_files").select("*").eq("patient_id", id).order("created_at", { ascending: false }),
     getQuoteItemsForPatient(id),
     getAdditionalCostsForPatient(id),
+    supabase
+      .from("reminders")
+      .select("*")
+      .eq("patient_id", id)
+      .is("done_at", null)
+      .order("due_at")
+      .limit(20),
   ]);
   if (!patient) notFound();
   const { countries, agents, doctors, hospitals, hotels, drivers, operationTypes } = directories;
@@ -70,6 +78,7 @@ export default async function PatientPage({ params }: { params: Promise<{ id: st
       }
       instructions={instructions ?? []}
       files={files ?? []}
+      reminders={(reminders ?? []) as Reminder[]}
       isAdmin={profile.role === "admin"}
       currentUserId={profile.id}
       directories={{

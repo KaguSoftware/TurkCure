@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftBanner } from "@/components/ui/draft-banner";
 import { EditableCell } from "@/components/ui/editable-cell";
+import { useFormDraft } from "@/lib/use-form-draft";
 import { formatMoney } from "@/lib/utils";
 import type { CaseAdditionalCost } from "@/lib/types";
 import { RowControls } from "./quote-table";
@@ -27,6 +29,7 @@ export type AdditionalCostValues = { title: string; amount: number };
  * so agents get the full editor.
  */
 export function AdditionalCostsTable({
+  caseId,
   items,
   currency,
   onUpdate,
@@ -34,6 +37,7 @@ export function AdditionalCostsTable({
   onDelete,
   onMove,
 }: {
+  caseId: string;
   items: CaseAdditionalCost[];
   currency: string;
   onUpdate: (item: CaseAdditionalCost, patch: Partial<AdditionalCostValues>) => void;
@@ -116,6 +120,7 @@ export function AdditionalCostsTable({
       <AdditionalCostDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        caseId={caseId}
         currency={currency}
         onAdd={onAdd}
       />
@@ -152,16 +157,46 @@ export function AdditionalCostsTable({
 function AdditionalCostDialog({
   open,
   onClose,
+  caseId,
   currency,
   onAdd,
 }: {
   open: boolean;
   onClose: () => void;
+  caseId: string;
   currency: string;
   onAdd: (values: AdditionalCostValues) => void;
 }) {
+  return (
+    <Dialog open={open} onClose={onClose} title="Add additional cost">
+      {/* Dialog unmounts its children when closed, so the form — and its
+          draft state — mounts fresh on every open. */}
+      <AdditionalCostForm caseId={caseId} currency={currency} onAdd={onAdd} onClose={onClose} />
+    </Dialog>
+  );
+}
+
+function AdditionalCostForm({
+  caseId,
+  currency,
+  onAdd,
+  onClose,
+}: {
+  caseId: string;
+  currency: string;
+  onAdd: (values: AdditionalCostValues) => void;
+  onClose: () => void;
+}) {
   const formRef = React.useRef<HTMLFormElement>(null);
   const [formKey, setFormKey] = React.useState(0);
+  const draft = useFormDraft(`extra:${caseId}:new`);
+  const setFormRef = React.useCallback(
+    (el: HTMLFormElement | null) => {
+      formRef.current = el;
+      draft.formRef(el);
+    },
+    [draft.formRef]
+  );
 
   function submit(addAnother: boolean) {
     const form = formRef.current;
@@ -171,44 +206,60 @@ function AdditionalCostDialog({
       title: String(fd.get("title") ?? "").trim(),
       amount: Number(fd.get("amount") || 0),
     });
+    draft.clear(); // never restore a row that was just added
     if (addAnother) setFormKey((k) => k + 1);
     else onClose();
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Add additional cost">
-      <form
-        key={formKey}
-        ref={formRef}
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit(false);
-        }}
-        className="space-y-4"
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Title">
-            <Input name="title" placeholder="e.g. Revision surgery" />
-          </Field>
-          <Field label={`Amount (${currency})`}>
-            <Input name="amount" type="number" step="0.01" min="0" required placeholder="0.00" />
-          </Field>
-        </div>
-        <p className="text-xs text-muted-light">
-          Prints on the PDF under Payment Information; never added to the package total.
-        </p>
-        <div className="flex items-center justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" variant="soft" onClick={() => submit(true)}>
-            Add &amp; another
-          </Button>
-          <Button type="submit">
-            <Plus /> Add cost
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+    <form
+      key={`${formKey}:${draft.formKey}`}
+      ref={setFormRef}
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit(false);
+      }}
+      className="space-y-4"
+    >
+      <DraftBanner draft={draft} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Title">
+          <Input name="title" placeholder="e.g. Revision surgery" defaultValue={draft.value("title") ?? ""} />
+        </Field>
+        <Field label={`Amount (${currency})`}>
+          <Input
+            name="amount"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            placeholder="0.00"
+            defaultValue={draft.value("amount") ?? ""}
+          />
+        </Field>
+      </div>
+      <p className="text-xs text-muted-light">
+        Prints on the PDF under Payment Information; never added to the package total.
+      </p>
+      <div className="flex items-center justify-end gap-2">
+        {/* Cancel is an explicit discard — Esc/backdrop keep the draft. */}
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            draft.clear();
+            onClose();
+          }}
+        >
+          Cancel
+        </Button>
+        <Button type="button" variant="soft" onClick={() => submit(true)}>
+          Add &amp; another
+        </Button>
+        <Button type="submit">
+          <Plus /> Add cost
+        </Button>
+      </div>
+    </form>
   );
 }

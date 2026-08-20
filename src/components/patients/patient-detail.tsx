@@ -11,6 +11,7 @@ import {
   FileText,
   Pencil,
   PlusCircle,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import { TabBar, TabPanel } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { useAction } from "@/lib/use-action";
 import { syncCaseReminders } from "@/lib/actions/cases";
+import { setPatientStatus } from "@/lib/actions/patients";
 import { cn, formatDate, formatMoney, waLink } from "@/lib/utils";
 import { MessageCircle } from "lucide-react";
 import type {
@@ -27,10 +29,13 @@ import type {
   CaseInstruction,
   Patient,
   PatientFile,
+  PatientStatus,
   Payment,
   QuoteItem,
+  Reminder,
 } from "@/lib/types";
 import { PatientFormDialog } from "./patient-form";
+import { PatientReminders } from "./patient-reminders";
 import { CombinedPdfDialog } from "./combined-pdf-dialog";
 import { CaseTab } from "./case-tab";
 import { MoneyTab } from "./money/money-tab";
@@ -68,6 +73,7 @@ export function PatientDetail({
   isAdmin,
   currentUserId,
   directories,
+  reminders = [],
 }: {
   patient: Patient;
   cases: Case[];
@@ -79,6 +85,7 @@ export function PatientDetail({
   isAdmin: boolean;
   currentUserId: string;
   directories: Directories;
+  reminders?: Reminder[];
 }) {
   // Tab and selected case live in the URL (?tab=, ?case=) so links, refresh, and
   // the back button all land on the same view.
@@ -140,6 +147,25 @@ export function PatientDetail({
     : 0;
   const caseCompleted = activeCase?.status === "completed";
 
+  // Status nudge — a one-click suggestion, never an automatic change. First
+  // match wins; dismissing hides it for this visit only.
+  const [nudgeDismissed, setNudgeDismissed] = React.useState(false);
+  const nudging = useAction();
+  const hasPaidIncoming = payments.some((p) => p.direction === "in" && p.paid_at);
+  const nudge: { label: string; target: PatientStatus } | null = nudgeDismissed
+    ? null
+    : caseCompleted && !["treated", "aftercare", "lost"].includes(patient.status)
+      ? { label: "Case completed — move patient to Treated?", target: "treated" }
+      : hasPaidIncoming && ["lead", "interested"].includes(patient.status)
+        ? { label: "Payment received — move patient to Booked?", target: "booked" }
+        : null;
+  async function applyNudge() {
+    if (!nudge) return;
+    await nudging.run(setPatientStatus(patient.id, nudge.target), {
+      success: `Status updated to ${nudge.target}.`,
+    });
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -177,11 +203,37 @@ export function PatientDetail({
               )}
             </div>
             <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-              <span>
-                {[patient.countries?.name, patient.email, patient.phone, patient.source]
-                  .filter(Boolean)
-                  .join(" · ") || "No contact details yet"}
-              </span>
+              {/* Email and phone are real links — call or write in one tap. */}
+              {(() => {
+                const bits: React.ReactNode[] = [];
+                if (patient.countries?.name)
+                  bits.push(<span key="country">{patient.countries.name}</span>);
+                if (patient.email)
+                  bits.push(
+                    <a
+                      key="email"
+                      href={`mailto:${patient.email}`}
+                      className="hover:text-foreground hover:underline"
+                    >
+                      {patient.email}
+                    </a>
+                  );
+                if (patient.phone)
+                  bits.push(
+                    <a
+                      key="phone"
+                      href={`tel:${patient.phone.replace(/[^\d+]/g, "")}`}
+                      className="hover:text-foreground hover:underline"
+                    >
+                      {patient.phone}
+                    </a>
+                  );
+                if (patient.source) bits.push(<span key="source">{patient.source}</span>);
+                if (bits.length === 0) return <span>No contact details yet</span>;
+                return bits.flatMap((b, i) =>
+                  i === 0 ? [b] : [<span key={`sep-${i}`}>·</span>, b]
+                );
+              })()}
               {waLink(patient.phone) && (
                 <a
                   href={waLink(patient.phone)!}
@@ -237,6 +289,27 @@ export function PatientDetail({
             </Button>
           </div>
         </div>
+        {nudge && (
+          <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-lg bg-primary-soft px-3 py-2 text-xs text-primary">
+            <span className="font-medium">{nudge.label}</span>
+            <button
+              type="button"
+              onClick={applyNudge}
+              disabled={nudging.pending}
+              className="cursor-pointer font-semibold underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
+            >
+              {nudging.pending ? "Updating…" : "Yes, update"}
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss suggestion"
+              onClick={() => setNudgeDismissed(true)}
+              className="cursor-pointer rounded p-0.5 hover:bg-primary/10"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
         {/* Trimmed: a whitespace-only note rendered as an empty grey bar. */}
         {patient.notes?.trim() && (
           <p className="mt-3 max-w-2xl rounded-lg bg-surface-hover px-3 py-2 text-sm text-muted">
@@ -318,9 +391,22 @@ export function PatientDetail({
           />
         )}
         {tab === "Files" && (
-          <FilesTab patient={patient} files={files} currentUserId={currentUserId} />
+          <FilesTab
+            patient={patient}
+            files={files}
+            currentUserId={currentUserId}
+            agents={directories.agents}
+          />
         )}
       </TabPanel>
+
+      {/* Patient-level, so it sits outside the per-case tabs. */}
+      <PatientReminders
+        patientId={patient.id}
+        reminders={reminders}
+        agents={directories.agents}
+        currentUserId={currentUserId}
+      />
 
       <CombinedPdfDialog
         open={combinedOpen}

@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, Tr, Th, Td, EmptyRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftBanner } from "@/components/ui/draft-banner";
 import { EditableCell } from "@/components/ui/editable-cell";
+import { useFormDraft } from "@/lib/use-form-draft";
 import { formatMoney } from "@/lib/utils";
 import type { QuoteItem } from "@/lib/types";
 
@@ -39,6 +41,7 @@ export type QuoteItemValues = {
  * data, not toolbars.
  */
 export function QuoteTable({
+  caseId,
   items,
   currency,
   isAdmin,
@@ -47,6 +50,7 @@ export function QuoteTable({
   onDelete,
   onMove,
 }: {
+  caseId: string;
   items: QuoteItem[];
   currency: string;
   isAdmin: boolean;
@@ -194,6 +198,7 @@ export function QuoteTable({
       <QuoteItemDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        caseId={caseId}
         currency={currency}
         isAdmin={isAdmin}
         onAdd={onAdd}
@@ -287,20 +292,52 @@ export function RowControls({
 function QuoteItemDialog({
   open,
   onClose,
+  caseId,
   currency,
   isAdmin,
   onAdd,
 }: {
   open: boolean;
   onClose: () => void;
+  caseId: string;
   currency: string;
   isAdmin: boolean;
   onAdd: (values: QuoteItemValues) => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} title="Add quote item">
+      {/* Dialog unmounts its children when closed, so the form — and its
+          draft state — mounts fresh on every open. */}
+      <QuoteItemForm caseId={caseId} currency={currency} isAdmin={isAdmin} onAdd={onAdd} onClose={onClose} />
+    </Dialog>
+  );
+}
+
+function QuoteItemForm({
+  caseId,
+  currency,
+  isAdmin,
+  onAdd,
+  onClose,
+}: {
+  caseId: string;
+  currency: string;
+  isAdmin: boolean;
+  onAdd: (values: QuoteItemValues) => void;
+  onClose: () => void;
 }) {
   const formRef = React.useRef<HTMLFormElement>(null);
   // The Type ComboBox keeps its value in React state, so form.reset() can't
   // clear it — remount the form instead for "Add & another".
   const [formKey, setFormKey] = React.useState(0);
+  const draft = useFormDraft(`quote:${caseId}:new`);
+  const setFormRef = React.useCallback(
+    (el: HTMLFormElement | null) => {
+      formRef.current = el;
+      draft.formRef(el);
+    },
+    [draft.formRef]
+  );
 
   function submit(addAnother: boolean) {
     const form = formRef.current;
@@ -312,60 +349,88 @@ function QuoteItemDialog({
       price: Number(fd.get("price") || 0),
       cost: isAdmin ? Number(fd.get("cost") || 0) : undefined,
     });
+    draft.clear(); // never restore a row that was just added
     if (addAnother) setFormKey((k) => k + 1);
     else onClose();
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Add quote item">
-      <form
-        key={formKey}
-        ref={formRef}
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit(false);
-        }}
-        className="space-y-4"
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Type">
-            <ComboBox
-              name="kind"
-              freeText
-              options={KIND_SUGGESTIONS}
-              placeholder="Pick, type, or leave blank"
-              createLabel="Use"
+    <form
+      key={`${formKey}:${draft.formKey}`}
+      ref={setFormRef}
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit(false);
+      }}
+      className="space-y-4"
+    >
+      <DraftBanner draft={draft} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Type">
+          <ComboBox
+            name="kind"
+            freeText
+            options={KIND_SUGGESTIONS}
+            defaultValue={draft.value("kind") ?? ""}
+            placeholder="Pick, type, or leave blank"
+            createLabel="Use"
+          />
+        </Field>
+        {/* Both label fields are optional — a line can be priced without
+            being named (see 0017). */}
+        <Field label="Description">
+          <Input
+            name="description"
+            placeholder="e.g. FUE 3500 grafts"
+            defaultValue={draft.value("description") ?? ""}
+          />
+        </Field>
+        {isAdmin && (
+          <Field label={`Cost (${currency})`}>
+            <Input
+              name="cost"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              defaultValue={draft.value("cost") ?? ""}
             />
           </Field>
-          {/* Both label fields are optional — a line can be priced without
-              being named (see 0017). */}
-          <Field label="Description">
-            <Input name="description" placeholder="e.g. FUE 3500 grafts" />
-          </Field>
-          {isAdmin && (
-            <Field label={`Cost (${currency})`}>
-              <Input name="cost" type="number" step="0.01" min="0" placeholder="0.00" />
-            </Field>
-          )}
-          <Field label={`Price (${currency})`}>
-            <Input name="price" type="number" step="0.01" min="0" required placeholder="0.00" />
-          </Field>
-        </div>
-        <p className="text-xs text-muted-light">
-          The description also appears on the PDF as a package bullet.
-        </p>
-        <div className="flex items-center justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" variant="soft" onClick={() => submit(true)}>
-            Add &amp; another
-          </Button>
-          <Button type="submit">
-            <Plus /> Add item
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+        )}
+        <Field label={`Price (${currency})`}>
+          <Input
+            name="price"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            placeholder="0.00"
+            defaultValue={draft.value("price") ?? ""}
+          />
+        </Field>
+      </div>
+      <p className="text-xs text-muted-light">
+        The description also appears on the PDF as a package bullet.
+      </p>
+      <div className="flex items-center justify-end gap-2">
+        {/* Cancel is an explicit discard — Esc/backdrop keep the draft. */}
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            draft.clear();
+            onClose();
+          }}
+        >
+          Cancel
+        </Button>
+        <Button type="button" variant="soft" onClick={() => submit(true)}>
+          Add &amp; another
+        </Button>
+        <Button type="submit">
+          <Plus /> Add item
+        </Button>
+      </div>
+    </form>
   );
 }

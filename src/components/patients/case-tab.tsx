@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftBanner } from "@/components/ui/draft-banner";
 import { toast } from "@/components/ui/toast";
+import { useFormDraft } from "@/lib/use-form-draft";
 import { upsertDirectoryRow, type DirectoryTable } from "@/lib/actions/directory";
 import { upsertCase, deleteCase } from "@/lib/actions/cases";
 import { CURRENCIES, formatDate } from "@/lib/utils";
@@ -55,6 +57,9 @@ export function CaseTab({
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDeleteCase, setConfirmDeleteCase] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  // Unsaved input survives tab switches / navigation for 30 minutes. The
+  // new-case key carries the patient id so drafts can't leak across patients.
+  const draft = useFormDraft(activeCase ? `case:${activeCase.id}` : `case:new:${patient.id}`);
 
   async function onDeleteCase() {
     if (!activeCase) return;
@@ -65,6 +70,7 @@ export function CaseTab({
       toast.error(result.error);
       return;
     }
+    draft.clear();
     setConfirmDeleteCase(false);
     toast.success("Case deleted.");
     // Clear ?case= so the page doesn't try to select the case we just removed.
@@ -101,6 +107,8 @@ export function CaseTab({
       setError(result.error);
       toast.error(result.error);
     } else {
+      // Clear before onCaseCreated switches the draft key to the new case id.
+      draft.clear();
       toast.success(activeCase ? "Case saved. Reminders regenerated." : "Case created.");
       if (!activeCase && result.id) onCaseCreated?.(result.id);
       React.startTransition(() => router.refresh());
@@ -174,17 +182,20 @@ export function CaseTab({
           <CardTitle>{activeCase ? "Case details" : "Create case"}</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* key resets all defaultValue fields when switching between cases */}
+          {/* key resets all defaultValue fields when switching between cases;
+              the draft key remounts them again when a draft restores/discards */}
           <form
-            key={activeCase?.id ?? "new"}
+            key={`${activeCase?.id ?? "new"}:${draft.formKey}`}
+            ref={draft.formRef}
             onSubmit={onSaveCase}
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
           >
+            <DraftBanner draft={draft} className="sm:col-span-2 lg:col-span-3" />
             {/* The case's own identifier, so it heads the form. */}
             <Field label="Protocol number" className="sm:col-span-2 lg:col-span-3">
               <Input
                 name="protocol_number"
-                defaultValue={activeCase?.protocol_number ?? ""}
+                defaultValue={draft.value("protocol_number") ?? activeCase?.protocol_number ?? ""}
                 placeholder="Hospital protocol / file number"
               />
             </Field>
@@ -193,14 +204,14 @@ export function CaseTab({
                 <ComboBox
                   name={f.key}
                   options={comboOptions[f.key]}
-                  defaultValue={f.value ?? ""}
+                  defaultValue={draft.value(f.key) ?? f.value ?? ""}
                   onCreate={(name) => createDirectoryRow(f.key, f.table, name)}
                   placeholder={`Search or add ${f.label.toLowerCase()}…`}
                 />
               </Field>
             ))}
             <Field label="Status">
-              <Select name="status" defaultValue={activeCase?.status ?? "planning"}>
+              <Select name="status" defaultValue={draft.value("status") ?? activeCase?.status ?? "planning"}>
                 <option value="planning">Planning</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="in_progress">In progress</option>
@@ -209,26 +220,26 @@ export function CaseTab({
               </Select>
             </Field>
             <Field label="Arrival date">
-              <DatePicker name="arrival_date" defaultValue={activeCase?.arrival_date ?? ""} />
+              <DatePicker name="arrival_date" defaultValue={draft.value("arrival_date") ?? activeCase?.arrival_date ?? ""} />
             </Field>
             <Field label="Surgery date">
-              <DatePicker name="surgery_date" defaultValue={activeCase?.surgery_date ?? ""} />
+              <DatePicker name="surgery_date" defaultValue={draft.value("surgery_date") ?? activeCase?.surgery_date ?? ""} />
             </Field>
             <Field label="Departure date">
-              <DatePicker name="departure_date" defaultValue={activeCase?.departure_date ?? ""} />
+              <DatePicker name="departure_date" defaultValue={draft.value("departure_date") ?? activeCase?.departure_date ?? ""} />
             </Field>
             <Field label="Hospital check-in">
-              <DatePicker name="hospital_checkin" defaultValue={activeCase?.hospital_checkin ?? ""} />
+              <DatePicker name="hospital_checkin" defaultValue={draft.value("hospital_checkin") ?? activeCase?.hospital_checkin ?? ""} />
             </Field>
             <Field label="Hospital check-out">
-              <DatePicker name="hospital_checkout" defaultValue={activeCase?.hospital_checkout ?? ""} />
+              <DatePicker name="hospital_checkout" defaultValue={draft.value("hospital_checkout") ?? activeCase?.hospital_checkout ?? ""} />
             </Field>
             <Field label="Departure airport">
               <ComboBox
                 name="airport"
                 freeText
                 options={AIRPORT_SUGGESTIONS}
-                defaultValue={activeCase?.airport ?? ""}
+                defaultValue={draft.value("airport") ?? activeCase?.airport ?? ""}
                 placeholder="Search or type a code…"
                 createLabel="Use"
               />
@@ -238,13 +249,13 @@ export function CaseTab({
                 name="airport_pickup"
                 freeText
                 options={AIRPORT_SUGGESTIONS}
-                defaultValue={activeCase?.airport_pickup ?? ""}
+                defaultValue={draft.value("airport_pickup") ?? activeCase?.airport_pickup ?? ""}
                 placeholder="Search or type a code…"
                 createLabel="Use"
               />
             </Field>
             <Field label="Currency">
-              <Select name="currency" defaultValue={activeCase?.currency ?? "EUR"}>
+              <Select name="currency" defaultValue={draft.value("currency") ?? activeCase?.currency ?? "EUR"}>
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -253,7 +264,7 @@ export function CaseTab({
               </Select>
             </Field>
             <Field label="Notes" className="sm:col-span-2 lg:col-span-3">
-              <Textarea name="notes" rows={2} defaultValue={activeCase?.notes ?? ""} />
+              <Textarea name="notes" rows={2} defaultValue={draft.value("notes") ?? activeCase?.notes ?? ""} />
             </Field>
             {error && (
               <p className="sm:col-span-2 lg:col-span-3 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">

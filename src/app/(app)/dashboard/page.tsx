@@ -4,21 +4,33 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, PATIENT_STATUS_LABEL, PATIENT_STATUS_TONE } from "@/components/ui/badge";
 import { RemindersPanel } from "@/components/dashboard/reminders-panel";
+import { HorizonSelect } from "@/components/dashboard/horizon-select";
+import { HORIZON_OPTIONS } from "@/components/dashboard/horizon";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { PATIENT_STATUSES, type Reminder } from "@/lib/types";
 import { addDays } from "date-fns";
 
 export const metadata = { title: "Dashboard" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ days?: string }>;
+}) {
   const profile = await requireProfile();
   const supabase = await createClient();
   const now = new Date();
-  const horizon = addDays(now, 14).toISOString();
+  // Look-ahead window from ?days= (validated against the offered options).
+  const { days: daysParam } = await searchParams;
+  const days = (HORIZON_OPTIONS as readonly number[]).includes(Number(daysParam))
+    ? Number(daysParam)
+    : 14;
+  const horizon = addDays(now, days).toISOString();
 
   const [
     { data: reminders },
     { data: completedReminders },
+    { count: laterCount },
     { data: statusCounts },
     { data: arrivals },
     { data: paymentsDue },
@@ -42,13 +54,20 @@ export default async function DashboardPage() {
         .gte("done_at", addDays(now, -7).toISOString())
         .order("done_at", { ascending: false })
         .limit(15),
+      // Open reminders beyond the window, so they're never silently invisible.
+      supabase
+        .from("reminders")
+        .select("id", { count: "exact", head: true })
+        .is("done_at", null)
+        .gt("due_at", horizon),
       supabase.rpc("patient_status_counts"),
       supabase
         .from("cases")
         .select("id, arrival_date, surgery_date, patients(id, full_name), operation_types(name)")
         .gte("arrival_date", now.toISOString().slice(0, 10))
         .lte("arrival_date", horizon.slice(0, 10))
-        .order("arrival_date"),
+        .order("arrival_date")
+        .limit(30),
       supabase
         .from("payments")
         .select("*, cases(patient_id, patients(full_name))")
@@ -69,7 +88,9 @@ export default async function DashboardPage() {
       <PageHeader
         title={`Welcome back, ${profile.name.split(" ")[0]}`}
         subtitle="Here is what needs your attention"
-      />
+      >
+        <HorizonSelect value={days} />
+      </PageHeader>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {PATIENT_STATUSES.map((s) => (
@@ -93,13 +114,15 @@ export default async function DashboardPage() {
             completedReminders={(completedReminders ?? []) as Reminder[]}
             agents={agents ?? []}
             currentUserId={profile.id}
+            horizonDays={days}
+            laterCount={laterCount ?? 0}
           />
         </div>
 
         <div className="space-y-5">
           <Card>
             <CardHeader>
-              <CardTitle>Upcoming arrivals (14 days)</CardTitle>
+              <CardTitle>Upcoming arrivals ({days} days)</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {(arrivals ?? []).length === 0 && (

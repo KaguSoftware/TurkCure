@@ -26,6 +26,39 @@ export async function upsertPatient(
   return { id: data.id };
 }
 
+/**
+ * Possible duplicates for the "New Patient" form: same email (case-insensitive)
+ * or same phone digits. Phone is compared on digits only because the stored
+ * format (`+44 7911 123456`) carries user-typed spacing that SQL matching would
+ * trip over; comparing in JS over a bounded fetch is exact and, at this app's
+ * scale (an internal CRM), cheap. Advisory only — saving anyway stays allowed,
+ * since genuine same-phone records exist (family members, shared numbers).
+ */
+export async function findDuplicatePatients(
+  email: string,
+  phone: string
+): Promise<{ matches: { id: string; full_name: string; field: "email" | "phone" }[] }> {
+  await requireProfile();
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPhone = phone.replace(/\D/g, "");
+  if (!cleanEmail && cleanPhone.length < 7) return { matches: [] };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("patients")
+    .select("id, full_name, email, phone")
+    .limit(5000);
+  const matches: { id: string; full_name: string; field: "email" | "phone" }[] = [];
+  for (const p of data ?? []) {
+    if (cleanEmail && (p.email ?? "").trim().toLowerCase() === cleanEmail) {
+      matches.push({ id: p.id, full_name: p.full_name, field: "email" });
+    } else if (cleanPhone.length >= 7 && (p.phone ?? "").replace(/\D/g, "").endsWith(cleanPhone)) {
+      matches.push({ id: p.id, full_name: p.full_name, field: "phone" });
+    }
+    if (matches.length >= 3) break;
+  }
+  return { matches };
+}
+
 export async function deletePatient(id: string): Promise<{ error?: string }> {
   await requireAdmin();
   const supabase = await createClient();

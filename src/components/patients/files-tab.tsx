@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Download, FileText, Image as ImageIcon, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Image as ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { useOptimisticList, tempId } from "@/lib/use-optimistic-list";
@@ -15,21 +16,34 @@ import type { FileCategory, Patient, PatientFile } from "@/lib/types";
 
 // Reports and passports are always a scan or a PDF; the Other bucket stays open.
 const SCAN_ACCEPT = "image/*,application/pdf";
-const IMAGE_RE = /\.(png|jpe?g|gif|webp|heic|heif|avif|bmp|tiff?)$/i;
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|avif|bmp)$/i;
+// Browser-renderable inline. HEIC/TIFF scans exist but no browser shows them —
+// those fall back to download.
+const PDF_RE = /\.pdf$/i;
+// Storage isn't free and a 500 MB pick used to be accepted silently, blocking
+// all three inputs for minutes. Scans and reports don't come close to this.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export function FilesTab({
   patient,
   files: serverFiles,
   currentUserId,
+  agents = [],
 }: {
   patient: Patient;
   files: PatientFile[];
   currentUserId: string;
+  agents?: { id: string; name: string }[];
 }) {
   const { items: files, mutate, pending } = useOptimisticList<PatientFile>(serverFiles);
   const [uploading, setUploading] = React.useState<FileCategory | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<PatientFile | null>(null);
+  // In-app preview for images and PDFs (signed URL in a dialog) — before this
+  // every look at a file meant a new browser tab.
+  const [preview, setPreview] = React.useState<{ file: PatientFile; url: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState<string | null>(null);
+  const agentName = React.useMemo(() => new Map(agents.map((a) => [a.id, a.name])), [agents]);
 
   // Group once rather than filtering the list per section. Files predating the
   // categories (or written by an older client) fall back to "other".
@@ -44,6 +58,12 @@ export function FilesTab({
     // Reset the input so re-picking the same file fires change again.
     e.target.value = "";
     if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(
+        `${file.name} is ${(file.size / (1024 * 1024)).toFixed(0)} MB — the limit is 25 MB.`
+      );
+      return;
+    }
     setUploading(category);
     setError(null);
     const temp = {
@@ -113,6 +133,25 @@ export function FilesTab({
     window.open(data.signedUrl, "_blank");
   }
 
+  async function onPreview(f: PatientFile) {
+    // Only images and PDFs render inline; everything else downloads.
+    if (!IMAGE_RE.test(f.label) && !PDF_RE.test(f.label)) {
+      onDownload(f);
+      return;
+    }
+    setPreviewLoading(f.id);
+    const supabase = createClient();
+    const { data, error } = await supabase.storage
+      .from("patient-files")
+      .createSignedUrl(f.storage_path, 300);
+    setPreviewLoading(null);
+    if (error || !data) {
+      toast.error(error?.message ?? "Could not open the file");
+      return;
+    }
+    setPreview({ file: f, url: data.signedUrl });
+  }
+
   async function onDelete(f: PatientFile) {
     // Keep the confirm dialog open with a spinner until the delete resolves.
     await mutate({
@@ -154,13 +193,29 @@ export function FilesTab({
                       {/* Wraps below sm: filename + category select + two icon
                           buttons is the tightest row in the app at 390px. */}
                       <CardContent className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-3">
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <Icon className="size-4 shrink-0 text-muted" />
+                        <button
+                          type="button"
+                          onClick={() => onPreview(f)}
+                          disabled={previewLoading !== null}
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+                        >
+                          {previewLoading === f.id ? (
+                            <Loader2 className="size-4 shrink-0 animate-spin text-muted" />
+                          ) : (
+                            <Icon className="size-4 shrink-0 text-muted" />
+                          )}
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{f.label}</p>
-                            <p className="text-xs text-muted">{formatDate(f.created_at)}</p>
+                            <p className="truncate text-sm font-medium hover:text-primary">
+                              {f.label}
+                            </p>
+                            <p className="text-xs text-muted">
+                              {formatDate(f.created_at)}
+                              {f.uploaded_by && agentName.get(f.uploaded_by) && (
+                                <span> · {agentName.get(f.uploaded_by)}</span>
+                              )}
+                            </p>
                           </div>
-                        </div>
+                        </button>
                         <div className="flex shrink-0 items-center gap-1">
                           {/* Re-file a mistake without re-uploading. Disabled while
                               another mutation is in flight — the optimistic list
@@ -222,6 +277,38 @@ export function FilesTab({
           </section>
         );
       })}
+
+      {/* Signed URLs live 300s; the dialog is transient so that's plenty. */}
+      <Dialog
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title={preview?.file.label ?? "Preview"}
+        wide
+      >
+        {preview && (
+          <div className="space-y-3">
+            {IMAGE_RE.test(preview.file.label) ? (
+              // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
+              <img
+                src={preview.url}
+                alt={preview.file.label}
+                className="mx-auto max-h-[65vh] w-auto max-w-full rounded-lg"
+              />
+            ) : (
+              <iframe
+                src={preview.url}
+                title={preview.file.label}
+                className="h-[65vh] w-full rounded-lg border border-border"
+              />
+            )}
+            <div className="flex justify-end">
+              <Button variant="secondary" size="sm" onClick={() => onDownload(preview.file)}>
+                <Download /> Download
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       <ConfirmDialog
         open={confirmDelete !== null}

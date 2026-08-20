@@ -13,36 +13,19 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Select, Field } from "@/components/ui/input";
+import { Select, PopoverLayer, isInsidePopover } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge, type Tone } from "@/components/ui/badge";
-import { DatePicker, DateTimePicker } from "@/components/ui/date-picker";
+import { Badge } from "@/components/ui/badge";
+import { DatePicker } from "@/components/ui/date-picker";
 import { toast } from "@/components/ui/toast";
+import { clearDraft as clearFormDraft } from "@/lib/form-drafts";
 import { upsertReminder, toggleReminderDone, deleteReminder } from "@/lib/actions/reminders";
+import { ReminderForm, TYPE_META } from "@/components/reminders/reminder-form";
 import type { Reminder, ReminderType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { usePresence } from "@/lib/use-presence";
-
-// Also drives the type <Select> in the reminder dialog — add a type here and it
-// becomes pickable by hand as well as generatable from a case.
-const TYPE_META: Record<ReminderType, { label: string; tone: Tone }> = {
-  follow_up: { label: "Follow-up", tone: "blue" },
-  arrival: { label: "Arrival", tone: "teal" },
-  hospital: { label: "Hospital", tone: "violet" },
-  operation: { label: "Operation", tone: "violet" },
-  departure: { label: "Departure", tone: "teal" },
-  payment: { label: "Payment", tone: "amber" },
-  aftercare: { label: "Aftercare", tone: "green" },
-};
-
-/** ISO UTC → local "YYYY-MM-DDTHH:mm" for the DateTimePicker. */
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 const STRIKE_MS = 750; // check pop + line draw before the row starts leaving
 const EXIT_MS = 260; // matches reminder-out in globals.css
@@ -52,11 +35,17 @@ export function RemindersPanel({
   completedReminders = [],
   agents,
   currentUserId,
+  horizonDays = 14,
+  laterCount = 0,
 }: {
   reminders: Reminder[];
   completedReminders?: Reminder[];
   agents: { id: string; name: string }[];
   currentUserId: string;
+  /** The dashboard's ?days= window; only used for copy. */
+  horizonDays?: number;
+  /** Open reminders due beyond the window — shown so they're never invisible. */
+  laterCount?: number;
 }) {
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Reminder | null>(null);
@@ -74,7 +63,18 @@ export function RemindersPanel({
   // Reminder staged for delete-confirmation (null = no dialog open).
   const [confirmDelete, setConfirmDelete] = React.useState<Reminder | null>(null);
   const [deletePending, setDeletePending] = React.useState(false);
-  const [now] = React.useState(() => Date.now());
+  // Who's shown by default: your own (and unassigned) reminders. "Everyone"
+  // is one click away — with two agents, the other person's list is noise
+  // most of the time but must never be hard to reach.
+  const [scope, setScope] = React.useState<"mine" | "all">("mine");
+  // Re-evaluated every minute so a long-open dashboard tab keeps its
+  // "Overdue" flags honest (it used to be frozen at mount).
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const agentName = React.useMemo(() => new Map(agents.map((a) => [a.id, a.name])), [agents]);
 
   // Optimistic copy of the list. Server revalidation resets it via the effect
   // below; pendingIds keeps in-flight optimistic inserts, removedIds keeps
@@ -177,6 +177,7 @@ export function RemindersPanel({
             .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         );
       }
+      clearFormDraft(`reminder:${editing.id}`);
       setOpen(false);
       setEditing(null);
       toast.success("Reminder updated.");
@@ -210,6 +211,7 @@ export function RemindersPanel({
       setItems((prev) => prev.filter((r) => r.id !== tempId));
       toast.error(`Couldn't save reminder: ${result.error}`);
     } else if (result.reminder) {
+      clearFormDraft("reminder:new");
       const saved = result.reminder;
       setItems((prev) =>
         prev.some((r) => r.id === saved.id)
@@ -265,11 +267,8 @@ export function RemindersPanel({
     });
   }
 
-  function onSnooze(r: Reminder) {
+  function onSnooze(r: Reminder, newDue: string, label: string) {
     if (snoozing.has(r.id) || completing.has(r.id) || exiting.has(r.id)) return;
-    // Tomorrow relative to now if overdue, otherwise +1 day from the due time.
-    const base = Math.max(Date.now(), new Date(r.due_at).getTime());
-    const newDue = new Date(base + 24 * 60 * 60 * 1000).toISOString();
     const prevDue = r.due_at;
     setInSet(setSnoozing, r.id, true);
     setItems((prev) =>
@@ -287,7 +286,7 @@ export function RemindersPanel({
         );
         toast.error(`Couldn't snooze: ${result.error}`);
       } else {
-        toast.success("Snoozed until tomorrow.");
+        toast.success(`Snoozed — ${label}.`);
       }
     });
   }
@@ -368,6 +367,9 @@ export function RemindersPanel({
     () =>
       withDone
         .filter((r) => {
+          // "Mine" keeps unassigned reminders visible — they belong to no one,
+          // so hiding them by default would make them belong to nobody at all.
+          if (scope === "mine" && r.assigned_to && r.assigned_to !== currentUserId) return false;
           if (typeFilter !== "all" && r.type !== typeFilter) return false;
           if (patientFilter !== "all" && r.patient_id !== patientFilter) return false;
           if (assigneeFilter !== "all" && r.assigned_to !== assigneeFilter) return false;
@@ -381,7 +383,7 @@ export function RemindersPanel({
           if (!!a.done_at !== !!b.done_at) return a.done_at ? 1 : -1;
           return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
         }),
-    [withDone, typeFilter, patientFilter, assigneeFilter, dueFrom, dueTo]
+    [withDone, scope, currentUserId, typeFilter, patientFilter, assigneeFilter, dueFrom, dueTo]
   );
 
   const filtersActive =
@@ -398,6 +400,20 @@ export function RemindersPanel({
           <Bell className="size-4 text-primary" /> Reminders
         </CardTitle>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border bg-surface p-0.5 shadow-card">
+            {(["mine", "all"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setScope(s)}
+                className={cn(
+                  "pressable rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer",
+                  scope === s ? "bg-primary-soft text-primary" : "text-muted"
+                )}
+              >
+                {s === "mine" ? "Mine" : "Everyone"}
+              </button>
+            ))}
+          </div>
           <Button
             size="sm"
             variant={showFilters || filtersActive ? "soft" : "secondary"}
@@ -485,7 +501,9 @@ export function RemindersPanel({
           <p className="py-8 text-center text-sm text-muted">
             {filtersActive
               ? "No reminders match these filters."
-              : "All clear — nothing due in the next 14 days."}
+              : scope === "mine" && withDone.length > 0
+                ? "Nothing assigned to you — switch to Everyone to see the rest."
+                : `All clear — nothing due in the next ${horizonDays} days.`}
           </p>
         )}
         {shown.map((r) => {
@@ -551,7 +569,18 @@ export function RemindersPanel({
                   {overdue && (
                     <span className="ml-1.5 font-medium text-danger">Overdue</span>
                   )}
-                  {r.note && <span className="ml-1.5">· {r.note}</span>}
+                  {/* The cron's dedupe marker (`payment:<uuid>`) lives in the
+                      note column; it's plumbing, not something to display. */}
+                  {r.note && !/^payment:[0-9a-f-]{36}$/i.test(r.note) && (
+                    <span className="ml-1.5">· {r.note}</span>
+                  )}
+                  {/* Who owns it: always flag unassigned; name the owner when
+                      looking at everyone's list. */}
+                  {!r.assigned_to ? (
+                    <span className="ml-1.5 text-muted-light">· Unassigned</span>
+                  ) : scope === "all" ? (
+                    <span className="ml-1.5">· {agentName.get(r.assigned_to) ?? "Unknown"}</span>
+                  ) : null}
                 </p>
               </div>
               <Badge tone={meta.tone} className="shrink-0">
@@ -559,15 +588,10 @@ export function RemindersPanel({
               </Badge>
               <div className="ml-auto flex shrink-0 gap-0.5 sm:ml-0">
                 {!isDone && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Snooze 1 day"
+                  <SnoozeMenu
                     disabled={snoozing.has(r.id)}
-                    onClick={() => onSnooze(r)}
-                  >
-                    <AlarmClockPlus />
-                  </Button>
+                    onPick={(iso, label) => onSnooze(r, iso, label)}
+                  />
                 )}
                 <Button
                   variant="ghost"
@@ -595,6 +619,14 @@ export function RemindersPanel({
             </div>
           );
         })}
+
+        {/* Reminders beyond the window used to be silently invisible until they
+            entered it; now at least their existence is stated. */}
+        {laterCount > 0 && (
+          <p className="pt-1 text-center text-xs text-muted-light">
+            +{laterCount} more due beyond {horizonDays} days
+          </p>
+        )}
 
         {completedReminders.length > 0 && (
           <div className="pt-2">
@@ -667,60 +699,19 @@ export function RemindersPanel({
         }}
         title={editing ? "Edit reminder" : "New reminder"}
       >
-        <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
-          <Field label="Title">
-            <Input
-              name="title"
-              required
-              placeholder="Call Ahmed about quote"
-              defaultValue={editing?.title ?? ""}
-            />
-          </Field>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Type">
-              <Select name="type" defaultValue={editing?.type ?? "follow_up"}>
-                {Object.entries(TYPE_META).map(([value, m]) => (
-                  <option key={value} value={value}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Assign to">
-              <Select name="assigned_to" defaultValue={editing?.assigned_to ?? currentUserId}>
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          {/* Full width: the date + time pair is too cramped in a half column. */}
-          <Field label="Due">
-            <DateTimePicker
-              name="due_at"
-              defaultValue={editing ? toLocalInput(editing.due_at) : undefined}
-            />
-          </Field>
-          <Field label="Note">
-            <Input name="note" defaultValue={editing?.note ?? ""} />
-          </Field>
-          {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setOpen(false);
-                setEditing(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">{editing ? "Save" : "Create"}</Button>
-          </div>
-        </form>
+        {/* Dialog unmounts its children when closed, so the form — and its
+            draft state — mounts fresh on every open. */}
+        <ReminderForm
+          editing={editing}
+          agents={agents}
+          currentUserId={currentUserId}
+          error={error}
+          onSubmit={onSubmit}
+          onCancel={() => {
+            setOpen(false);
+            setEditing(null);
+          }}
+        />
       </Dialog>
 
       <ConfirmDialog
@@ -742,3 +733,93 @@ export function RemindersPanel({
     </Card>
   );
 }
+
+/**
+ * Snooze options in a small popover — the old single button always pushed
+ * +1 day, which was wrong as often as it was right. Times are local.
+ */
+function SnoozeMenu({
+  disabled,
+  onPick,
+}: {
+  disabled?: boolean;
+  onPick: (dueAtIso: string, label: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const { mounted, closing } = usePresence(open, 150);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!isInsidePopover(e.target, rootRef.current)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function options(): { label: string; date: Date }[] {
+    const inOneHour = new Date(Date.now() + 60 * 60 * 1000);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    nextWeek.setHours(9, 0, 0, 0);
+    return [
+      { label: "in 1 hour", date: inOneHour },
+      { label: "tomorrow 9:00", date: tomorrow },
+      { label: "next week", date: nextWeek },
+    ];
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <Button
+        ref={triggerRef}
+        variant="ghost"
+        size="icon"
+        aria-label="Snooze"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <AlarmClockPlus />
+      </Button>
+      {mounted && (
+        <PopoverLayer
+          anchorRef={triggerRef}
+          className={cn(
+            "animate-dropdown min-w-max rounded-lg border border-border bg-surface p-1 shadow-pop",
+            closing && "animate-dropdown-out"
+          )}
+        >
+          <div role="menu">
+            {options().map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onPick(o.date.toISOString(), o.label);
+                }}
+                className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer hover:bg-surface-hover"
+              >
+                Snooze {o.label}
+              </button>
+            ))}
+          </div>
+        </PopoverLayer>
+      )}
+    </div>
+  );
+}
+

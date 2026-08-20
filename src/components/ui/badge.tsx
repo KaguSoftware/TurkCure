@@ -50,7 +50,6 @@ export const PATIENT_STATUS_LABEL: Record<string, string> = {
 
 export const PAYMENT_STATUS_TONE: Record<string, Tone> = {
   pending: "amber",
-  partial: "blue",
   paid: "green",
 };
 

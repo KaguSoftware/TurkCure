@@ -21,8 +21,11 @@ export default function Error({
         <AlertCircle className="size-6" />
       </span>
       <h1 className="text-lg font-semibold">Something went wrong</h1>
+      {/* Raw error text here is Supabase/Postgres internals — log it for
+          debugging (above) but never show it to staff. */}
       <p className="mt-1 max-w-sm text-sm text-muted">
-        {error.message || "An unexpected error occurred while loading this page."}
+        An unexpected error occurred while loading this page. Your data is safe — try again, and
+        if it keeps happening tell the admin{error.digest ? ` (code ${error.digest})` : ""}.
       </p>
       <Button className="mt-5" onClick={() => reset()}>
         <RotateCw /> Try again

@@ -226,7 +226,9 @@ function exportCsv(cases: CaseFinance[], displayCurrency: string) {
       .join(",")
   );
   const csv = [header.map(esc).join(","), ...lines].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  // UTF-8 BOM, matching the patients export — without it Excel reads the file
+  // as ANSI and mojibakes Turkish/accented names.
+  const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

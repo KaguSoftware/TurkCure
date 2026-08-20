@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/ui/date-picker";
+import { DraftBanner } from "@/components/ui/draft-banner";
 import { toast } from "@/components/ui/toast";
+import { useFormDraft } from "@/lib/use-form-draft";
 import { createClient } from "@/lib/supabase/client";
 import { getLiveRate } from "@/lib/actions/fx";
 import { CURRENCIES, formatMoney } from "@/lib/utils";
@@ -100,6 +102,48 @@ export function PaymentDialog({
     editing?.receipt_path ?? ""
   );
   const [stagedFile, setStagedFile] = React.useState<File | null>(null);
+
+  // 30-minute unsaved-input cache. The provider/currency/rate state has no DOM
+  // presence, so it rides `extra`; the staged receipt File and the existing
+  // receipt pointer are deliberately never cached (re-attaching is cheap, and
+  // restoring a Removed receipt pointer could resurrect it).
+  const draft = useFormDraft(`payment:${activeCase.id}:${editing?.id ?? "new"}`, {
+    extra: {
+      provider_type: providerType,
+      provider_id: providerId,
+      currency,
+      fx_rate: fxRate,
+    },
+    onRestore: (f) => {
+      if (f.direction === "in" || f.direction === "out") setDirection(f.direction);
+      if (typeof f.provider_type === "string" && f.provider_type)
+        setProviderType(f.provider_type as CounterpartyType);
+      if (typeof f.provider_id === "string") setProviderId(f.provider_id);
+      if (typeof f.paid_at === "string") setPaidAt(f.paid_at);
+      if (typeof f.amount === "string") setAmount(f.amount);
+      if (typeof f.currency === "string" && f.currency) {
+        setCurrency(f.currency);
+        if (typeof f.fx_rate === "string" && f.fx_rate) {
+          setFxRate(f.fx_rate);
+          // The restored rate was typed/fetched in the previous session; treat
+          // it as manual so the provenance copy stays honest.
+          if (f.currency !== caseCurrency) setRateSource("manual");
+        }
+      }
+    },
+    onDiscard: () => {
+      setDirection(editing?.direction ?? "in");
+      setProviderType(
+        editing && editing.counterparty_type !== "patient" ? editing.counterparty_type : "hospital"
+      );
+      setProviderId(editing?.counterparty_id ?? "");
+      setPaidAt(editing?.paid_at ?? "");
+      setCurrency(editing?.currency ?? caseCurrency);
+      setAmount(editing ? String(editing.amount ?? "") : "");
+      setFxRate(editing ? String(editing.fx_rate ?? 1) : "1");
+      setRateSource(editing ? "booked" : "manual");
+    },
+  });
 
   /** Prefill the rate from the live feed. Failure is silent-ish: the field stays
    *  editable and the save path is never blocked. */
@@ -202,6 +246,7 @@ export function PaymentDialog({
         ? editing.receipt_path
         : null;
     if (replacedOld) await supabase.storage.from("receipts").remove([replacedOld]);
+    draft.clear();
     onClose();
   }
 
@@ -231,7 +276,13 @@ export function PaymentDialog({
       title={editing ? "Edit payment" : "Record payment"}
       wide
     >
-      <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <form
+        key={draft.formKey}
+        ref={draft.formRef}
+        onSubmit={onSubmit}
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+      >
+        <DraftBanner draft={draft} className="sm:col-span-2" />
         <Field label="Direction">
           <Select
             name="direction"
@@ -364,7 +415,7 @@ export function PaymentDialog({
           <Input
             name="method"
             placeholder="Bank transfer, cash, card…"
-            defaultValue={editing?.method ?? ""}
+            defaultValue={draft.value("method") ?? editing?.method ?? ""}
           />
         </Field>
         <Field label="IBAN">
@@ -375,11 +426,11 @@ export function PaymentDialog({
             pattern="[A-Za-z]{2}[0-9A-Za-z ]*"
             title="IBAN, e.g. TR12 0006 4000 0011 2345 6789 01"
             placeholder="TR12 0006 4000 0011 2345 6789 01"
-            defaultValue={editing?.iban ?? ""}
+            defaultValue={draft.value("iban") ?? editing?.iban ?? ""}
           />
         </Field>
         <Field label="Due date">
-          <DatePicker name="due_date" defaultValue={editing?.due_date ?? ""} />
+          <DatePicker name="due_date" defaultValue={draft.value("due_date") ?? editing?.due_date ?? ""} />
         </Field>
         <Field label="Paid date — leave empty until paid">
           <div className="flex items-center gap-2">
@@ -449,7 +500,7 @@ export function PaymentDialog({
           </div>
         </Field>
         <Field label="Notes" className="sm:col-span-2">
-          <Input name="notes" defaultValue={editing?.notes ?? ""} />
+          <Input name="notes" defaultValue={draft.value("notes") ?? editing?.notes ?? ""} />
         </Field>
         {error && (
           <p className="sm:col-span-2 rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
@@ -470,7 +521,16 @@ export function PaymentDialog({
             )}
           </div>
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            {/* Cancel is an explicit discard — Esc/backdrop keep the draft. */}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                draft.clear();
+                onClose();
+              }}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <Button type="submit" pending={saving}>
