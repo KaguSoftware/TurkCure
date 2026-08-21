@@ -44,6 +44,7 @@ export function DashboardContent({
   reminders,
   completedReminders,
   laterCount90,
+  windowOverflow,
   arrivals,
   paymentsDue,
   agents,
@@ -56,6 +57,8 @@ export function DashboardContent({
   completedReminders: Reminder[];
   /** Open reminders due beyond the 90-day fetch window. */
   laterCount90: number;
+  /** Within-window rows the 60-row fetch cap dropped (0 when nothing was cut). */
+  windowOverflow: number;
   arrivals: ArrivalRow[];
   paymentsDue: PaymentDueRow[];
   agents: { id: string; name: string }[];
@@ -75,20 +78,22 @@ export function DashboardContent({
     }
   }
 
-  const horizonIso = React.useMemo(
-    () => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
-    [days]
-  );
-  const horizonDate = horizonIso.slice(0, 10);
+  // Compare as instants, never as strings — PostgREST's "+00:00" suffix and
+  // toISOString's ".000Z" are not lexicographically co-comparable.
+  const horizonMs = React.useMemo(() => Date.now() + days * 24 * 60 * 60 * 1000, [days]);
+  const horizonDate = new Date(horizonMs).toISOString().slice(0, 10);
 
   const shownReminders = React.useMemo(
-    () => reminders.filter((r) => r.due_at <= horizonIso),
-    [reminders, horizonIso]
+    () => reminders.filter((r) => Date.parse(r.due_at) <= horizonMs),
+    [reminders, horizonMs]
   );
-  // Beyond the SELECTED window: the far tail (beyond 90d, counted server-side)
-  // plus loaded open reminders between the selection and 90d.
+  // Beyond the SELECTED window: the far tail (beyond 90d, counted server-side),
+  // rows the 60-row fetch cap crowded out, plus loaded open reminders between
+  // the selection and 90d.
   const laterCount =
-    laterCount90 + reminders.filter((r) => !r.done_at && r.due_at > horizonIso).length;
+    laterCount90 +
+    windowOverflow +
+    reminders.filter((r) => !r.done_at && Date.parse(r.due_at) > horizonMs).length;
 
   const shownArrivals = arrivals.filter((a) => a.arrival_date <= horizonDate);
   const shownPayments = paymentsDue

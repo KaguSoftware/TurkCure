@@ -10,8 +10,8 @@ import type { Reminder, ReminderType } from "@/lib/types";
 import type { Tone } from "@/components/ui/badge";
 
 // Also drives the type <Select> in the reminder dialog — add a type here and it
-// becomes pickable by hand as well as generatable from a case. Shared by the
-// dashboard panel and the patient-page reminders section.
+// becomes pickable by hand as well as generatable from a case. Reminders are
+// dashboard-only by design (the patient-page card was reverted on feedback).
 export const TYPE_META: Record<ReminderType, { label: string; tone: Tone }> = {
   follow_up: { label: "Follow-up", tone: "blue" },
   arrival: { label: "Arrival", tone: "teal" },
@@ -96,9 +96,16 @@ export function ReminderForm({
           defaultValue={draft.value("due_at") ?? (editing ? toLocalInput(editing.due_at) : undefined)}
         />
       </Field>
-      <Field label="Note">
-        <Input name="note" defaultValue={draft.value("note") ?? editing?.note ?? ""} />
-      </Field>
+      {/* The cron's dedupe marker (`payment:<uuid>`) lives in the note column.
+          Editing it would let the next sweep re-create a duplicate reminder, so
+          the field is hidden for marker rows and the value rides along intact. */}
+      {editing?.type === "payment" && /^payment:[0-9a-f-]{36}$/i.test(editing.note ?? "") ? (
+        <input type="hidden" name="note" value={editing.note} />
+      ) : (
+        <Field label="Note">
+          <Input name="note" defaultValue={draft.value("note") ?? editing?.note ?? ""} />
+        </Field>
+      )}
       {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
         {/* Cancel is an explicit discard — Esc/backdrop keep the draft. */}

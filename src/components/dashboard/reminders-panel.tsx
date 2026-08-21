@@ -25,6 +25,7 @@ import { upsertReminder, toggleReminderDone, deleteReminder } from "@/lib/action
 import { ReminderForm, TYPE_META } from "@/components/reminders/reminder-form";
 import type { Reminder, ReminderType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isReminderOverdue } from "@/lib/dates";
 import { usePresence } from "@/lib/use-presence";
 
 const STRIKE_MS = 750; // check pop + line draw before the row starts leaving
@@ -387,7 +388,11 @@ export function RemindersPanel({
           if (typeFilter !== "all" && r.type !== typeFilter) return false;
           if (patientFilter !== "all" && r.patient_id !== patientFilter) return false;
           if (assigneeFilter !== "all" && r.assigned_to !== assigneeFilter) return false;
-          const due = r.due_at.slice(0, 10);
+          // Compare in the viewer's calendar day — the DatePicker values are
+          // local days, and slicing the ISO string would compare the UTC day.
+          const d = new Date(r.due_at);
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const due = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
           if (dueFrom && due < dueFrom) return false;
           if (dueTo && due > dueTo) return false;
           return true;
@@ -522,7 +527,9 @@ export function RemindersPanel({
         )}
         {shown.map((r) => {
           const isDone = !!r.done_at;
-          const overdue = !isDone && new Date(r.due_at).getTime() < now;
+          // Date-derived reminders (stored at 09:00 Istanbul) only go overdue
+          // once their day has passed; hand-picked times go red on the minute.
+          const overdue = !isDone && isReminderOverdue(r.due_at, now);
           const meta = TYPE_META[r.type];
           const isCompleting = completing.has(r.id);
           const isExiting = exiting.has(r.id);
@@ -604,6 +611,7 @@ export function RemindersPanel({
                 {!isDone && (
                   <SnoozeMenu
                     disabled={snoozing.has(r.id)}
+                    dueAt={r.due_at}
                     onPick={(iso, label) => onSnooze(r, iso, label)}
                   />
                 )}
@@ -638,7 +646,7 @@ export function RemindersPanel({
             entered it; now at least their existence is stated. */}
         {laterCount > 0 && (
           <p className="pt-1 text-center text-xs text-muted-light">
-            +{laterCount} more due beyond {horizonDays} days
+            +{laterCount} more not shown — due beyond {horizonDays} days or past the fetch cap
           </p>
         )}
 
@@ -754,9 +762,11 @@ export function RemindersPanel({
  */
 function SnoozeMenu({
   disabled,
+  dueAt,
   onPick,
 }: {
   disabled?: boolean;
+  dueAt: string;
   onPick: (dueAtIso: string, label: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -779,18 +789,24 @@ function SnoozeMenu({
   }, [open]);
 
   function options(): { label: string; date: Date }[] {
+    // A snooze pushes a reminder LATER — day-based options count from the
+    // later of "now" and the current due date, and anything that wouldn't move
+    // the reminder forward is dropped, so snoozing a future reminder can never
+    // pull it backwards.
+    const dueMs = Date.parse(dueAt);
+    const baseMs = Math.max(Date.now(), Number.isNaN(dueMs) ? 0 : dueMs);
     const inOneHour = new Date(Date.now() + 60 * 60 * 1000);
-    const tomorrow = new Date();
+    const tomorrow = new Date(baseMs);
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(9, 0, 0, 0);
-    const nextWeek = new Date();
+    const nextWeek = new Date(baseMs);
     nextWeek.setDate(nextWeek.getDate() + 7);
     nextWeek.setHours(9, 0, 0, 0);
     return [
       { label: "in 1 hour", date: inOneHour },
       { label: "tomorrow 9:00", date: tomorrow },
       { label: "next week", date: nextWeek },
-    ];
+    ].filter((o) => Number.isNaN(dueMs) || o.date.getTime() > dueMs);
   }
 
   return (

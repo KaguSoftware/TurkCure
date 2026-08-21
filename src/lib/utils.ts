@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { DATE_ONLY_RE, parseDateOnly } from "@/lib/dates";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -32,7 +33,12 @@ export function waLink(phone: string | null | undefined): string | null {
 
 export function formatDate(date: string | Date | null | undefined) {
   if (!date) return "—";
-  return new Date(date).toLocaleDateString("en-GB", {
+  // Date-only strings must parse as a LOCAL day: new Date("YYYY-MM-DD") is UTC
+  // midnight, which renders as the previous day for any viewer west of UTC —
+  // and disagrees with the DatePicker, which parses the same value locally.
+  const value =
+    typeof date === "string" && DATE_ONLY_RE.test(date) ? parseDateOnly(date) : new Date(date);
+  return value.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",

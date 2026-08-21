@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   const horizon = addDays(now, FETCH_DAYS).toISOString();
 
   const [
-    { data: reminders },
+    { data: reminders, count: windowCount },
     { data: completedReminders },
     { count: laterCount },
     { data: statusCounts },
@@ -31,9 +31,11 @@ export default async function DashboardPage() {
     await Promise.all([
       // Open reminders plus ones checked off within the last 24h (they stay
       // visible, struck through, until a day has passed or they're deleted).
+      // count: "exact" so rows the 60-row cap crowds out are surfaced in the
+      // "+N more" line instead of silently missing.
       supabase
         .from("reminders")
-        .select("*, patients(full_name)")
+        .select("*, patients(full_name)", { count: "exact" })
         .or(`done_at.is.null,done_at.gte.${addDays(now, -1).toISOString()}`)
         .lte("due_at", horizon)
         .order("due_at")
@@ -82,6 +84,7 @@ export default async function DashboardPage() {
       reminders={(reminders ?? []) as Reminder[]}
       completedReminders={(completedReminders ?? []) as Reminder[]}
       laterCount90={laterCount ?? 0}
+      windowOverflow={Math.max(0, (windowCount ?? 0) - (reminders?.length ?? 0))}
       arrivals={(arrivals ?? []) as unknown as ArrivalRow[]}
       paymentsDue={(paymentsDue ?? []) as unknown as PaymentDueRow[]}
       agents={agents ?? []}

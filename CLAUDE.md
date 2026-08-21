@@ -1017,6 +1017,50 @@ Verified: `npm run build` green, `npm test` 22/22, and
 0027/0028 are **written, not applied** — the app degrades gracefully until
 `npx supabase db push --linked` runs.
 
+## Recent work — 2026-08-21 reminders fix (dates, regeneration, cron, panel)
+
+Parsa reported "dates are wrong / the whole reminders system is weird". Root
+cause of the date class: every date-derived `due_at` was built with
+`new Date("YYYY-MM-DD")` → **UTC midnight** — 03:00 in Istanbul, previous day
+for viewers west of UTC, and "Overdue" from 3am of the event day.
+
+- **New `src/lib/dates.ts`** — the one source for reminder-time semantics:
+  `dueAtBusinessHour()` ("YYYY-MM-DD" → `T09:00:00+03:00`; Turkey has no DST
+  since 2016, so the fixed offset is exact forever), `parseDateOnly()` (local-
+  midnight parse for display), `istanbulToday()`, and `isReminderOverdue()` —
+  a due_at at exactly 09:00 TRT is date-derived and goes overdue only after
+  **end of that Istanbul day**; any other time was hand-picked and goes red on
+  the minute. Used by `cases.ts`, `overdue.ts`, `utils.ts` `formatDate` (date-
+  only strings now parse locally, agreeing with the DatePicker) and the panel.
+  Tested (`src/lib/dates.test.ts`, vitest now 30).
+- **Regeneration is no longer destructive**: `regenerateCaseReminders` is
+  **diff-based** (match open generated rows by `(type, title)`; update moved
+  slots, delete vanished ones, insert new — no more delete-all-then-insert
+  window), returns early on an empty schedule (clearing dates + "Add dates to
+  reminders" no longer wipes rows while toasting "nothing to add"), and
+  `upsertCase` regenerates **only when a schedule column actually changed** —
+  a hotel/notes/status edit no longer resets snoozes or reassignments.
+  `syncCaseReminders` now takes `patient_id` from the case row and rejects a
+  mismatched client id.
+- **Cron sweep**: `today` is the Istanbul day; the insert is
+  `.upsert(…, { onConflict: "org_id,note", ignoreDuplicates: true })` with a
+  row-by-row 23505-skipping fallback (also covers pre-migration 42P10) — one
+  duplicate marker no longer aborts the whole batch and 500s the cron.
+- **0027 amended in place** (was written, unapplied): the unique marker index
+  is now `reminders(org_id, note) where type='payment' and note like
+  'payment:%'` — a second manual payment reminder with an empty note no longer
+  explodes, and the constraint is org-scoped. **0029_reminder_due_times.sql**
+  (⚠️ apply by hand, after 0027) moves existing open generated/payment rows
+  from 00:00Z to +6h (= 09:00 TRT). Code is safe to deploy before either.
+- **Panel**: due-from/to filters compare the viewer's local day (was the UTC
+  slice); the dashboard horizon compares **epoch ms**, not lexicographic ISO
+  strings of different shapes; the 60-row fetch cap is counted
+  (`count:"exact"` → `windowOverflow` → the "+N more" line); snooze options
+  are based on `max(now, due_at)` and never move a reminder backwards; the
+  edit dialog protects the cron's `payment:<uuid>` marker note (hidden input,
+  not editable); `DateTimePicker` renders an off-grid time (e.g. a 14:37
+  snooze) as an extra option instead of a blank select.
+
 ---
 
 _Keep this file current: when you make a materially new decision or change the

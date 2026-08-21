@@ -244,6 +244,10 @@ export function DateTimePicker({
         onChange={(e) => setTime(e.target.value)}
         className="w-24 shrink-0"
       >
+        {/* An off-grid time (a "snooze in 1 hour" lands on e.g. 14:37) must
+            render as itself — a controlled Select whose value matches no option
+            shows blank while still submitting the hidden value. */}
+        {time && !/:(00|30)$/.test(time) && <option value={time}>{time}</option>}
         {Array.from({ length: 48 }, (_, i) => {
           const h = String(Math.floor(i / 2)).padStart(2, "0");
           const m = i % 2 ? "30" : "00";
