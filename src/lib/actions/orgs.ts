@@ -85,3 +85,91 @@ export async function setOrganizationActive(
   revalidatePath("/", "layout"); // the lockout check lives in the app layout
   return {};
 }
+
+/**
+ * Permanently delete a workspace: every member's login, every row, every
+ * stored file. Platform-owner only, and never the caller's own org (that
+ * would take the whole platform-admin surface down with it).
+ *
+ * The org_id FKs are NO ACTION on purpose (an accidental org-row delete must
+ * not silently vaporize a company), so this deletes in dependency order
+ * instead: auth users first (profiles cascade from auth.users; patient
+ * assignments/uploader references SET NULL), then patients (everything
+ * case-scoped cascades from there), then the org-scoped leftovers, then the
+ * org row. Storage prefixes are cleared best-effort afterwards — an orphaned
+ * object is unreachable anyway once the org is gone (policies key on the org
+ * claim, which no user carries any more).
+ */
+export async function deleteOrganization(id: string): Promise<{ error?: string }> {
+  const profile = await requireSuperAdmin();
+  if (id === profile.org_id)
+    return { error: "You can't delete your own workspace from inside it." };
+  const admin = createAdminClient();
+
+  const { data: org } = await admin.from("organizations").select("id, slug").eq("id", id).maybeSingle();
+  if (!org) return { error: "Organization not found." };
+
+  // 1. Members' logins (cascades their profiles rows).
+  const { data: members } = await admin.from("profiles").select("id").eq("org_id", id);
+  for (const m of members ?? []) {
+    const { error } = await admin.auth.admin.deleteUser(m.id);
+    if (error) return { error: `Could not remove a member account: ${error.message}` };
+  }
+
+  // 2. Rows, parents before the directory tables they reference. Patients
+  //    cascade every case-scoped table; parentless reminders go explicitly.
+  for (const table of [
+    "patients",
+    "reminders",
+    "instruction_templates",
+    "doctors",
+    "hospitals",
+    "hotels",
+    "drivers",
+    "operation_types",
+    "countries",
+  ] as const) {
+    const { error } = await admin.from(table).delete().eq("org_id", id);
+    if (error) return { error: `Could not clear ${table}: ${error.message}` };
+  }
+
+  // 3. The org row itself.
+  const { error: orgError } = await admin.from("organizations").delete().eq("id", id);
+  if (orgError) return { error: orgError.message };
+
+  // 4. Storage, best-effort (failures leave unreachable orphans, not data).
+  for (const bucket of ["patient-files", "receipts", "instruction-images", "org-assets"]) {
+    try {
+      const paths = await listBucketPrefix(bucket, id);
+      if (paths.length) await admin.storage.from(bucket).remove(paths);
+    } catch {
+      // best-effort by design
+    }
+  }
+
+  revalidateTag(`org:${id}`, "max");
+  revalidatePath("/admin");
+  return {};
+}
+
+/** Every object path under `<prefix>/` in a bucket (folders recurse). */
+async function listBucketPrefix(bucket: string, prefix: string): Promise<string[]> {
+  const admin = createAdminClient();
+  const out: string[] = [];
+  async function walk(dir: string) {
+    let offset = 0;
+    for (;;) {
+      const { data, error } = await admin.storage.from(bucket).list(dir, { limit: 1000, offset });
+      if (error || !data) return;
+      for (const entry of data) {
+        const full = `${dir}/${entry.name}`;
+        if (entry.id === null) await walk(full);
+        else out.push(full);
+      }
+      if (data.length < 1000) return;
+      offset += 1000;
+    }
+  }
+  await walk(prefix);
+  return out;
+}

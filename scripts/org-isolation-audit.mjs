@@ -184,5 +184,12 @@ console.log("\nFirst org still intact (service-role spot checks):");
 }
 
 await b.auth.signOut();
+
+// Leave the audit workspace disabled: its admin has a known password from a
+// public script, and a disabled org's members are bounced by the app layout.
+// (RLS still confines them to their own empty org either way — and the audit
+// above keeps working on re-runs because it never goes through the layout.)
+await admin.from("organizations").update({ active: false }).eq("id", auditOrg.id);
+
 console.log(failures === 0 ? "\nAll isolation checks passed." : `\n${failures} FAILURES.`);
 process.exit(failures === 0 ? 0 : 1);

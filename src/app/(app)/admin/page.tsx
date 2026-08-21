@@ -38,7 +38,7 @@ export default async function AdminPage() {
         title="Organizations"
         subtitle="Companies on this platform — create workspaces and their first admin"
       />
-      <OrgsManager orgs={rows} />
+      <OrgsManager orgs={rows} ownOrgId={profile.org_id} />
     </>
   );
 }

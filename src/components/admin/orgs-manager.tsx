@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, THead, TBody, Tr, Th, Td } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
-import { createOrganization, setOrganizationActive } from "@/lib/actions/orgs";
+import { createOrganization, setOrganizationActive, deleteOrganization } from "@/lib/actions/orgs";
 import { formatDate } from "@/lib/utils";
 import type { Organization } from "@/lib/types";
 
@@ -22,13 +22,15 @@ export type OrgRow = Organization & { members: number };
  * form-draft — the temp password is a credential and credentials are never
  * cached by convention).
  */
-export function OrgsManager({ orgs }: { orgs: OrgRow[] }) {
+export function OrgsManager({ orgs, ownOrgId }: { orgs: OrgRow[]; ownOrgId: string }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [confirm, setConfirm] = React.useState<OrgRow | null>(null);
   const [confirmPending, setConfirmPending] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState<OrgRow | null>(null);
+  const [deletePending, setDeletePending] = React.useState(false);
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -64,6 +66,19 @@ export function OrgsManager({ orgs }: { orgs: OrgRow[] }) {
     }
   }
 
+  async function onDelete() {
+    if (!confirmDelete) return;
+    setDeletePending(true);
+    const r = await deleteOrganization(confirmDelete.id);
+    setDeletePending(false);
+    setConfirmDelete(null);
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success(`${confirmDelete.name} deleted.`);
+      React.startTransition(() => router.refresh());
+    }
+  }
+
   return (
     <div className="max-w-4xl space-y-4">
       <div className="flex justify-end">
@@ -95,9 +110,18 @@ export function OrgsManager({ orgs }: { orgs: OrgRow[] }) {
                 <Badge tone={o.active ? "green" : "red"}>{o.active ? "Active" : "Disabled"}</Badge>
               </Td>
               <Td className="text-right">
-                <Button variant="secondary" size="sm" onClick={() => setConfirm(o)}>
-                  {o.active ? "Disable" : "Enable"}
-                </Button>
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setConfirm(o)}>
+                    {o.active ? "Disable" : "Enable"}
+                  </Button>
+                  {/* Your own workspace can't be deleted from inside it — the
+                      action refuses too; this just doesn't offer the footgun. */}
+                  {o.id !== ownOrgId && (
+                    <Button variant="danger" size="sm" onClick={() => setConfirmDelete(o)}>
+                      Delete
+                    </Button>
+                  )}
+                </div>
               </Td>
             </Tr>
           ))}
@@ -148,6 +172,26 @@ export function OrgsManager({ orgs }: { orgs: OrgRow[] }) {
               {confirm.active
                 ? "Every member is signed out on their next request and cannot log in until re-enabled. Their data is kept."
                 : "Its members will be able to log in again."}
+            </>
+          ) : undefined
+        }
+      />
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={onDelete}
+        pending={deletePending}
+        title="Delete organization"
+        confirmLabel="Delete everything"
+        description={
+          confirmDelete ? (
+            <>
+              Permanently delete{" "}
+              <span className="font-medium text-foreground">{confirmDelete.name}</span> — all{" "}
+              {confirmDelete.members} member account{confirmDelete.members === 1 ? "" : "s"}, every
+              patient, case, payment, document and uploaded file? There is no undo and no export;
+              if they might come back, use Disable instead.
             </>
           ) : undefined
         }

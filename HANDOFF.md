@@ -61,31 +61,41 @@ medical-tourism vertical kept, **owner-created orgs** (no public signup; super-a
 `parsaa.mansourii@gmail.com`), no billing yet, branding = PDFs + app accent, platform surfaces
 stay "TurkCure" for now.
 
-**Where it stands — code COMPLETE and green, database migration PENDING:**
-- `npm run build` green; `npm test` green (**15 tests** — editorDoc 9, theme 4, color 3).
-- The PDF theming refactor is **pixel-proven**: `renderBaseline.test.tsx` +
-  `scripts/pdf-compare.mjs` rasterize before/after — only the 2 intended string changes differ
-  (confirmation prints the full company name; cover footer prints the website field).
-- ⚠️ **Migrations `0023`–`0025` are WRITTEN but NOT APPLIED.** `npx supabase db push --linked`
-  was blocked by the assistant's permission classifier (third time this has happened — 0019,
-  0020 previously). Remote history confirmed in sync at 0022. **Parsa must run:**
-  1. `npx supabase db push --linked` (applies 0023 → 0024 → 0025)
-  2. `node scripts/backfill-org-claims.mjs` (stamps `app_metadata.org_id` on existing users)
-  3. `node scripts/migrate-storage-org-prefix.mjs` (moves objects under org prefixes, rewrites
-     DB paths + embedded markdown URLs)
-  4. `node scripts/org-isolation-audit.mjs` (two-org isolation proof; creates a disposable
-     disabled "Audit Clinic" org — exit 0 = all checks pass)
-  **Until step 1 runs, the deployed/local app is BROKEN on the new code** (profiles have no
-  org_id → layout signs everyone out). The OLD deployed build keeps working after 0023/0024
-  (degraded finance until the new code deploys) — the safe order is migrate, then deploy.
-- ⚠️ **`parsaa.mansourii@gmail.com` may not exist in auth.users yet** (the existing admin is
-  `parsaxavier@gmail.com`). 0023's is_super seed is a no-op then — verify
-  `select count(*) from profiles where is_super` = 1; if 0, create/invite that account and
-  re-run the one `update` from 0023 §11 (or point it at the real login email).
-- ⚠️ **NOT yet browser-verified** (blocked on the migrations): org creation via /admin, the
-  Organization settings tab round-trip, org-branded PDFs with a logo, the accent <style> in
-  dark mode, drafts on the new branding form. The isolation audit script covers the RLS/storage
-  layer API-side; the UI pass is the first thing to do after migration.
+**Where it stands (end of 2026-08-21): SHIPPED — migrations applied, rollout scripts run,
+isolation + browser verified, pushed.**
+- Migrations **`0023`–`0026` all applied** (Parsa ran `npx supabase db push --linked` twice —
+  the assistant's permission classifier blocks that command, same as 0019/0020 sessions; it
+  also blocked reading the CLI's vault token, so there is no API workaround — plan on Parsa
+  running every future push). Claims backfill + storage org-prefix migration run and verified.
+- **`0026` exists because 0023 shipped a real bug**: a RAISE in the auth.users trigger turned
+  EVERY user creation into an opaque GoTrue 500 (caught by the isolation audit before any
+  human hit it). Rule captured in CLAUDE.md: never RAISE from auth.users triggers; profile
+  provisioning is now insert-if-org + an AFTER UPDATE metadata trigger.
+- `npm run build` + `npm test` green (**15 tests**). PDF refactor pixel-proven
+  (renderBaseline + scripts/pdf-compare.mjs: only the 2 intended string changes differ).
+- **`scripts/org-isolation-audit.mjs` passed 18/18** (real-JWT isolation across 8 tables,
+  seeded defaults, org-scoped profiles/status-counts, quote_items cost column-denial, storage
+  prefix fencing both directions, per-org finance RPCs). Leaves its disposable org disabled.
+- **Browser-verified on live data**: TurkCure shell brand + Platform nav; /admin table
+  (including two Test Company orgs Parsa created himself — creation + slug `-2` collision
+  handling proven in real use); a second org's accent (`--primary` → its #0f766e) and
+  org-named intro splash; case PDF pixel-faithful (navy/gold cover, org tagline/footer, 4
+  pages, real patient); **deleteOrganization click-through fully purged the audit org**
+  (member logins, 41 rows, storage; 3 orgs × 21 countries = 63 after).
+- **Super-admins:** `parsaxavier@gmail.com` (set 2026-08-21 by request).
+  ⚠️ `parsaa.mansourii@gmail.com` (the login Parsa originally picked) has NO auth user — the
+  0023 seed was a no-op; when that account exists, flag it
+  (`update profiles set is_super = true where id in (select id from auth.users where
+  lower(email) = 'parsaa.mansourii@gmail.com')`).
+- **deleteOrganization** added on Parsa's mid-session ask: super-only, own-org refused,
+  dependency-ordered purge (auth users → patients graph → directories → org row → storage),
+  danger button + explicit confirm in /admin. Org FKs stay NO ACTION on purpose.
+- ⚠️ Still unverified: a real org LOGO end-to-end (no org has uploaded one yet — the text
+  mark path is proven), the Organization tab save round-trip in a browser, dark-mode org
+  accent, Vercel prod behavior (`NEXT_PUBLIC_SITE_URL`, cron with org stamping). Also: two
+  leftover "Test Company" orgs from Parsa's manual testing — delete via /admin when done.
+- ⚠️ Dev gotcha (cost an hour): `unstable_cache` persists in `.next/cache` across restarts —
+  after migrating, a stale pre-org profile row signed everyone out until `.next` was cleared.
 
 What shipped (headlines — details in CLAUDE.md):
 - **Tenancy core**: `organizations` (+ branding columns), org_id everywhere with backfill,
@@ -442,11 +452,12 @@ Turkish characters.
   tooling (all idempotent; the last pairs with `src/lib/pdf/renderBaseline.test.tsx`).
 
 ## Roadmap / next steps
-**← next: apply `0023`–`0025` + run the three rollout scripts (see Current status), then a
-browser pass over /admin, the Organization tab, and an org-branded PDF.** After that, the
-multi-tenant roadmap (deferred by agreement): billing (Stripe), branded auth emails (custom
-SMTP), audit log / created_by columns, per-org locale defaults, platform rename, self-serve
-signup if ever wanted. Older deferred items from the UX sweep:
+**← next: whatever live use of the multi-tenant platform surfaces.** Worth doing soon: verify
+an uploaded org logo end-to-end (settings → sidebar → PDF cover/header), spot-check dark-mode
+org accent, delete the two leftover Test Company orgs, and confirm the Vercel deploy is clean.
+Then the multi-tenant roadmap (deferred by agreement): billing (Stripe), branded auth emails
+(custom SMTP), audit log / created_by columns, per-org locale defaults, platform rename,
+self-serve signup if ever wanted. Older deferred items from the UX sweep:
 1. Timestamped patient notes — append-only `patient_notes` table (migration, hand-applied)
    replacing the single overwritable textarea; keep the old column as a legacy note.
 2. Finance per-case table sorting (client-side; data is already loaded).

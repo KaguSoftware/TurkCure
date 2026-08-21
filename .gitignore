@@ -54,3 +54,6 @@ next-env.d.ts
 
 # PDF layout-regression renders (renderBaseline.test.tsx + scripts/pdf-compare.mjs)
 /.pdf-baseline
+
+# multi-tenant browser-verification output (screenshots of live data)
+/.mt-verify
