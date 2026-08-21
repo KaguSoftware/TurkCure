@@ -43,7 +43,9 @@ export default async function PatientsPage({
   const status = PATIENT_STATUSES.includes(params.status as PatientStatus)
     ? (params.status as PatientStatus)
     : null;
-  const page = Math.max(1, Number(params.page) || 1);
+  // Clamp both ends and floor: `?page=2.5` or `?page=999999` used to flow
+  // straight into .range() (empty grid, no way back).
+  const page = Math.min(10_000, Math.max(1, Math.floor(Number(params.page) || 1)));
   const sort: PatientSortKey = params.sort && params.sort in SORT_COLUMNS
     ? (params.sort as PatientSortKey)
     : "created";

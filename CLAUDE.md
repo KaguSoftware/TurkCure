@@ -947,6 +947,76 @@ footer prints the website field's casing).
   profile row (no org_id) made the layout sign everyone out until `.next` was
   cleared. If post-migration behavior looks impossible, clear `.next` first.
 
+## Recent work — 2026-08-21 bulletproofing pass (audit + fixes)
+
+Three parallel audits (tenancy/security, data correctness, resilience) swept the
+whole app. **Tenancy came back clean** — every service-role call site org-fenced,
+RLS/with-check complete, storage pinned, no cross-org leak. The fixes landed on
+money correctness, silent failures and cache invalidation:
+
+- **Currency-change guard hole closed** (`cases.ts`): the block counted
+  `.neq(currency, new)` which *excluded* payments already in the new currency
+  with `fx_rate ≠ 1` — exactly the rows the change corrupts. Now
+  `.or(currency.neq…, fx_rate.neq.1)`, with the currency whitelisted first
+  (it's spliced into a PostgREST filter).
+- **Finance RPC errors no longer memoized as €0**: `data/finance.ts` throws
+  inside the cached fn (fx.ts stance) instead of caching `[]` for 5 minutes.
+- **`regenerateCaseReminders` can't silently wipe a schedule**: delete/insert
+  errors propagate, and `upsertCase` now re-reads the schedule from the written
+  row (like `syncCaseReminders`) instead of trusting client `values`.
+- **`importPatients` dedupe injection fixed**: two `.in()` queries (supabase-js
+  quotes arrays) replace the hand-concatenated `.or("email.in.(…)")`; errors
+  checked so a failed dedupe can't insert duplicates while reporting skipped: 0.
+- **Payment↔patient/case linkage enforced**: the case read fences on
+  `patient_id`, the write uses the validated caseId (update adds
+  `.eq("case_id")`), and `deletePayment` verifies ownership via a
+  `cases!inner` join first.
+- **Zero-row-guard sweep**: every update/delete that could silently no-op now
+  does `.select("id")` + empty-is-error (cases update, instructions,
+  additional costs, reminders toggle, patients update/delete/status, payments
+  delete, directory delete, case-document finalize/reset — reset on a
+  finalized doc used to toast success over an untouched row). Editor
+  finalize also aborts when the preceding save failed.
+- **Cache-invalidation misses**: patient update/bulk → `finance:<org>` +
+  `/dashboard`; directory writes → `finance:<org>` (denormalized names);
+  `deleteOrganization` → `directories:<id>` + `finance:<id>` + avatar sweep;
+  accent theme → layout revalidate; `revalidateCase` → `/finance`.
+- **Cron sweep**: returns `{inserted, scanned, truncated, errors}` (route 500s
+  on failure instead of `{ok:true}` always), explicit oldest-first
+  `.limit(1000)` with a THE-LINE warning, marker-lookup errors abort (a failed
+  chunk used to cause duplicate reminders), timing-safe CRON_SECRET compare.
+  **`0027_unique_payment_marker.sql`** (⚠️ apply by hand) makes the
+  `payment:<id>` marker index UNIQUE (dedupes existing rows first).
+- **PDF routes**: all four now enforce `org.active` (route handlers bypass the
+  layout's suspension redirect); `withSafeLogo()` in common.tsx pre-fetches the
+  logo with a 3s timeout and degrades to the text mark — a dead `logo_url`
+  used to 500 every PDF in the org; `signImages` and the instruction route
+  fail loudly on signing errors instead of rendering imageless documents.
+- **Uploads**: receipt + instruction images get the 25 MB cap and MIME checks
+  (`accept=` is a hint, not validation); files-tab deletes the row before the
+  object (old order left rows pointing at deleted objects — same fix in
+  instruction image remove) and sweeps the object when the row insert fails.
+- **Money-tab races**: reorders compute inside `optimistic(prev)` (two fast
+  clicks compose instead of the second clobbering the first) and payments
+  mutations ride the same `serialize` queue as the other two lists.
+  **`0028_atomic_reorder.sql`** (⚠️ apply by hand) adds atomic reorder RPCs
+  (quote_items can't upsert — NOT NULL description); the actions fall back to
+  the old per-row batch until it's applied (code 42883/PGRST202 detection).
+- **One rounding source**: `round2`/`round8`/`toCaseAmount` exported from
+  `lib/fx.ts`; upsertPayment, payment-dialog and payments-section all import
+  it (three drifting copies before). Amount capped at numeric(12,2)'s range
+  with a friendly error. `upsertReminder` now whitelists fields + type (no
+  more raw pass-through of `done_at`/anything). `monthLabel` formats from the
+  string (the Date round-trip showed "Jul" for "2026-08" west of UTC);
+  `?page=` clamped/floored.
+- **Tests**: vitest now 22 (+ fx rounding contract incl. the DB-tolerance
+  property, `pdfFilenameHeaders` non-ASCII regression, `monthLabel`).
+
+Verified: `npm run build` green, `npm test` 22/22, and
+`scripts/org-isolation-audit.mjs` fully passing against live data. Migrations
+0027/0028 are **written, not applied** — the app degrades gracefully until
+`npx supabase db push --linked` runs.
+
 ---
 
 _Keep this file current: when you make a materially new decision or change the

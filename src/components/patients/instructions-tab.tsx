@@ -157,19 +157,34 @@ function InstructionCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(images)]);
 
-  async function setImagePaths(paths: string[]) {
+  async function setImagePaths(paths: string[]): Promise<boolean> {
     const supabase = createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("case_instructions")
       .update({ image_paths: paths })
-      .eq("id", instruction.id);
-    if (error) toast.error(error.message);
-    else React.startTransition(() => router.refresh());
+      .eq("id", instruction.id)
+      .select("id");
+    if (error || !data?.length) {
+      toast.error(error?.message ?? "Instruction not found.");
+      return false;
+    }
+    React.startTransition(() => router.refresh());
+    return true;
   }
 
   async function onAddImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    // Reset so re-picking the same file fires change again.
+    e.target.value = "";
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only images can be added to an instruction.");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error(`${file.name} is over the 25 MB limit.`);
+      return;
+    }
     setUploading(true);
     const supabase = createClient();
     const orgId = await getOrgId();
@@ -181,26 +196,26 @@ function InstructionCard({
     // Org prefix first: storage RLS (0025) scopes access to folder 1.
     const path = `${orgId}/instructions/${instruction.id}/${Date.now()}-${file.name}`;
     const { error } = await supabase.storage.from("patient-files").upload(path, file);
-    setUploading(false);
     if (error) {
+      setUploading(false);
       toast.error(error.message);
       return;
     }
-    toast.success("Image added.");
-    await setImagePaths([...images, path]);
+    // Success only once the row references the object — and if that write
+    // fails, remove the object so it isn't orphaned.
+    const ok = await setImagePaths([...images, path]);
+    if (ok) toast.success("Image added.");
+    else await supabase.storage.from("patient-files").remove([path]);
+    setUploading(false);
   }
 
   async function onRemoveImage(path: string) {
     setImageRemoving(true);
     const supabase = createClient();
-    const { error } = await supabase.storage.from("patient-files").remove([path]);
-    if (error) {
-      setImageRemoving(false);
-      setConfirmRemoveImage(null);
-      toast.error(`Couldn't remove image: ${error.message}`);
-      return;
-    }
-    await setImagePaths(images.filter((p) => p !== path));
+    // Row first, object second — the old order could leave the instruction
+    // referencing a deleted object (a permanently broken image).
+    const ok = await setImagePaths(images.filter((p) => p !== path));
+    if (ok) await supabase.storage.from("patient-files").remove([path]);
     setImageRemoving(false);
     setConfirmRemoveImage(null);
   }

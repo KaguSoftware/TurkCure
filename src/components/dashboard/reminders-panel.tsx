@@ -253,18 +253,23 @@ export function RemindersPanel({
       ]);
     }
     setDoneOverrides((prev) => ({ ...prev, [r.id]: marking ? new Date().toISOString() : null }));
-    toggleReminderDone(r.id, marking).then((result) => {
-      if (result.error) {
-        cancelTimers(r.id);
-        setInSet(setCompleting, r.id, false);
-        setDoneOverrides((prev) => {
-          const next = { ...prev };
-          delete next[r.id];
-          return next;
-        });
-        toast.error(`Couldn't update: ${result.error}`);
-      }
-    });
+    // .catch too: a thrown action (e.g. an expired session) must roll back the
+    // strike-through the same way a returned error does.
+    const rollback = (message: string) => {
+      cancelTimers(r.id);
+      setInSet(setCompleting, r.id, false);
+      setDoneOverrides((prev) => {
+        const next = { ...prev };
+        delete next[r.id];
+        return next;
+      });
+      toast.error(`Couldn't update: ${message}`);
+    };
+    toggleReminderDone(r.id, marking)
+      .then((result) => {
+        if (result.error) rollback(result.error);
+      })
+      .catch(() => rollback("something went wrong."));
   }
 
   function onSnooze(r: Reminder, newDue: string, label: string) {
@@ -276,25 +281,32 @@ export function RemindersPanel({
         .map((x) => (x.id === r.id ? { ...x, due_at: newDue } : x))
         .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
     );
-    upsertReminder({ due_at: newDue }, r.id).then((result) => {
-      setInSet(setSnoozing, r.id, false);
-      if (result.error) {
-        setItems((prev) =>
-          prev
-            .map((x) => (x.id === r.id ? { ...x, due_at: prevDue } : x))
-            .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
-        );
-        toast.error(`Couldn't snooze: ${result.error}`);
-      } else {
-        toast.success(`Snoozed — ${label}.`);
-      }
-    });
+    const rollback = (message: string) => {
+      setItems((prev) =>
+        prev
+          .map((x) => (x.id === r.id ? { ...x, due_at: prevDue } : x))
+          .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+      );
+      toast.error(`Couldn't snooze: ${message}`);
+    };
+    upsertReminder({ due_at: newDue }, r.id)
+      .then((result) => {
+        setInSet(setSnoozing, r.id, false);
+        if (result.error) rollback(result.error);
+        else toast.success(`Snoozed — ${label}.`);
+      })
+      .catch(() => {
+        setInSet(setSnoozing, r.id, false);
+        rollback("something went wrong.");
+      });
   }
 
   function onReopen(r: Reminder) {
     if (reopening.has(r.id)) return;
     setInSet(setReopening, r.id, true);
-    toggleReminderDone(r.id, false).then((result) => {
+    toggleReminderDone(r.id, false)
+      .catch(() => ({ error: "something went wrong." }))
+      .then((result) => {
       setInSet(setReopening, r.id, false);
       if (result.error) {
         toast.error(`Couldn't reopen: ${result.error}`);
@@ -323,7 +335,9 @@ export function RemindersPanel({
     removedIds.current.add(r.id);
     setInSet(setExiting, r.id, true);
     timers.current.set(r.id, [setTimeout(() => removeRow(r.id), EXIT_MS)]);
-    deleteReminder(r.id).then((result) => {
+    deleteReminder(r.id)
+      .catch(() => ({ error: "something went wrong." }))
+      .then((result) => {
       setDeletePending(false);
       setConfirmDelete(null);
       if (result.error) {

@@ -200,7 +200,10 @@ export function DocumentEditorPage({
   async function onFinalize() {
     setConfirmFinalize(false);
     setBusy("finalize");
-    await persist();
+    // A failed save must stop the lock — finalizing anyway would freeze the
+    // document without the latest edits.
+    const saved = await persist();
+    if (!saved) return setBusy(null);
     const r = await finalizeCaseDocument(patientId, caseId);
     setBusy(null);
     if (r.error) return toast.error(r.error);

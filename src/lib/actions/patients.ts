@@ -8,16 +8,21 @@ export async function upsertPatient(
   values: Record<string, unknown>,
   id?: string
 ): Promise<{ error?: string; id?: string }> {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
   if (id) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("patients")
       .update({ ...values, updated_at: new Date().toISOString() })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id");
     if (error) return { error: error.message };
+    if (!data?.length) return { error: "Patient not found." };
     revalidatePath("/patients");
     revalidatePath(`/patients/${id}`);
+    revalidatePath("/dashboard");
+    // patient_name/source/country are denormalized into the finance rows.
+    revalidateTag(`finance:${profile.org_id}`, "max");
     return { id };
   }
   const { data, error } = await supabase.from("patients").insert(values).select("id").single();
@@ -62,8 +67,9 @@ export async function findDuplicatePatients(
 export async function deletePatient(id: string): Promise<{ error?: string }> {
   const profile = await requireAdmin();
   const supabase = await createClient();
-  const { error } = await supabase.from("patients").delete().eq("id", id);
+  const { data, error } = await supabase.from("patients").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Patient not found." };
   revalidatePath("/patients");
   revalidateTag(`finance:${profile.org_id}`, "max"); // cascades to cases → finance rows
   return {};
@@ -75,13 +81,16 @@ export async function setPatientStatus(
 ): Promise<{ error?: string }> {
   await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("patients")
     .update({ status, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Patient not found." };
   revalidatePath("/patients");
   revalidatePath(`/patients/${id}`);
+  revalidatePath("/dashboard");
   return {};
 }
 
@@ -107,7 +116,7 @@ export async function bulkUpdatePatients(
   ids: string[],
   values: { status?: PatientStatus; assigned_agent_id?: string }
 ): Promise<{ error?: string; updated?: number }> {
-  await requireProfile();
+  const profile = await requireProfile();
   if (ids.length === 0) return { error: "No patients selected" };
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -117,6 +126,8 @@ export async function bulkUpdatePatients(
     .select("id");
   if (error) return { error: error.message };
   revalidatePath("/patients");
+  revalidatePath("/dashboard");
+  revalidateTag(`finance:${profile.org_id}`, "max"); // status/agent are finance-visible
   return { updated: data?.length ?? 0 };
 }
 
@@ -192,20 +203,25 @@ export async function importPatients(
   // Dedupe against existing patients by email or phone
   const emails = cleaned.map((r) => r.email?.trim().toLowerCase()).filter(Boolean) as string[];
   const phones = cleaned.map((r) => r.phone?.trim()).filter(Boolean) as string[];
-  const { data: existing } = await supabase
-    .from("patients")
-    .select("email, phone")
-    .or(
-      [
-        emails.length ? `email.in.(${emails.join(",")})` : null,
-        phones.length ? `phone.in.(${phones.join(",")})` : null,
-      ]
-        .filter(Boolean)
-        .join(",")
-    );
+  // Two .in() queries rather than a hand-built .or() filter string: supabase-js
+  // quotes array arguments, so a comma or paren in a CSV value can't rewrite the
+  // filter. Errors are checked — a failed dedupe query silently disabling
+  // dedupe would insert duplicates while reporting skipped: 0.
+  const [byEmail, byPhone] = await Promise.all([
+    emails.length
+      ? supabase.from("patients").select("email").in("email", emails)
+      : Promise.resolve({ data: [], error: null }),
+    phones.length
+      ? supabase.from("patients").select("phone").in("phone", phones)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (byEmail.error) return { error: byEmail.error.message };
+  if (byPhone.error) return { error: byPhone.error.message };
 
-  const existingEmails = new Set((existing ?? []).map((p) => p.email?.toLowerCase()).filter(Boolean));
-  const existingPhones = new Set((existing ?? []).map((p) => p.phone).filter(Boolean));
+  const existingEmails = new Set(
+    (byEmail.data ?? []).map((p) => p.email?.toLowerCase()).filter(Boolean)
+  );
+  const existingPhones = new Set((byPhone.data ?? []).map((p) => p.phone).filter(Boolean));
 
   const toInsert = cleaned.filter((r) => {
     const email = r.email?.trim().toLowerCase();

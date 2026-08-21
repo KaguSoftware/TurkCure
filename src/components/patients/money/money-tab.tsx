@@ -43,6 +43,7 @@ export function MoneyTab({
   const quote = useOptimisticList<QuoteItem>(serverQuoteItems);
   const extras = useOptimisticList<CaseAdditionalCost>(serverAdditionalCosts);
   const paymentsList = useOptimisticList<Payment>(serverPayments);
+  type PaymentsMutate = typeof paymentsList.mutate;
 
   // Inline cells make rapid sequential commits likely, and the optimistic
   // hook's snapshot rollback assumes mutations don't overlap — serialize them.
@@ -135,14 +136,20 @@ export function MoneyTab({
   }
 
   function onQuoteMove(index: number, delta: -1 | 1) {
-    const next = [...quote.items];
-    const [row] = next.splice(index, 1);
-    next.splice(index + delta, 0, row);
-    const reordered = next.map((i, sort_order) => ({ ...i, sort_order }));
+    // Compute inside optimistic(prev), not at click time: two fast clicks are
+    // queued, and the second must reorder the list the first one produced.
+    let ids: string[] = [];
     serialize(() =>
       quote.mutate({
-        optimistic: () => reordered,
-        action: () => reorderQuoteItems(patientId, caseId, reordered.map((i) => i.id)),
+        optimistic: (prev) => {
+          const next = [...prev];
+          const [row] = next.splice(index, 1);
+          next.splice(index + delta, 0, row);
+          const reordered = next.map((i, sort_order) => ({ ...i, sort_order }));
+          ids = reordered.map((i) => i.id);
+          return reordered;
+        },
+        action: () => reorderQuoteItems(patientId, caseId, ids),
       })
     );
   }
@@ -202,14 +209,19 @@ export function MoneyTab({
   }
 
   function onExtraMove(index: number, delta: -1 | 1) {
-    const next = [...extras.items];
-    const [row] = next.splice(index, 1);
-    next.splice(index + delta, 0, row);
-    const reordered = next.map((i, sort_order) => ({ ...i, sort_order }));
+    // Same queued-recompute shape as onQuoteMove.
+    let ids: string[] = [];
     serialize(() =>
       extras.mutate({
-        optimistic: () => reordered,
-        action: () => reorderAdditionalCosts(patientId, caseId, reordered.map((i) => i.id)),
+        optimistic: (prev) => {
+          const next = [...prev];
+          const [row] = next.splice(index, 1);
+          next.splice(index + delta, 0, row);
+          const reordered = next.map((i, sort_order) => ({ ...i, sort_order }));
+          ids = reordered.map((i) => i.id);
+          return reordered;
+        },
+        action: () => reorderAdditionalCosts(patientId, caseId, ids),
       })
     );
   }
@@ -248,7 +260,10 @@ export function MoneyTab({
         patient={patient}
         activeCase={activeCase}
         payments={paymentsList.items}
-        mutate={paymentsList.mutate}
+        // Through the same queue as the other two lists — the snapshot rollback
+        // the comment above describes assumes NO mutations overlap, payments
+        // included (their refresh can race a quote edit's rollback otherwise).
+        mutate={((opts) => serialize(() => paymentsList.mutate(opts))) as PaymentsMutate}
         pending={paymentsList.pending}
         isAdmin={isAdmin}
         directories={directories}

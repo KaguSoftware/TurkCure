@@ -54,7 +54,10 @@ const cachedFinanceRows = (orgId: string) =>
   unstable_cache(
     async (): Promise<FinanceRow[]> => {
       const admin = createAdminClient();
-      const { data } = await admin.rpc("finance_case_rows", { p_org: orgId });
+      const { data, error } = await admin.rpc("finance_case_rows", { p_org: orgId });
+      // Throw INSIDE the cached fn (same stance as data/fx.ts): a transient
+      // failure must error the page, never be memoized as "€0 revenue" for 5 min.
+      if (error) throw new Error(`finance_case_rows failed: ${error.message}`);
       return (data ?? []) as FinanceRow[];
     },
     ["finance-case-rows", orgId],
@@ -67,14 +70,14 @@ export const getFinanceRows = cache(async (orgId: string) => cachedFinanceRows(o
  * Flat per-payment feed (finance_payment_rows): the client derives the
  * cash-basis chart, period totals, receivables aging and payables grouping from
  * this one list. Same per-org caching story as the case rows — one tag keeps
- * both feeds in lockstep. Tolerates a not-yet-applied migration by
- * returning [].
+ * both feeds in lockstep.
  */
 const cachedFinancePayments = (orgId: string) =>
   unstable_cache(
     async (): Promise<FinancePaymentRow[]> => {
       const admin = createAdminClient();
-      const { data } = await admin.rpc("finance_payment_rows", { p_org: orgId });
+      const { data, error } = await admin.rpc("finance_payment_rows", { p_org: orgId });
+      if (error) throw new Error(`finance_payment_rows failed: ${error.message}`);
       return (data ?? []) as FinancePaymentRow[];
     },
     ["finance-payment-rows", orgId],

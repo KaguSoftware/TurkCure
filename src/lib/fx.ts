@@ -12,6 +12,17 @@ import type { Currency } from "@/lib/utils";
  */
 export const FX_RATES_AS_OF = "2026-07-09";
 
+/**
+ * THE rounding rule (0016), stated once: amount → 2dp, rate → 8dp, then the
+ * product → 2dp. upsertPayment and every optimistic client row must agree, or
+ * they drift by a cent — hence one shared source instead of local copies.
+ */
+export const round2 = (n: number) => Math.round(n * 100) / 100;
+export const round8 = (n: number) => Math.round(n * 1e8) / 1e8;
+/** amount × rate expressed in the case currency, rounded per the 0016 rule. */
+export const toCaseAmount = (amount: number, fxRate: number) =>
+  round2(round2(amount) * round8(fxRate));
+
 export const FALLBACK_RATES_TO_USD: Record<Currency, number> = {
   USD: 1,
   EUR: 1.08,

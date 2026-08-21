@@ -146,8 +146,21 @@ export async function deleteOrganization(id: string): Promise<{ error?: string }
       // best-effort by design
     }
   }
+  // Avatars are keyed by user id, not org — sweep each ex-member's folder so the
+  // public bucket doesn't keep serving their photos after the workspace is gone.
+  for (const m of members ?? []) {
+    try {
+      const paths = await listBucketPrefix("avatars", m.id);
+      if (paths.length) await admin.storage.from("avatars").remove(paths);
+    } catch {
+      // best-effort by design
+    }
+  }
 
   revalidateTag(`org:${id}`, "max");
+  // The per-org caches outlive the rows without this (directories has a 1h TTL).
+  revalidateTag(`directories:${id}`, "max");
+  revalidateTag(`finance:${id}`, "max");
   revalidatePath("/admin");
   return {};
 }

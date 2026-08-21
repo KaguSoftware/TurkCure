@@ -97,7 +97,12 @@ export function FilesTab({
           })
           .select("*")
           .single();
-        if (dbErr) return { error: dbErr.message };
+        if (dbErr) {
+          // No row means no way to ever reach the object — sweep it up so a
+          // failed save doesn't orphan storage (same as the receipt flow).
+          await supabase.storage.from("patient-files").remove([path]);
+          return { error: dbErr.message };
+        }
         return { row: data as PatientFile };
       },
       success: `${file.name} uploaded.`,
@@ -162,9 +167,18 @@ export function FilesTab({
       optimistic: (prev) => prev.filter((x) => x.id !== f.id),
       action: async () => {
         const supabase = createClient();
+        // Row first, object second: if the object delete fails we're left with
+        // an orphaned blob (harmless); the old order left a row pointing at a
+        // deleted object — a permanently broken download link.
+        const { data, error } = await supabase
+          .from("patient_files")
+          .delete()
+          .eq("id", f.id)
+          .select("id");
+        if (error) return { error: error.message };
+        if (!data?.length) return { error: "File not found." };
         await supabase.storage.from("patient-files").remove([f.storage_path]);
-        const { error } = await supabase.from("patient_files").delete().eq("id", f.id);
-        return error ? { error: error.message } : {};
+        return {};
       },
       success: `${f.label} deleted.`,
     });

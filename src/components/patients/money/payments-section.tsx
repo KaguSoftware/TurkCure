@@ -17,9 +17,7 @@ import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
 import type { Directories } from "../patient-detail";
 import { PaymentDialog, type PaymentValues } from "./payment-dialog";
 
-/** Must match the server's rounding in upsertPayment, or the optimistic row and
- *  the saved row disagree by a cent. */
-const round2 = (n: number) => Math.round(n * 100) / 100;
+import { toCaseAmount } from "@/lib/fx";
 
 type Mutate = <R extends { error?: string } | void>(opts: {
   optimistic: (prev: Payment[]) => Payment[];
@@ -116,7 +114,7 @@ export function PaymentsSection({
       ...values,
       id: editingId ?? tempId(),
       status: values.paid_at ? "paid" : "pending",
-      amount_case: round2(values.amount * values.fx_rate),
+      amount_case: toCaseAmount(values.amount, values.fx_rate),
     } as Payment;
     return mutate({
       optimistic: (prev) =>

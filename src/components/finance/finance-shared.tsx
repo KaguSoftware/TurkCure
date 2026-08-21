@@ -141,12 +141,14 @@ export function deltaPct(current: number, previous: number): number | null {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-/** "2026-08" → "Aug 26" for chart axes. */
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-08" → "Aug 26" for chart axes. Formatted from the string directly —
+ *  `new Date("2026-08-01")` parses as UTC midnight, which toLocaleDateString
+ *  rendered a month back for viewers west of UTC. */
 export function monthLabel(month: string): string {
-  return new Date(month + "-01").toLocaleDateString("en-GB", {
-    month: "short",
-    year: "2-digit",
-  });
+  const [y, m] = month.split("-");
+  return `${MONTH_NAMES[Number(m) - 1] ?? month} ${y?.slice(2) ?? ""}`.trim();
 }
 
 // ---------------------------------------------------------------------------

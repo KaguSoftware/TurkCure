@@ -17,9 +17,7 @@ import { CURRENCIES, formatMoney } from "@/lib/utils";
 import type { Case, CounterpartyType, Patient, Payment } from "@/lib/types";
 import type { Directories } from "../patient-detail";
 
-/** Must match the server's rounding in upsertPayment, or the optimistic row and
- *  the saved row disagree by a cent. */
-const round2 = (n: number) => Math.round(n * 100) / 100;
+import { toCaseAmount } from "@/lib/fx";
 
 const PROVIDER_TYPES: { value: CounterpartyType; label: string }[] = [
   { value: "hospital", label: "Hospital" },
@@ -414,7 +412,7 @@ export function PaymentDialog({
             <p className="text-sm font-medium tabular-nums">
               {formatMoney(Number(amount) || 0, currency)}{" "}
               <span className="text-muted">→</span>{" "}
-              {formatMoney(round2((Number(amount) || 0) * rateNumber), caseCurrency)}
+              {formatMoney(toCaseAmount(Number(amount) || 0, rateNumber), caseCurrency)}
               <span className="ml-1.5 text-xs font-normal text-muted-light">
                 counts toward the case total
               </span>
@@ -474,7 +472,23 @@ export function PaymentDialog({
                 type="file"
                 accept="image/*,application/pdf"
                 className="hidden"
-                onChange={(e) => setStagedFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  // Re-picking the same file should fire change again.
+                  e.target.value = "";
+                  if (!f) return;
+                  // accept= is a picker hint, not validation — enforce type and
+                  // the app-wide 25 MB cap (same as the files tab) here.
+                  if (!f.type.startsWith("image/") && f.type !== "application/pdf") {
+                    toast.error("Receipts must be an image or a PDF.");
+                    return;
+                  }
+                  if (f.size > 25 * 1024 * 1024) {
+                    toast.error(`${f.name} is over the 25 MB limit.`);
+                    return;
+                  }
+                  setStagedFile(f);
+                }}
               />
             </label>
             {stagedFile && (

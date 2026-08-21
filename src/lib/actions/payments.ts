@@ -3,6 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 import { CURRENCIES } from "@/lib/utils";
+import { round2, round8, toCaseAmount } from "@/lib/fx";
 
 const DIRECTIONS = ["in", "out"] as const;
 const COUNTERPARTY_TYPES = ["patient", "doctor", "hospital", "hotel", "driver"] as const;
@@ -56,6 +57,10 @@ export async function upsertPayment(
   const amount = Number(values.amount);
   if (!Number.isFinite(amount) || amount <= 0)
     return { error: "Enter an amount greater than zero." };
+  // numeric(12,2) tops out at 10 digits before the point — reject early with a
+  // friendly message instead of surfacing a raw Postgres overflow.
+  if (amount > 9_999_999_999)
+    return { error: "That amount is too large." };
 
   const currency = String(values.currency ?? "");
   if (!CURRENCIES.includes(currency as (typeof CURRENCIES)[number]))
@@ -65,11 +70,15 @@ export async function upsertPayment(
   // CASE currency is frozen onto the row so history never re-rates. The case
   // currency is read here rather than trusted from the client — it is the
   // authority for "the rate must be 1".
+  // The patient fence matters: revalidation and the money tab are keyed by
+  // patientId, so a payment attached to another patient's case would both be
+  // wrong and invisibly cached.
   const caseId = String(values.case_id ?? "");
   const { data: caseRow } = await supabase
     .from("cases")
     .select("currency")
     .eq("id", caseId)
+    .eq("patient_id", patientId)
     .single();
   if (!caseRow) return { error: "Case not found." };
 
@@ -88,12 +97,11 @@ export async function upsertPayment(
       };
   }
 
-  // Stated once so the client's optimistic row and the DB check constraint agree:
-  // amount to 2dp, rate to 8dp, then the product to 2dp.
-  const round2 = (n: number) => Math.round(n * 100) / 100;
-  const fxRate = Math.round(rawRate * 1e8) / 1e8;
+  // The 0016 rounding rule lives in lib/fx.ts so the client's optimistic row,
+  // this write and the DB check constraint all agree.
+  const fxRate = round8(rawRate);
   const amount2 = round2(amount);
-  const amountCase = round2(amount2 * fxRate);
+  const amountCase = toCaseAmount(amount, rawRate);
 
   const paidAt = values.paid_at ? String(values.paid_at) : null;
   const dueDate = values.due_date ? String(values.due_date) : null;
@@ -101,7 +109,7 @@ export async function upsertPayment(
   const status = paidAt ? "paid" : "pending";
 
   const row = {
-    case_id: values.case_id,
+    case_id: caseId,
     direction,
     counterparty_type: counterpartyType,
     counterparty_id: counterpartyId,
@@ -118,8 +126,16 @@ export async function upsertPayment(
     notes: values.notes ? String(values.notes) : "",
   };
 
+  // On update the id must already belong to this case — otherwise an edit could
+  // re-point a payment at a case whose currency was never validated against it.
   const { data, error } = id
-    ? await supabase.from("payments").update(row).eq("id", id).select("*").single()
+    ? await supabase
+        .from("payments")
+        .update(row)
+        .eq("id", id)
+        .eq("case_id", caseId)
+        .select("*")
+        .single()
     : await supabase.from("payments").insert(row).select("*").single();
   if (error) return { error: error.message };
 
@@ -133,8 +149,21 @@ export async function upsertPayment(
 export async function deletePayment(patientId: string, id: string): Promise<{ error?: string }> {
   const profile = await requireAdmin();
   const supabase = await createClient();
-  const { error } = await supabase.from("payments").delete().eq("id", id);
+  // Fence the payment to this patient before deleting — the revalidated paths
+  // are keyed by patientId, so a mismatched id would delete real money while
+  // busting the wrong page.
+  const { data: owned } = await supabase
+    .from("payments")
+    .select("id, cases!inner(patient_id)")
+    .eq("id", id)
+    .eq("cases.patient_id", patientId)
+    .maybeSingle();
+  if (!owned) return { error: "Payment not found." };
+  // .select("id") surfaces a 0-row delete as an error rather than a silent
+  // success (same pattern as deleteQuoteItem).
+  const { data, error } = await supabase.from("payments").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Payment not found." };
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
   revalidatePath("/finance");

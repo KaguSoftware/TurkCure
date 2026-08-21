@@ -3,11 +3,13 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, createAdminClient, requireProfile, requireAdmin } from "@/lib/supabase/server";
 import { addDays, formatISO } from "date-fns";
+import { CURRENCIES } from "@/lib/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function revalidateCase(patientId: string, orgId: string) {
   revalidatePath(`/patients/${patientId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/finance");
   // Case/quote-item edits change revenue/cost; bust this org's cached finance
   // rows (the cache is keyed and tagged per org — see lib/data/finance.ts).
   revalidateTag(`finance:${orgId}`, "max");
@@ -50,20 +52,24 @@ async function regenerateCaseReminders(
   caseId: string,
   patientId: string,
   schedule: CaseSchedule
-): Promise<number> {
-  const { data: patient } = await supabase
+): Promise<{ count: number; error?: string }> {
+  const { data: patient, error: pErr } = await supabase
     .from("patients")
     .select("full_name, assigned_agent_id")
     .eq("id", patientId)
     .single();
-  if (!patient) return 0;
+  if (pErr || !patient) return { count: 0, error: pErr?.message ?? "Patient not found." };
 
-  await supabase
+  // The delete and insert below both have to succeed for the schedule to be
+  // intact — a failed insert after a successful delete would wipe it, so both
+  // errors are propagated instead of swallowed.
+  const { error: dErr } = await supabase
     .from("reminders")
     .delete()
     .eq("case_id", caseId)
     .is("done_at", null)
     .in("type", GENERATED_REMINDER_TYPES);
+  if (dErr) return { count: 0, error: dErr.message };
 
   const name = patient.full_name;
   const base = { case_id: caseId, patient_id: patientId, assigned_to: patient.assigned_agent_id };
@@ -92,8 +98,11 @@ async function regenerateCaseReminders(
       due_at: at(date as string, offset ?? 0),
     }));
 
-  if (reminders.length) await supabase.from("reminders").insert(reminders);
-  return reminders.length;
+  if (reminders.length) {
+    const { error: iErr } = await supabase.from("reminders").insert(reminders);
+    if (iErr) return { count: 0, error: `Reminders could not be rebuilt: ${iErr.message}` };
+  }
+  return { count: reminders.length };
 }
 
 export async function upsertCase(
@@ -110,17 +119,23 @@ export async function upsertCase(
     // and no DB constraint can catch it — a check can't reference another table.
     // Block it and make the operator clear the payments first.
     if (values.currency) {
+      // Whitelist before the value is spliced into a PostgREST .or() filter.
+      if (!CURRENCIES.includes(values.currency as (typeof CURRENCIES)[number]))
+        return { error: "Invalid currency." };
       const { data: existing } = await supabase
         .from("cases")
         .select("currency")
         .eq("id", id)
         .single();
       if (existing && existing.currency !== values.currency) {
+        // A payment breaks the change if its stored rate was computed against
+        // the old case currency — that's any off-currency row OR a row already
+        // in the new currency whose fx_rate ≠ 1 (converted TO the old one).
         const { count } = await supabase
           .from("payments")
           .select("id", { count: "exact", head: true })
           .eq("case_id", id)
-          .neq("currency", values.currency as string);
+          .or(`currency.neq.${values.currency},fx_rate.neq.1`);
         if (count && count > 0)
           return {
             error:
@@ -130,8 +145,13 @@ export async function upsertCase(
           };
       }
     }
-    const { error } = await supabase.from("cases").update(values).eq("id", id);
+    const { data, error } = await supabase
+      .from("cases")
+      .update(values)
+      .eq("id", id)
+      .select("id");
     if (error) return { error: error.message };
+    if (!data?.length) return { error: "Case not found." };
   } else {
     const { data, error } = await supabase
       .from("cases")
@@ -143,13 +163,25 @@ export async function upsertCase(
   }
 
   if (caseId) {
-    await regenerateCaseReminders(supabase, caseId, patientId, {
-      arrival_date: (values.arrival_date as string | null) ?? null,
-      surgery_date: (values.surgery_date as string | null) ?? null,
-      departure_date: (values.departure_date as string | null) ?? null,
-      hospital_checkin: (values.hospital_checkin as string | null) ?? null,
-      hospital_checkout: (values.hospital_checkout as string | null) ?? null,
-    });
+    // Schedule from the just-written row, not the client payload — a partial
+    // update that omitted the date columns must not wipe the reminders to zero.
+    const { data: caseRow } = await supabase
+      .from("cases")
+      .select(CASE_SCHEDULE_COLUMNS)
+      .eq("id", caseId)
+      .single();
+    if (caseRow) {
+      const { error } = await regenerateCaseReminders(
+        supabase,
+        caseId,
+        patientId,
+        caseRow as unknown as CaseSchedule
+      );
+      if (error) {
+        revalidateCase(patientId, profile.org_id);
+        return { id: caseId, error };
+      }
+    }
   }
 
   revalidateCase(patientId, profile.org_id);
@@ -198,12 +230,13 @@ export async function syncCaseReminders(
     .single();
   if (error) return { error: error.message };
 
-  const count = await regenerateCaseReminders(
+  const { count, error: rErr } = await regenerateCaseReminders(
     supabase,
     caseId,
     patientId,
     caseRow as unknown as CaseSchedule
   );
+  if (rErr) return { error: rErr };
 
   revalidateCase(patientId, profile.org_id);
   return { count };
@@ -299,20 +332,37 @@ export async function reorderQuoteItems(
   const profile = await requireProfile();
   if (orderedIds.length > 200) return { error: "Too many items to reorder." };
   const admin = createAdminClient();
-  const results = await Promise.all(
-    orderedIds.map((id, i) =>
-      admin
-        .from("quote_items")
-        .update({ sort_order: i })
-        .eq("id", id)
-        .eq("case_id", caseId)
-        .eq("org_id", profile.org_id)
-    )
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return { error: failed.error.message };
+  // One atomic statement (0028) — N independent updates could half-apply on a
+  // partial failure or interleave with a concurrent reorder. p_org is the fence.
+  const { error } = await admin.rpc("reorder_quote_items", {
+    p_org: profile.org_id,
+    p_case: caseId,
+    p_ids: orderedIds,
+  });
+  if (error) {
+    // Pre-0028 fallback: the old per-row batch, so a deploy ahead of the
+    // migration degrades to the previous behavior instead of breaking.
+    if (!isMissingFunction(error)) return { error: error.message };
+    const results = await Promise.all(
+      orderedIds.map((id, i) =>
+        admin
+          .from("quote_items")
+          .update({ sort_order: i })
+          .eq("id", id)
+          .eq("case_id", caseId)
+          .eq("org_id", profile.org_id)
+      )
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) return { error: failed.error.message };
+  }
   revalidateCase(patientId, profile.org_id);
   return {};
+}
+
+/** PostgREST's "no such function" shapes — the pre-migration fallback trigger. */
+function isMissingFunction(error: { code?: string; message: string }): boolean {
+  return error.code === "42883" || error.code === "PGRST202";
 }
 
 const QUOTE_COLUMNS_ADMIN = "id, case_id, kind, description, cost, price, sort_order";
@@ -450,8 +500,13 @@ export async function deleteAdditionalCost(
 ): Promise<{ error?: string }> {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase.from("case_additional_costs").delete().eq("id", id);
+  const { data, error } = await supabase
+    .from("case_additional_costs")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Cost not found." };
   revalidateCase(patientId, profile.org_id);
   return {};
 }
@@ -466,17 +521,26 @@ export async function reorderAdditionalCosts(
   const profile = await requireProfile();
   if (orderedIds.length > 200) return { error: "Too many items to reorder." };
   const supabase = await createClient();
-  const results = await Promise.all(
-    orderedIds.map((id, i) =>
-      supabase
-        .from("case_additional_costs")
-        .update({ sort_order: i })
-        .eq("id", id)
-        .eq("case_id", caseId)
-    )
-  );
-  const failed = results.find((r) => r.error);
-  if (failed?.error) return { error: failed.error.message };
+  // Atomic since 0028 (invoker RPC — RLS applies inside), with the old per-row
+  // batch as the pre-migration fallback.
+  const { error } = await supabase.rpc("reorder_additional_costs", {
+    p_case: caseId,
+    p_ids: orderedIds,
+  });
+  if (error) {
+    if (!isMissingFunction(error)) return { error: error.message };
+    const results = await Promise.all(
+      orderedIds.map((id, i) =>
+        supabase
+          .from("case_additional_costs")
+          .update({ sort_order: i })
+          .eq("id", id)
+          .eq("case_id", caseId)
+      )
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) return { error: failed.error.message };
+  }
   revalidateCase(patientId, profile.org_id);
   return {};
 }
@@ -542,8 +606,13 @@ export async function updateInstruction(
 ): Promise<{ error?: string }> {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase.from("case_instructions").update({ body_md }).eq("id", id);
+  const { data, error } = await supabase
+    .from("case_instructions")
+    .update({ body_md })
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Instruction not found." };
   revalidateCase(patientId, profile.org_id);
   return {};
 }
@@ -551,8 +620,13 @@ export async function updateInstruction(
 export async function removeInstruction(patientId: string, id: string): Promise<{ error?: string }> {
   const profile = await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase.from("case_instructions").delete().eq("id", id);
+  const { data, error } = await supabase
+    .from("case_instructions")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Instruction not found." };
   revalidateCase(patientId, profile.org_id);
   return {};
 }

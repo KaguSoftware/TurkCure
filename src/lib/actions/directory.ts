@@ -31,6 +31,8 @@ export async function upsertDirectoryRow(
   const { data, error } = await query;
   if (error) return { error: error.message };
   revalidateTag(`directories:${profile.org_id}`, "max");
+  // hospital/doctor names are denormalized into the cached finance rows.
+  revalidateTag(`finance:${profile.org_id}`, "max");
   revalidatePath(TABLES[table]);
   return { row: data as unknown as Record<string, unknown> };
 }
@@ -42,9 +44,11 @@ export async function deleteDirectoryRow(
   const profile = await requireAdmin();
   if (!(table in TABLES)) return { error: "Invalid table" };
   const supabase = await createClient();
-  const { error } = await supabase.from(table).delete().eq("id", id);
+  const { data, error } = await supabase.from(table).delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Row not found." };
   revalidateTag(`directories:${profile.org_id}`, "max");
+  revalidateTag(`finance:${profile.org_id}`, "max");
   revalidatePath(TABLES[table]);
   return {};
 }

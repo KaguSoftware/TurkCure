@@ -26,11 +26,14 @@ export interface CaseDocumentRow {
 export async function getCaseDocument(caseId: string): Promise<CaseDocumentRow | null> {
   await requireProfile();
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("case_documents")
     .select("id, case_id, content, source_data, status, finalized_at, updated_at")
     .eq("case_id", caseId)
     .maybeSingle();
+  // A failed read must not masquerade as "no document yet" — the editor would
+  // seed a fresh draft over an existing one.
+  if (error) throw new Error(error.message);
   return (data as CaseDocumentRow | null) ?? null;
 }
 
@@ -48,11 +51,14 @@ export async function upsertCaseDocument(
   await requireProfile();
   const supabase = await createClient();
 
-  const { data: existing } = await supabase
+  // Same stance as getCaseDocument: a failed existence read must not fall
+  // through to the insert branch and create a second row for this case.
+  const { data: existing, error: exErr } = await supabase
     .from("case_documents")
     .select("id, status")
     .eq("case_id", caseId)
     .maybeSingle();
+  if (exErr) return { error: exErr.message };
 
   if (existing) {
     // The DB trigger enforces this too; checking here turns a raised exception
@@ -85,11 +91,13 @@ export async function finalizeCaseDocument(
 ): Promise<{ error?: string }> {
   await requireAdmin();
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("case_documents")
     .update({ status: "finalized", finalized_at: new Date().toISOString() })
-    .eq("case_id", caseId);
+    .eq("case_id", caseId)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "There is no saved document to finalize yet." };
   revalidatePath(`/patients/${patientId}`);
   return {};
 }
@@ -105,12 +113,17 @@ export async function resetCaseDocument(
 ): Promise<{ error?: string }> {
   await requireProfile();
   const supabase = await createClient();
-  const { error } = await supabase
+  // The status filter means a finalized document matches 0 rows — without the
+  // .select() guard that read as success and the UI toasted "Document reset"
+  // over an untouched row.
+  const { data, error } = await supabase
     .from("case_documents")
     .update({ content })
     .eq("case_id", caseId)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "This document is finalized and cannot be reset." };
   revalidatePath(`/patients/${patientId}`);
   return {};
 }

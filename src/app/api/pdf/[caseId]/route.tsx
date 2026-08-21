@@ -3,7 +3,7 @@ import React from "react";
 import { Document, Page, Text } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
 import { getOrganization } from "@/lib/data/org";
-import { fmtDate, PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf } from "@/lib/pdf/common";
+import { fmtDate, PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf, withSafeLogo } from "@/lib/pdf/common";
 import { orgToPdfTheme, DEFAULT_PDF_THEME } from "@/lib/pdf/theme";
 import {
   loadCaseData,
@@ -28,10 +28,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cas
     loadCaseData(supabase, caseId),
     getOrganization(profile.org_id),
   ]);
+  // Route handlers bypass the app layout's suspension redirect — enforce the
+  // org lockout here too, or a disabled workspace keeps exporting PDFs.
+  if (org && !org.active) return new NextResponse("Unauthorized", { status: 401 });
   if (!loaded) return new NextResponse("Not found", { status: 404 });
   const { case: caseData, patient, imageUrls } = loaded;
 
-  const ctx = makePdfCtx(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME);
+  const ctx = makePdfCtx(await withSafeLogo(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME));
   const s = ctx.styles;
 
   const issued = fmtDate(new Date().toISOString());

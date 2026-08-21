@@ -88,6 +88,12 @@ export interface OrgBranding {
   pdf_cover_accent: string;
 }
 
+/** The text-mark fallback for a name — used directly for logo-less orgs and as
+ *  the degraded mark when a logo URL turns out to be unfetchable. */
+export function textMark(name: string): PdfMark {
+  return { kind: "text", text: name, splitAt: camelSplit(name) };
+}
+
 /** "MediCare" → 4 (two-tone split point); "Acme" / "ACME" / "med" → null. */
 function camelSplit(name: string): number | null {
   const m = /^([A-Z][a-z]+)[A-Z].*$/.exec(name.trim());
@@ -106,9 +112,7 @@ export function orgToPdfTheme(org: OrgBranding): PdfTheme {
       url: org.url,
       tagline: org.tagline,
     },
-    mark: org.logo_url
-      ? { kind: "logo", url: org.logo_url }
-      : { kind: "text", text: org.name, splitAt: camelSplit(org.name) },
+    mark: org.logo_url ? { kind: "logo", url: org.logo_url } : textMark(org.name),
   };
 
   if (isHex6(org.brand_primary) && org.brand_primary.toLowerCase() !== DEFAULT_BRAND_PRIMARY) {

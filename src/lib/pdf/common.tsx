@@ -2,7 +2,7 @@ import React from "react";
 import path from "node:path";
 import fs from "node:fs";
 import { COMPANY } from "./company";
-import { DEFAULT_PDF_THEME, type PdfTheme } from "./theme";
+import { DEFAULT_PDF_THEME, textMark, type PdfTheme } from "./theme";
 import {
   StyleSheet,
   Font,
@@ -306,6 +306,29 @@ export function usePdfTheme(): PdfCtx {
 
 export function makePdfCtx(theme: PdfTheme): PdfCtx {
   return { theme, styles: makePdfStyles(theme) };
+}
+
+/**
+ * Resolve a logo mark to inline bytes before rendering. react-pdf fetches
+ * image URLs itself with no timeout and no error path — a deleted or
+ * unreachable logo object used to 500 every PDF in the org. Fetching here
+ * (bounded, once) and degrading to the text mark keeps documents rendering.
+ */
+export async function withSafeLogo(theme: PdfTheme): Promise<PdfTheme> {
+  if (theme.mark.kind !== "logo") return theme;
+  try {
+    const res = await fetch(theme.mark.url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) throw new Error(`logo fetch ${res.status}`);
+    const type = res.headers.get("content-type") ?? "image/png";
+    const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
+    return { ...theme, mark: { kind: "logo", url: `data:${type};base64,${b64}` } };
+  } catch (e) {
+    console.error("PDF logo unreachable — falling back to the text mark", e);
+    return { ...theme, mark: textMark(theme.company.name) };
+  }
 }
 
 /** renderToBuffer with `ctx` active for the component phase. Always restores

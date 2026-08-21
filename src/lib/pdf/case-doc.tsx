@@ -237,9 +237,12 @@ async function signImages(
 ): Promise<Record<string, string>> {
   const imageUrls: Record<string, string> = {};
   if (paths.length === 0) return imageUrls;
-  const { data: signed } = await supabase.storage
+  const { data: signed, error } = await supabase.storage
     .from("patient-files")
     .createSignedUrls(paths, 600);
+  // A failed signing pass would silently produce a document with every
+  // instruction image missing — surface it to the route's 500 handler instead.
+  if (error) throw new Error(`Could not sign instruction images: ${error.message}`);
   (signed ?? []).forEach((entry, i) => {
     if (entry.signedUrl) imageUrls[paths[i]] = entry.signedUrl;
   });

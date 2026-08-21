@@ -3,7 +3,7 @@ import React from "react";
 import { Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { createClient, getProfile } from "@/lib/supabase/server";
 import { getOrganization } from "@/lib/data/org";
-import { PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf } from "@/lib/pdf/common";
+import { PdfHeader, PdfFooter, makePdfCtx, renderThemedPdf, withSafeLogo } from "@/lib/pdf/common";
 import { orgToPdfTheme, DEFAULT_PDF_THEME } from "@/lib/pdf/theme";
 import { PdfMarkdown } from "@/lib/pdf/markdown";
 import { slugify } from "@/lib/utils";
@@ -31,18 +31,28 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     (ins.cases as unknown as { patients: { full_name: string } | null } | null)?.patients
       ?.full_name ?? "";
 
+  // Route handlers bypass the app layout's suspension redirect — enforce the
+  // org lockout here too.
+  if (org && !org.active) return new NextResponse("Unauthorized", { status: 401 });
+
   const paths: string[] = ins.image_paths ?? [];
   const imageUrls: string[] = [];
   if (paths.length > 0) {
-    const { data: signed } = await supabase.storage
+    const { data: signed, error: signErr } = await supabase.storage
       .from("patient-files")
       .createSignedUrls(paths, 600);
+    // A failed signing pass would silently render the PDF with no images — fail
+    // loudly instead so the operator retries rather than sending an empty doc.
+    if (signErr) {
+      console.error("Instruction PDF image signing failed", id, signErr);
+      return new NextResponse("Could not load the instruction's images", { status: 502 });
+    }
     (signed ?? []).forEach((entry) => {
       if (entry.signedUrl) imageUrls.push(entry.signedUrl);
     });
   }
 
-  const ctx = makePdfCtx(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME);
+  const ctx = makePdfCtx(await withSafeLogo(org ? orgToPdfTheme(org) : DEFAULT_PDF_THEME));
   const s = ctx.styles;
 
   const doc = (

@@ -29,6 +29,9 @@ export async function updateOwnAccentTheme(theme: AccentTheme): Promise<{ error?
   if (error) return { error: error.message };
   revalidateTag("profiles", "max");
   revalidatePath("/settings");
+  // The accent is applied in the app layout — without this the new theme only
+  // shows after a hard reload (the branding actions do the same).
+  revalidatePath("/", "layout");
   return {};
 }
 
